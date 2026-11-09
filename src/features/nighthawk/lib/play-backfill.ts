@@ -16,6 +16,8 @@ import {
 import type { ScoredCandidate } from "./scorer";
 import type { PlaybookPlay } from "./types";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
+import { calendarDteBetween } from "@/lib/zerodte/board";
 
 /**
  * Pick the nearest affordable, liquid chain contract for a directional play.
@@ -40,7 +42,7 @@ export function pickAffordableChainContract(
   direction: "long" | "short",
   chain: EditionChainData | undefined,
   asOfEtYmd?: string
-): { options_play: string; entry_premium: number } | null {
+): { options_play: string; entry_premium: number; strike: number; expiry: string } | null {
   if (!chain?.rows?.length) return null;
   const side = direction === "short" ? "put" : "call";
   const spot = chain.spot > 0 ? chain.spot : 0;
@@ -72,6 +74,15 @@ export function pickAffordableChainContract(
   return {
     options_play: `${ticker} $${best.row.strike} ${sideLabel} ${best.row.expiry}, entry prem ~$${best.premium.toFixed(2)}`,
     entry_premium: best.premium,
+    // strike/expiry (2026-11-09, Ask Largo/Night Hawk Swings standing mandate — the
+    // exit_style/risk_note/dte backfill gap fix below): previously only encoded inside the
+    // formatted `options_play` string, never returned structured. selectBackfillPlays needs
+    // both as plain values to compute `dte` (calendarDteBetween) and the banger risk_note's
+    // real moneyness (`otm`, strike vs spot) exactly the way buildPlay (deterministic-edition.ts)
+    // already does for the organic path — purely additive, every existing caller/test that reads
+    // only options_play/entry_premium is unaffected.
+    strike: best.row.strike,
+    expiry: best.row.expiry,
   };
 }
 
@@ -193,8 +204,19 @@ export function selectBackfillPlays(params: {
   /** Edition's own target trading day (edition_for) — the expiry floor threaded into
    *  pickAffordableChainContract below. Defaults to today's ET date when omitted. */
   asOfEtYmd?: string;
+  /** BUG FIX (2026-11-09, Ask Largo/Night Hawk Swings standing mandate — live TLN repro):
+   *  tickers surfaced by the whole-market breakout lane, same set buildPlay (deterministic-
+   *  edition.ts) already gates its scale-out risk_note/exit_style on for the organic path.
+   *  This was never a parameter here at all, so a BACKFILL-tier play could never get the
+   *  scale-out exit guidance regardless of whether its ticker genuinely qualified as a
+   *  banger — live trade management (legacy-live-sync.ts) silently fell back to the
+   *  0DTE-grinder plan model for it, and it was permanently excluded from banger shadow
+   *  grading (play-outcomes.ts's resolveBangerScaleOutGrades resolves "not_banger" when
+   *  exit_style is absent). Omitted (not an empty Set) is fully backward compatible — no
+   *  ticker ever matches, identical to pre-fix behavior for every existing caller/test. */
+  bangerTickers?: Set<string>;
 }): { plays: PlaybookPlay[]; notes: string[] } {
-  const { finalPlays, dossiers, chains, minPlays, asOfEtYmd } = params;
+  const { finalPlays, dossiers, chains, minPlays, asOfEtYmd, bangerTickers } = params;
   const used = new Set(finalPlays.map((p) => p.ticker.toUpperCase()));
   const notes: string[] = [];
   const backfilled: PlaybookPlay[] = [...finalPlays];
@@ -258,7 +280,13 @@ export function selectBackfillPlays(params: {
         target: levels.target,
         stop: levels.stop,
       }) ?? undefined;
-    const play = {
+    // BUG FIX (2026-11-09, Ask Largo/Night Hawk Swings standing mandate): `dte` mirrors buildPlay
+    // (deterministic-edition.ts) exactly — computed unconditionally for every play that resolved a
+    // real contract, independent of banger-ticker status (buildPlay's own comment: "observational
+    // only, never read by selection/scoring"). Every backfill play already has a resolved `contract`
+    // by construction (the `if (!contract) continue;` above), so this is never null here.
+    const dte = calendarDteBetween(asOfEtYmd ?? todayEtYmd(), contract.expiry);
+    const play: PlaybookPlay = {
       ...mapClaudePlayToEdition(
         {
           ticker,
@@ -281,7 +309,26 @@ export function selectBackfillPlays(params: {
       // richer, distinct thesis text rather than letting the compact key_signal double as both.
       thesis,
       rr_ratio,
+      dte,
     };
+    // BUG FIX (2026-11-09, Ask Largo/Night Hawk Swings standing mandate — live TLN repro):
+    // mirrors buildPlay's own banger-gated block (deterministic-edition.ts, ~line 910) exactly,
+    // reusing the SAME bangerScaleOutNote helper so the two paths can never diverge in wording/
+    // logic. `otm` verifies the picked contract's ACTUAL moneyness (strike vs spot) rather than
+    // assuming OTM — same live-repro-driven guard buildPlay carries (2026-10-14, ETSY): a LONG
+    // (call) is ITM when strike < spot, a SHORT (put) when strike > spot; exactly-ATM is left
+    // OTM-compatible. Only computed when spot is known — otherwise `otm` stays null (unknown),
+    // which bangerScaleOutNote treats identically to every pre-existing caller (unchanged text).
+    if (bangerTickers?.has(ticker)) {
+      const otm =
+        spot != null && Number.isFinite(spot)
+          ? scored.direction === "short"
+            ? contract.strike <= spot
+            : contract.strike >= spot
+          : null;
+      play.risk_note = bangerScaleOutNote({ dte, otm });
+      play.exit_style = "scale_out"; // structured marker (not just prose) so the ledger can SELECT bangers
+    }
     // Defense in depth: skip backfill candidates that still fail geometry (e.g. resistance ≤ support).
     if (!validatePlayGeometry(play).ok) {
       console.warn(`[nighthawk/backfill] skipped ${ticker} — levels fail geometry gate`);
@@ -352,6 +399,8 @@ export async function backfillThinEditionPlays(params: {
    *  as the hard expiry floor. Every call site has this value in scope; omitting it falls back to
    *  today's ET date rather than failing, since "today" is still a correct (if less precise) floor. */
   editionFor?: string;
+  /** Threaded straight through to selectBackfillPlays — see its own doc comment above. */
+  bangerTickers?: Set<string>;
 }): Promise<{ plays: PlaybookPlay[]; notes: string[] }> {
   const minPlays = params.minPlays ?? effectiveMinPublishPlays();
   if (params.finalPlays.length >= minPlays) {
@@ -381,5 +430,6 @@ export async function backfillThinEditionPlays(params: {
     chains,
     minPlays,
     asOfEtYmd: params.editionFor,
+    bangerTickers: params.bangerTickers,
   });
 }

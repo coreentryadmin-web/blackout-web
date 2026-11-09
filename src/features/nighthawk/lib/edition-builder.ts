@@ -839,6 +839,16 @@ export async function buildEveningEdition(opts?: {
       console.info("[nighthawk/edition] stage_context: loaded from checkpoint");
     }
 
+    // BUG FIX (2026-11-09, Ask Largo/Night Hawk Swings standing mandate — live TLN repro):
+    // same whole-market breakout-lane ticker set generateEditionPlays (claude-edition.ts) computes
+    // from this SAME ctx for the organic path's scale-out risk_note/exit_style gate. Computed once
+    // here (ctx is non-null and stable for the rest of this function) and threaded into every
+    // backfillThinEditionPlays call below so a BACKFILL-tier play whose ticker genuinely is a
+    // whole-market banger gets the identical treatment an organically-qualified banger play gets —
+    // previously `backfillThinEditionPlays`/`selectBackfillPlays` never even took this as a
+    // parameter, so no BACKFILL play could ever carry exit_style/risk_note/dte, banger or not.
+    const bangerTickers = new Set((ctx.breakout_movers ?? []).map((m) => m.ticker.toUpperCase()));
+
     // STAGE 2 — Candidates
     let candidates = job?.candidates_json ?? null;
     if (!candidates?.length) {
@@ -1406,6 +1416,7 @@ export async function buildEveningEdition(opts?: {
         dossiers,
         minPlays: effectiveMinPublishPlays(),
         editionFor,
+        bangerTickers,
       });
       if (backfillNotes.length) {
         finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
@@ -1521,6 +1532,7 @@ export async function buildEveningEdition(opts?: {
               dossiers,
               minPlays: effectiveMinPublishPlays(),
               editionFor,
+              bangerTickers,
             });
             if (floorNotes.length) {
               finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
@@ -1609,6 +1621,7 @@ export async function buildEveningEdition(opts?: {
           dossiers,
           minPlays: effectiveMinPublishPlays(),
           editionFor,
+          bangerTickers,
         });
         if (floorNotes.length) {
           finalPlays = toppedUp.slice(0, effectiveTargetPlays()).map((p, i) => ({ ...p, rank: i + 1 }));
