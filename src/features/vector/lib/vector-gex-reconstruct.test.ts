@@ -207,6 +207,35 @@ test("selectHeatmapStrikes: includes near-spot band before peak-|GEX| cap", () =
   assert.equal(strikes.length, 3);
 });
 
+test("selectHeatmapStrikes: NEVER exceeds maxStrikes even when the near-spot band alone has more candidates than the cap (round 479 regression)", () => {
+  // A tight-increment chain (SPX weeklies run $5, sometimes finer, near the money): a 4% band
+  // around spot 7500 spans +/-300 points, and at $2 spacing that is 301 candidate strikes — far
+  // more than the 80-strike cap the live caller (vector-gex-heatmap-server.ts) passes specifically
+  // to keep the heatmap grid bounded. Before the fix, the band loop had no cap check at all, so it
+  // added every one of the 301 candidates regardless of maxStrikes.
+  const peak = new Map<number, number>();
+  for (let s = 7200; s <= 7800; s += 2) {
+    peak.set(s, 100);
+  }
+  assert.equal(peak.size, 301, "sanity: band alone has more candidates than maxStrikes");
+  const strikes = selectHeatmapStrikes(peak, 80, 7500, 0.04);
+  assert.equal(strikes.length, 80, "axis must be capped at maxStrikes, never exceed it");
+});
+
+test("selectHeatmapStrikes: when the band overflows the cap, keeps the heaviest in-band strikes first", () => {
+  // Two in-band strikes outweigh the rest of a larger in-band pool — with the cap enforced inside
+  // the band loop, the heaviest-|GEX| in-band strikes must survive, not an arbitrary Map-iteration
+  // prefix.
+  const peak = new Map<number, number>();
+  for (let s = 7400; s <= 7600; s += 10) {
+    peak.set(s, 10); // 21 low-weight in-band candidates
+  }
+  peak.set(7490, 999); // heaviest in-band strike
+  peak.set(7510, 998); // second-heaviest in-band strike
+  const strikes = selectHeatmapStrikes(peak, 2, 7500, 0.04);
+  assert.deepEqual(strikes, [7490, 7510]);
+});
+
 test("gammaFlipFromLadder: interpolates the single zero-crossing of cumulative net GEX", () => {
   // Cumulative low→high: 7400→-2, 7500→-2+(-1)=-3? build so the sum crosses once between two strikes.
   // Use a simple monotone-cross ladder: puts negative below, calls positive above.
