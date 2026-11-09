@@ -11,6 +11,7 @@ import {
   gammaCenterOfMass,
   etMinuteOfDay,
   sweepToPulseSignal,
+  fmtNotional,
   SPX_REGIME_HYSTERESIS_PTS,
   SPX_MAGNET_SHIFT_MIN_PTS,
   SPX_PIN_SHIFT_MIN_PTS,
@@ -445,4 +446,26 @@ test("every emitted SPX signal carries its declared tier", () => {
 // ═══════════════════════════ NO-PREV GUARD ═══════════════════════════════════
 test("detectSpxPulseSignals returns nothing on the first tick", () => {
   assert.deepEqual(detectSpxPulseSignals(null, snap()), []);
+});
+
+// ═══════════════════ fmtNotional unit-boundary rounding (round 473) ══════════════════
+// A net-gamma notional just under a unit threshold must PROMOTE to the next unit once its
+// quotient rounds up to 1000 of the current one — never render an overflowed four-digit label
+// in the wrong unit. Same round-first-then-promote shape as every sibling fix in this repo.
+test("fmtNotional promotes K -> M when the rounded quotient reaches 1000", () => {
+  assert.equal(fmtNotional(999_600), "+$1M"); // old buggy output: "+$1000K"
+  assert.equal(fmtNotional(-999_600), "−$1M");
+});
+
+test("fmtNotional promotes M -> B when the rounded quotient reaches 1000", () => {
+  assert.equal(fmtNotional(999_600_000), "+$1.0B"); // old buggy output: "+$1000M"
+  assert.equal(fmtNotional(-999_600_000), "−$1.0B");
+});
+
+test("fmtNotional keeps ordinary, non-boundary magnitudes unchanged", () => {
+  assert.equal(fmtNotional(800_000_000), "+$800M");
+  assert.equal(fmtNotional(-600_000_000), "−$600M");
+  assert.equal(fmtNotional(12_000_000), "+$12M");
+  assert.equal(fmtNotional(640), "+$640");
+  assert.equal(fmtNotional(1_800_000_000), "+$1.8B");
 });
