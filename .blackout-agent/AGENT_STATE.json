@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T12:17:38.469Z",
+  "updated_at": "2026-11-09T13:18:27.146Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T12:17:17.522Z"
+      "released_at": "2026-11-09T13:18:07.217Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T12:17:22.994Z",
-      "lease_until": "2026-11-09T12:18:22.994Z",
+      "claimed_at": "2026-11-09T13:18:12.204Z",
+      "lease_until": "2026-11-09T13:19:12.204Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T12:17:23.002Z"
+      "released_at": "2026-11-09T13:18:12.208Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "bc26778004cc39c3bf00078ffea016ccf9af9864",
+    "last_main_sha": "31ff9dc7777b174d7a3e737a6f20174af7665910",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T12:16:40Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42615656831",
-    "last_deploy_sha": "bc26778004cc39c3bf00078ffea016ccf9af9864"
+    "last_deploy_at": "2026-11-09T13:16:41Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42624054020",
+    "last_deploy_sha": "31ff9dc7777b174d7a3e737a6f20174af7665910"
   },
   "events": [
-    {
-      "at": "2026-10-31T17:37:38.869Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-31T17:37:44.846Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 8
-    },
-    {
-      "at": "2026-10-31T19:48:14.107Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T19:48:19.620Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T19:48:24.747Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T22:58:09.629Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-10-31T22:58:14.515Z",
       "type": "context_sync",
@@ -1289,19 +1253,45 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T13:18:07.217Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T13:18:12.206Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T13:18:12.208Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T13:18:17.558Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T13:18:22.511Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T13:18:27.146Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 7747,
-      "title": "fix(meridian): earnings-intel fmtPrem had no billion/trillion tier for net_gex/net_premium",
-      "branch": "fix/meridian-earnings-intel-fmtprem-billion-tier",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-09T12:09:42Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
