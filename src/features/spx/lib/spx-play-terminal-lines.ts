@@ -35,7 +35,16 @@ export type PlayTerminalLine = {
 function moneyShort(n: number): string {
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  if (abs >= 1_000) {
+    const k = Math.round(n / 1_000);
+    // Round-first-then-promote: a value that ROUNDS to 1000 of this unit belongs in the next
+    // unit up — e.g. a net 0DTE flow premium of 999,600 has abs < 1_000_000 (picks this K
+    // branch) but Math.round(999.6) === 1000, which must render "$1.0M", never "$1000K". Same
+    // bug class/fix already applied to the shared fmtPremium (fmt-money.ts) and
+    // DarkPoolPanel.tsx's fmtShares formatters elsewhere in the app.
+    if (Math.abs(k) >= 1000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    return `$${k}K`;
+  }
   return `$${Math.round(n)}`;
 }
 

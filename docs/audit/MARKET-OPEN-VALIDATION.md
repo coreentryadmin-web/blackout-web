@@ -10108,3 +10108,23 @@ and `/play` are actually serving a real price again
   swing candidate after this deploy, the fix didn't reach the code path actually serving that
   board — check whether `CommandDeck.tsx`'s compact render variant reads a different `sessionTape`
   call site than the one fixed here.
+
+## WATCH LIST — 2026-11-09 (SPX play terminal "0DTE flow net" rounded a near-$1M net premium to "$1000K" instead of "$1.0M", `fix/spx-play-terminal-moneyshort-promote`) — re-check next time a session's net 0DTE flow premium lands near the $1M boundary
+
+- **What was broken**: `moneyShort()` (`src/features/spx/lib/spx-play-terminal-lines.ts`), used
+  only for the SPX play terminal's "0DTE flow net" line, picked the K-vs-M unit by comparing the
+  RAW `desk.flow_0dte_net` value against `1_000_000` and only rounded afterward — so a net premium
+  like `999,600` (`abs < 1_000_000`, takes the K branch) rendered `Math.round(999.6) = 1000` as
+  `"$1000K"` instead of promoting to `"$1.0M"` (and the mirrored negative case rendered
+  `"$-1000K"` instead of `"$-1.0M"`). Same "round-first-then-promote" bug class as ~18 other
+  formatters already fixed this audit cycle (`fmt-money.ts`'s shared `fmtPremium`,
+  `DarkPoolPanel.tsx`'s `fmtShares`) — this was an independent, previously-unfixed copy.
+- **Fix**: round the candidate K value first, then re-check whether it reached 1000 before
+  committing to the K label (promote to M if so) — same pattern as the already-fixed siblings.
+  New regression test added (`spx-play-terminal-lines.test.ts`, `flow_0dte_net: 999_600` and
+  `-999_600`); RED→GREEN confirmed (pre-fix: `"$1000K"`/`"$-1000K"`; post-fix: `"$1.0M"`/
+  `"$-1.0M"`); `tsc --noEmit` clean.
+- **Specific thing to check once live**: next time a real SPX session's net 0DTE flow premium
+  (summed signed premium across the live 0DTE flow tape) is sitting anywhere near +/-$1,000,000,
+  open the SPX play terminal's HOLD/structure panel and confirm the "0DTE flow net" line reads
+  `$X.XM` (never `$1000K`/`$999K`-adjacent values) at that boundary.
