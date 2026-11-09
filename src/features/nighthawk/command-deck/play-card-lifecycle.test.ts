@@ -333,6 +333,70 @@ describe("LEGACY open metrics — stock move, not daily change", () => {
   });
 });
 
+// ── SWING TRIM list row: BLENDED whole-position P&L, not the raw open-runner-only figure
+// (Ask Largo standing mandate — live-audit follow-up to #7834/#7840/#7866, 2026-11-09) ───────
+// Same within-panel contradiction #7834 (verdict badge), #7840 (TradeExcursionGraphic's Current
+// stat) and #7866 (SwingCockpitStrip's Session P&L average) already fixed at three other call
+// sites reading the identical `play.pnlPct`/`play.exitPolicy.trim_levels` pair — this is the
+// fourth, `openMetricsValues()` feeding `playListReturnPct()` → the primary per-play list-row
+// "Current"/"PNL" column shown on every Command Deck row. Live repro fixture mirrors
+// terminal-ladder.test.ts's own: entry $17.34, mark $98.00 → raw runner-only P&L +465.2%, one
+// tranche fired at trigger_pct 100/fraction 0.5 → blended +282.6%.
+describe("SWING TRIM list row — blended whole-position P&L, not raw open-runner figure", () => {
+  const swing = (over: Partial<TerminalPlay>): TerminalPlay =>
+    ({
+      status: "TRIM",
+      horizon: "SWING",
+      ticker: "APP",
+      contract: "280C",
+      ...over,
+    }) as TerminalPlay;
+
+  it("openMetricsValues blends a fired SWING trim tranche into currentPct", () => {
+    const m = openMetricsValues(
+      swing({
+        pnlPct: 465.2,
+        exitPolicy: { trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: true }] },
+      }),
+    );
+    assert.equal(m.currentPct, 282.6, "0.5×100 + 0.5×465.2 = 282.6, not the raw +465.2% runner-only figure");
+  });
+
+  it("playListReturnPct surfaces the blended figure on the primary list column", () => {
+    assert.equal(
+      playListReturnPct(
+        swing({
+          pnlPct: 465.2,
+          exitPolicy: { trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: true }] },
+        }),
+      ),
+      282.6,
+    );
+  });
+
+  it("no tranche fired yet — openMetricsValues is a no-op and keeps the raw runner figure", () => {
+    const m = openMetricsValues(
+      swing({
+        pnlPct: 42.6,
+        exitPolicy: { trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: false }] },
+      }),
+    );
+    assert.equal(m.currentPct, 42.6);
+  });
+
+  it("0DTE TRIM rows are deliberately untouched — their pnlPct comes from a different, unaudited path", () => {
+    const m = openMetricsValues(
+      base({
+        status: "TRIM",
+        horizon: "ZERO_DTE",
+        pnlPct: 465.2,
+        exitPolicy: { trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: true }] },
+      }),
+    );
+    assert.equal(m.currentPct, 465.2, "0DTE must keep the raw figure — only SWING is in scope for this fix");
+  });
+});
+
 describe("zeroDteActionDisplay — grounded ACTION vocabulary (2026-08-29)", () => {
   it("non-0DTE horizons never get the ACTION vocabulary", () => {
     assert.equal(zeroDteActionDisplay(base({ horizon: "SWING", status: "OPEN" })), null);
