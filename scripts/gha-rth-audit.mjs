@@ -208,9 +208,27 @@ async function cronHttpChecks() {
       } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
-      } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+      } else if (label === "cron-watchdog") {
+        const problemKeys = json.problem_keys ?? [];
+        const rthStale = json.rth_stale_keys ?? [];
+        const spike = json.error_spike ?? "none";
+        if (!rthOpen) {
+          if (spike === "critical") {
+            failures.push(`${label}: error_spike critical (${json.error_count ?? "?"})`);
+            console.log(`  ✗ ${label} → error_spike critical`);
+          } else if (problemKeys.length) {
+            console.log(
+              `  ⚠ ${label} → off-hours problems (not failing run): ${problemKeys.join(", ")}`
+            );
+          } else {
+            console.log(`  ✓ ${label} → ok`);
+          }
+        } else if (problemKeys.length > 0 || rthStale.length > 0) {
+          failures.push(`${label}: ${(rthStale.length ? rthStale : problemKeys).join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${(rthStale.length ? rthStale : problemKeys).join(", ")}`);
+        } else {
+          console.log(`  ✓ ${label} → ok`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }

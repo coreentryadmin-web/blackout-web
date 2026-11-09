@@ -6,6 +6,7 @@
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { isApproxUsCashRth } from "./lib/gha-desk-smoke-eval.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -191,8 +192,15 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  if (!(spot > 0)) {
+    // Off-hours the desk may honestly serve price 0 / pulse shell — same discipline as deploy smoke
+    // (gha-desk-smoke-eval) and data-validator SPX oracle skip outside cash RTH.
+    if (!isApproxUsCashRth()) {
+      ok("spx-desk", "spot-off-hours", `price=${spot ?? "—"} (off-hours; live spot not required)`);
+    } else {
+      fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
+    }
+  } else ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;

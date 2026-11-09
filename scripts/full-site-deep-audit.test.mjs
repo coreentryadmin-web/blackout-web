@@ -30,6 +30,18 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   assert.equal(/ep > 20\)/.test(src), false);
 });
 
+test("gha-rth-audit cron-watchdog off-hours defers non-critical problem_keys", () => {
+  const rthSrc = readFileSync(join(here, "gha-rth-audit.mjs"), "utf8");
+  assert.match(rthSrc, /off-hours problems \(not failing run\)/);
+  assert.match(rthSrc, /error_spike critical/);
+});
+
+test("full-site-deep-audit SPX desk spot P0 is gated on cash RTH", () => {
+  assert.match(src, /isApproxUsCashRth/);
+  assert.match(src, /spot-off-hours/);
+  assert.match(src, /live spot not required/);
+});
+
 test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours ground truth", () => {
   assert.match(src, /spxOracleVerdict/);
   assert.match(src, /marketstatus\/now/);
