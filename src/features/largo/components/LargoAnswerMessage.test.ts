@@ -86,6 +86,51 @@ test("LargoAnswerMessage Concrete mode (unaffected) still renders through LargoC
 });
 
 /**
+ * BUG FIX (Ask Largo standing mandate, 2026-11-09): `actions` (desk deep-links such as
+ * "Open Thermal at <flip>" or "Add <ticker> to watchlist", built server-side by
+ * `buildLargoActions()` in `largo-terminal.ts` for EVERY answer regardless of `answerMode`)
+ * were only ever rendered through `<LargoActionsBar>` inside the "Deep dive" + `richEnough`
+ * branch of `LargoAnswerMessage`. "Concrete" is the product's documented DEFAULT answer mode
+ * (see `LargoConcreteAnswer.tsx`'s own header comment, and `largo-depth-mode.ts`), so for the
+ * overwhelming majority of real answers these desk actions were computed on the server and
+ * then silently dropped before ever reaching the member.
+ */
+test("LargoAnswerMessage Concrete mode (the default) still renders desk actions", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(LargoAnswerMessage, {
+      content: "AAPL long setup still intact",
+      envelope: richEnvelope(),
+      answerMode: "concrete",
+      actions: [{ id: "thermal-flip", label: "Open Thermal at 150", href: "/heatmap?ticker=AAPL&strike=150" }],
+    }),
+  );
+  assert.match(html, /largo-actions-bar/);
+  assert.match(html, /Open Thermal at 150/);
+});
+
+test("LargoAnswerMessage Deep dive, not-rich-enough envelope still renders desk actions", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(LargoAnswerMessage, {
+      content: "Flat read, nothing notable right now.",
+      envelope: {
+        version: 1,
+        headline: null,
+        bias: null,
+        sections: [],
+        evidence: [],
+        levels: [],
+        asOf: new Date("2026-11-09T12:00:00Z").toISOString(),
+        markdown: "Flat read, nothing notable right now.",
+      } as unknown as BieAnswerEnvelope,
+      answerMode: "deep",
+      actions: [{ id: "watchlist", label: "Add AAPL to watchlist", href: "#watchlist:AAPL" }],
+    }),
+  );
+  assert.match(html, /largo-actions-bar/);
+  assert.match(html, /Add AAPL to watchlist/);
+});
+
+/**
  * BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.followups` — the situational,
  * answer-specific "ask next" suggestions a BIE answer builder derives from the exact read it just
  * gave (e.g. swing play-brief's `followupsFor()`: "Should I trim more?" for a TAKE_PARTIAL play) —
