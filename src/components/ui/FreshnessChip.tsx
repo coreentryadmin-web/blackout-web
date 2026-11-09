@@ -59,6 +59,22 @@ function formatAge(from: Date, nowMs: number): string {
   return `${Math.floor(m / 60)}h`;
 }
 
+/**
+ * Absolute "Last updated" stamp for the chip's hover title — pinned to US/Eastern, the one clock
+ * this product quotes (`et-clock.ts`'s header), never the viewer's own browser timezone.
+ *
+ * Same bug class as DarkPoolPanel (#7824) / SignalAnalyticsPanel (#7826) / UserManagement (#7828):
+ * a bare `asOf.toLocaleString()` with no `timeZone` renders in whatever zone the viewer's device
+ * is set to, so a member east of ET could see tomorrow's date (and one west of it, yesterday's)
+ * for a real instant that is still "today" in ET — exactly the clock this chip's own relative age
+ * (computed from epoch-ms deltas, timezone-agnostic) is meant to agree with. The locale is also
+ * pinned ("en-US", matching `et-clock.ts`'s own rationale) so the same instant reads identically
+ * regardless of the viewer's OS locale, not just their zone.
+ */
+export function formatFreshnessTimestamp(asOf: Date): string {
+  return asOf.toLocaleString("en-US", { timeZone: "America/New_York" });
+}
+
 /** Pure status resolver — clock-skewed future asOf must not read as Live. */
 export function effectiveFreshnessStatus(
   status: FreshnessStatus,
@@ -120,7 +136,7 @@ export function FreshnessChip({
         className
       )}
       title={
-        [title, now != null && asOf ? `Last updated ${asOf.toLocaleString()}` : null]
+        [title, now != null && asOf ? `Last updated ${formatFreshnessTimestamp(asOf)}` : null]
           .filter(Boolean)
           .join(" · ") || undefined
       }
