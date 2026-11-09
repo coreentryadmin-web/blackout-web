@@ -9804,3 +9804,28 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   changed between the pre-fix and post-fix computation for the same historical row (the fix should
   only change borderline cases sitting exactly on a 2dp tie, which should be rare in real data —
   confirm it did not retag anything that wasn't actually on that boundary).
+
+## WATCH LIST — 2026-11-09 (0DTE whole-market scanner's honesty ledger `computeLedgerGrade` had the sign-bias rounding tie bug, `fix/zerodte-ledger-grade-move-pct-sign-bias`) — re-check once the next session's scanner rows grade
+
+- **`computeLedgerGrade` in `src/lib/zerodte/board.ts`** rounded `move_pct` with plain
+  `Math.round(signed * 100) / 100`, which ties toward `+Infinity` — a LONG and a SHORT setup
+  graded off the identical underlying move at a rounding-tie boundary (e.g. a $160→$165 move,
+  exactly 3.125%) got different magnitudes (`+3.13` vs `-3.12`, should be `-3.13`). Persisted via
+  the sole caller, `scanZeroDteBoard` (`scan.ts:2616`), into `zerodte_setup_log`'s `move_pct`
+  column — a durable ledger row, not a display-only value. `direction_hit` itself is unaffected
+  (it reads the sign of `move_pct`, not its magnitude), but any aggregate built from
+  `move_pct` magnitude (average move size per setup, winning/losing move distributions)
+  inherited a small systematic downward bias on the negative side.
+- **Fix**: round the magnitude then reapply sign, matching the now-13 prior sibling fixes of
+  this exact bug class elsewhere in the codebase. New regression test added to `board.test.ts`
+  (RED→GREEN confirmed with a floating-point-exact 3.125% tie fixture); full `board.test.ts`
+  150/150 pass, `tsc --noEmit` clean. Sibling `scan.test.ts` (the real caller) also run: 44/46
+  pass, the 2 failures (`G-11 batch earnings`, `healthy halt feed`) confirmed pre-existing and
+  unrelated via `git stash` against unmodified `main`.
+- **Re-check once the next session's scanner grades real sessions**: pull a few newly-graded
+  `zerodte_setup_log` rows (via `GET /api/market/zerodte/record` or the admin export) for setups
+  whose underlying move sits close to a hundredth-of-a-percent tie, and confirm the served
+  `move_pct` magnitude for a short setup now matches what the same raw move would show for a
+  long setup on the mirror side — the fix should only change rows that were previously exactly on
+  a 2dp rounding tie, which should be rare, so no row's `direction_hit` should flip (it was never
+  touched by this fix).
