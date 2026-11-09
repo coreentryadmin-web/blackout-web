@@ -10476,3 +10476,36 @@ and `/play` are actually serving a real price again
   that window — it should recover to a real, non-empty matrix on the very next ordinary rebuild
   cycle (the Redis matrix TTL, ~90s) once the upstream call starts succeeding again, rather than
   staying pinned empty for up to 10 minutes. No live state captured pre-fix to diff against — ACEEU/RWTN themselves (the tickers that motivated the original 600s cache) should be unaffected either way, since a genuinely dead ticker's fetches are confirmed-empty, not failed.
+
+## WATCH LIST — 2026-11-09 (GEX heatmap/chain-band/OI-by-expiry pagination read a FAILED mid-chain re-fetch as "chain complete", `fix/paging-null-collapse`) — re-check after the next transient Polygon blip mid-pagination on a wide chain (SPX/SPY/QQQ)
+
+- **What was broken**: `fetchHeatmapBandLoHi`, `fetchHeatmapBandUnfiltered`, and
+  `fetchPolygonOiByExpiry` (`src/lib/providers/polygon-options-gex.ts`) each derived their
+  truncation signal solely from the FINAL page object after their pagination loop exits
+  (`!!page?.next_url`). `polygonFetchUrl`/`polygonRefFetch` return `null` on both "genuine fetch
+  failure" and would otherwise be "no more pages" — but these loops only ever re-fetch a page
+  once a prior page's own `next_url` already proved more data exists, so a `null` re-fetch result
+  can only mean that known-good next page failed to load, never a legitimate end. Once that
+  happens, `page` itself is `null`, so `page?.next_url` reads `undefined` exactly as a clean,
+  complete fetch would. For the heatmap pair this meant a transient Polygon hiccup mid-chain
+  could silently leave `chain_truncated` unset on the `GexHeatmap` object cached for the full
+  matrix TTL — a partial GEX matrix (understated walls/OI/net-gamma) presenting as complete, with
+  no signal anywhere. For `fetchPolygonOiByExpiry` (a live per-request path for Night Hawk/Largo
+  OI-by-expiry reads) it meant the lost `console.warn` never fired either.
+- **Fix**: each loop now captures a re-fetch into a local `next` before assigning it to `page`,
+  sets an explicit `midPaginationFetchFailed` flag the moment `next` comes back `null`, and ORs
+  that flag into the truncation decision instead of deriving truncation solely from the final
+  page. New source-pattern regression test in `polygon-options-gex.test.ts` (pagination over a
+  live network fetch isn't practically unit-testable without heavy mocking in this file's
+  existing style); RED confirmed via `git stash` isolating the source change (77/78 pass, 1 fail
+  against the real pre-fix shape for all three sites), GREEN post-fix (78/78 pass); full
+  `npm test` launched in background; `tsc --noEmit` clean.
+- **Specific thing to check once live**: hard to trigger deliberately (needs a genuine transient
+  Polygon failure landing exactly mid-pagination on a wide chain), so the realistic validation is
+  passive: next time a `[polygon-gex] fetchHeatmapBand(...)`/`fetchHeatmapBandUnfiltered(...)`/
+  `fetchPolygonOiByExpiry(...)` truncation warning appears in CloudWatch for a wide-chain ticker
+  (SPX/SPY/QQQ/NFLX-class) without a correspondingly huge page count, confirm it corresponds to a
+  real upstream blip (not a guard-exhaustion case, which logs a different "hit N-page guard"
+  message) and that the matrix/response actually carried `chain_truncated: true` rather than
+  silently serving as complete. No live state captured pre-fix to diff against — there is no safe
+  way to force a mid-pagination Polygon failure against production from this sandbox.
