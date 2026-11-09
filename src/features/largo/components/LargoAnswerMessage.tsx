@@ -79,6 +79,18 @@ export function LargoAnswerMessage({
             preEarningsPack={preEarningsPack}
           />
           <LargoConcreteAnswer content={content} envelope={envelope} className={className} />
+          {/* BUG FIX (Ask Largo standing mandate, 2026-11-09): `actions` (desk deep-links —
+              "Open Thermal at <flip>", "Add <ticker> to watchlist" — built server-side by
+              `buildLargoActions()` in `largo-terminal.ts` for EVERY answer, regardless of
+              `answerMode`/depth) was previously rendered only inside the "Deep dive" +
+              `richEnough` branch below via `<LargoActionsBar>`. "Concrete" is the product's
+              documented DEFAULT `answerMode` (see `LargoConcreteAnswer.tsx`'s own header
+              comment and `largo-depth-mode.ts`'s `normalizeLargoDepth`), so for the
+              overwhelming majority of real answers these desk actions were computed on every
+              turn and then silently dropped before ever reaching the member — the exact same
+              "computed-but-render-path-gated" shape as the `tradeDecision`/`structureLadder`
+              fixes already landed in this file and its siblings. */}
+          <LargoActionsBar actions={actions} sessionId={sessionId} />
         </>
       );
     }
@@ -119,11 +131,14 @@ export function LargoAnswerMessage({
         );
       }
       return (
-        <BieAnswer
-          envelope={{ ...envelope, sections: proseSections(envelope.sections) }}
-          bodyClassName={className}
-          onFollowup={onFollowup}
-        />
+        <>
+          <BieAnswer
+            envelope={{ ...envelope, sections: proseSections(envelope.sections) }}
+            bodyClassName={className}
+            onFollowup={onFollowup}
+          />
+          <LargoActionsBar actions={actions} sessionId={sessionId} />
+        </>
       );
     }
 
@@ -148,6 +163,7 @@ export function LargoAnswerMessage({
             bodyClassName={className}
             onFollowup={onFollowup}
           />
+          <LargoActionsBar actions={actions} sessionId={sessionId} />
           <LargoAnswerCaveats caveats={caveats} />
         </>
       );
