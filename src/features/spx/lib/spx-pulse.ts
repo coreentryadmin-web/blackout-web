@@ -222,13 +222,42 @@ function fmtPts(v: number): string {
   return `${r >= 0 ? "+" : "−"}${Math.abs(r)} pt${Math.abs(r) === 1 ? "" : "s"}`;
 }
 
-/** $ gamma-notional short-form, signed: -$1.8B, +$640M, +$12M. */
+/**
+ * $ gamma-notional short-form, signed: -$1.8B, +$640M, +$12M.
+ *
+ * BUG FIX (round 473, same unit-boundary class already fixed 16+ times repo-wide — e.g.
+ * `fmt-money.ts`'s `fmtPremium`, `zerodte-board-format.ts`'s `fmtMoney`, `helix-tide-money-
+ * format.ts`, `gex-heatmap-money-format.ts`): the M and K branches picked their unit off the
+ * RAW, unrounded magnitude and only rounded the quotient AFTERWARD, with no check for whether
+ * that rounding itself crossed the next unit's threshold. A net-gamma notional of
+ * $999,600,000 is `< 1_000_000_000`, so it took the M branch, then
+ * `(999_600_000 / 1_000_000).toFixed(0)` rounds UP to `"1000"` — rendering the literal
+ * `"+$1000M"` instead of promoting to `"+$1.0B"`. The identical shape bites the K/M boundary
+ * too (`999_600` -> old `"+$1000K"` instead of `"+$1.0M"`). SPX net gamma exposure routinely
+ * sits in the hundreds-of-millions-to-billions range (see this file's own test fixtures, e.g.
+ * `netGex: 800_000_000`), so the $1B boundary is an ordinary, not theoretical, live value for
+ * this specific caller — reached from `SpxPulseRail.tsx`'s live gamma-shift display and this
+ * file's own wall-break/gamma-shift narration strings.
+ *
+ * FIX: round the quotient to its unit's own display precision FIRST, then re-check (by
+ * magnitude, since `v`/the quotient can be negative) whether the rounded value actually
+ * reached 1000 of that unit — if so, re-render from the next unit up instead. Same
+ * round-first-then-promote guard shape as every sibling fix already in this repo.
+ */
 export function fmtNotional(v: number): string {
   const sign = v >= 0 ? "+" : "−";
   const a = Math.abs(v);
   if (a >= 1_000_000_000) return `${sign}$${(a / 1_000_000_000).toFixed(1)}B`;
-  if (a >= 1_000_000) return `${sign}$${(a / 1_000_000).toFixed(0)}M`;
-  if (a >= 1_000) return `${sign}$${(a / 1_000).toFixed(0)}K`;
+  if (a >= 1_000_000) {
+    const m = Math.round(a / 1_000_000);
+    if (m >= 1000) return `${sign}$${(a / 1_000_000_000).toFixed(1)}B`;
+    return `${sign}$${m}M`;
+  }
+  if (a >= 1_000) {
+    const k = Math.round(a / 1_000);
+    if (k >= 1000) return `${sign}$${(a / 1_000_000).toFixed(0)}M`;
+    return `${sign}$${k}K`;
+  }
   return `${sign}$${Math.round(a)}`;
 }
 
