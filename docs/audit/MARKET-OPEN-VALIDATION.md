@@ -10251,6 +10251,31 @@ and `/play` are actually serving a real price again
   `NOW()`/`Date.now()`, which is sub-second-granular in practice) — before this fix every one of
   these fields silently rounded down to the whole second on read.
 
+## WATCH LIST — 2026-11-09 (data-integrity-verifier `redis_ttl` check couldn't detect a no-expiry Redis key, `fix/redis-ttl-noexpiry-detection`) — re-check once a live correctness scorecard run is readable
+
+- **What was broken**: `src/lib/correctness/data-integrity-verifier.ts`'s `redis_ttl` check
+  (the raw Redis TTL probe on `gex-heatmap:SPX`) carried detail text promising to flag a key
+  with NO expiry set as a "stale-as-live risk" smell, but the branch that would do so was dead
+  code — it was built on `sharedCacheGetWithTtl()`, which filters every result through
+  `raw && ttl > 0` and so returns `null` identically whether the key is genuinely absent (`-2`)
+  or present-with-no-expiry (`-1`). The verifier could never distinguish the two, and its own
+  `ttl < 0` branch could never execute.
+- **Fix**: added `sharedCacheRawTtlSec()` (literal, unfiltered Redis `TTL` result) to
+  `src/lib/shared-cache.ts`, and a pure `classifyRedisTtlProbe()` classifier in
+  `data-integrity-verifier.ts` that now flags a no-expiry key (`-1`) unconditionally (RTH or
+  not), while leaving the genuinely-absent case's existing RTH-aware consistency-only/skipped
+  handling unchanged. `sharedCacheGetWithTtl` itself and its other 6 production call sites are
+  untouched. RED→GREEN confirmed via `git stash` isolation (10/20 fail pre-fix, 20/20 pass
+  post-fix); full `src/lib/correctness/*.test.ts` + `shared-cache.test.ts` 113/113 pass;
+  `tsc --noEmit` clean.
+- **Specific thing to check once live**: pull the next data-integrity correctness-scorecard run
+  during RTH and confirm the `redis_ttl` metric for `gex-heatmap:SPX` reads `pass` (bounded TTL,
+  the expected steady state — `heatmap-warm` always writes with an explicit `EX` TTL) rather
+  than silently `consistency-only`/`skipped` for a reason that doesn't actually apply; this fix
+  changes NOTHING about production Redis behavior, only what the correctness scorecard can now
+  observe — a `flag` on this metric going forward would be a genuinely new, real finding (a
+  no-expiry `gex-heatmap:SPX` key), not a regression from this change.
+
 ## WATCH LIST — 2026-11-09 (data-integrity-verifier.ts reported "consistency-only" for an empty `nighthawk_editions` table, `fix/data-integrity-pg-editions-empty-skip`) — re-check the next DATALAYER correctness scorecard/report
 
 - **What was broken**: `src/lib/correctness/data-integrity-verifier.ts`'s `checkPostgres()`

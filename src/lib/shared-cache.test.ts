@@ -14,9 +14,14 @@ import assert from "node:assert/strict";
 function makeFakeRedis() {
   const store = new Map<string, string>();
   const calls: string[][] = [];
+  // Per-key TTL override for sharedCacheRawTtlSec's own tests below — the pre-existing NX tests
+  // never read this (they only care that set()/get()/del() behave), so defaulting unset keys to
+  // 100 keeps their fixed expectation unchanged.
+  const ttlByKey = new Map<string, number>();
   return {
     store,
     calls,
+    ttlByKey,
     client: {
       async get(key: string): Promise<string | null> {
         return store.has(key) ? store.get(key)! : null;
@@ -32,8 +37,8 @@ function makeFakeRedis() {
       async del(key: string): Promise<unknown> {
         return store.delete(key) ? 1 : 0;
       },
-      async ttl(): Promise<number> {
-        return 100;
+      async ttl(key: string): Promise<number> {
+        return ttlByKey.has(key) ? ttlByKey.get(key)! : 100;
       },
     },
   };
@@ -49,11 +54,12 @@ mock.module("./make-redis", {
 });
 
 let sharedCacheSetNx: typeof import("./shared-cache").sharedCacheSetNx;
+let sharedCacheRawTtlSec: typeof import("./shared-cache").sharedCacheRawTtlSec;
 
 before(async () => {
   // getRedis() gates on REDIS_URL — set it so the Redis (atomic) path is exercised, not the fallback.
   process.env.REDIS_URL = "redis://fake:6379";
-  ({ sharedCacheSetNx } = await import("./shared-cache"));
+  ({ sharedCacheSetNx, sharedCacheRawTtlSec } = await import("./shared-cache"));
 });
 
 test("two concurrent claims on the same (date, phase) → exactly one acquires", async () => {
@@ -105,4 +111,45 @@ test("Redis SET NX errors propagate (no in-memory false acquire) — regression 
     "must not fall through to in-memory NX on Redis error — callers use .catch for fail-open",
   );
   assert.doesNotMatch(body, /if \(redis\)[\s\S]*try\s*\{[\s\S]*set\([\s\S]*catch/);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// sharedCacheRawTtlSec — the literal Redis TTL probe added 2026-11-09 so a caller (specifically
+// data-integrity-verifier.ts's redis_ttl check) can tell a key with NO expiry (-1) apart from a
+// key that's genuinely ABSENT (-2), a distinction sharedCacheGetWithTtl cannot make: it filters
+// every result through `raw && ttl > 0`, so -1 and -2 both come back as a plain `null` there.
+// ───────────────────────────────────────────────────────────────────────────
+
+test("sharedCacheRawTtlSec: hands back a bounded positive TTL verbatim", async () => {
+  const key = `probe:bounded:${Math.random()}`;
+  fake.ttlByKey.set(`blackout:${key}`, 42);
+  assert.equal(await sharedCacheRawTtlSec(key), 42);
+});
+
+// This is the exact regression this function exists to let callers observe — a Redis key present
+// with no expiry set must surface as the literal -1, not get swallowed into "nothing found".
+test("sharedCacheRawTtlSec: a key with NO expiry (-1) is returned as -1, not swallowed into null", async () => {
+  const key = `probe:no-expiry:${Math.random()}`;
+  fake.ttlByKey.set(`blackout:${key}`, -1);
+  assert.equal(await sharedCacheRawTtlSec(key), -1);
+});
+
+test("sharedCacheRawTtlSec: a genuinely absent key is returned as -2", async () => {
+  const key = `probe:absent:${Math.random()}`;
+  fake.ttlByKey.set(`blackout:${key}`, -2);
+  assert.equal(await sharedCacheRawTtlSec(key), -2);
+});
+
+test("sharedCacheRawTtlSec: -1 (no expiry) and -2 (absent) are DISTINGUISHABLE — the gap sharedCacheGetWithTtl cannot close", async () => {
+  const noExpiryKey = `probe:cmp-no-expiry:${Math.random()}`;
+  const absentKey = `probe:cmp-absent:${Math.random()}`;
+  fake.ttlByKey.set(`blackout:${noExpiryKey}`, -1);
+  fake.ttlByKey.set(`blackout:${absentKey}`, -2);
+  const [noExpiry, absent] = await Promise.all([
+    sharedCacheRawTtlSec(noExpiryKey),
+    sharedCacheRawTtlSec(absentKey),
+  ]);
+  assert.notEqual(noExpiry, absent, "a no-expiry key and an absent key must read as different states");
+  assert.equal(noExpiry, -1);
+  assert.equal(absent, -2);
 });

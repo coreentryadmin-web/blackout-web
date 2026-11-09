@@ -37,7 +37,7 @@ mock.module("../providers/gex-positioning", {
 
 mock.module("../shared-cache", {
   namedExports: {
-    sharedCacheGetWithTtl: async () => null,
+    sharedCacheRawTtlSec: async () => null,
   },
 });
 
@@ -108,6 +108,64 @@ test("ageMin: just past the tolerance boundary flips to Infinity", async () => {
   const now = 1_000_000_000_000;
   const justPastTolerance = now + FUTURE_TOLERANCE_MS + 1; // thenMs = now + tolerance + 1ms
   assert.equal(ageMin(justPastTolerance, now), Infinity);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// classifyRedisTtlProbe — the redis_ttl check's pure classification logic.
+//
+// BUG FIX (2026-11-09): this check's own detail text has always promised to flag "TTL -1 (no
+// expiry) — a stale-as-live risk", but it used to read its input through sharedCacheGetWithTtl,
+// which filters every result through `raw && ttl > 0` — a present-but-TTL-less key (the EXACT
+// state this check claims to catch) failed that gate the same as a genuinely-absent key and fell
+// through to an unrelated in-process memory map, so the probe came back `null` either way. The
+// "TTL -1" branch in the old code (`ttl < 0 ? "NO expiry set..." : ...`) was therefore dead code —
+// unreachable in production, confirmed by tracing sharedCacheGetWithTtl's own implementation, not
+// merely suspected. The fix (sharedCacheRawTtlSec, shared-cache.ts) hands back Redis' own literal
+// TTL verdict unfiltered, and this classifier is the first thing to actually exercise the -1 case.
+// ───────────────────────────────────────────────────────────────────────────
+
+test("classifyRedisTtlProbe: TTL -1 (key present, no expiry) ALWAYS flags — the exact smell this check exists to catch", async () => {
+  const { classifyRedisTtlProbe } = await mod();
+  for (const rth of [true, false]) {
+    const verdict = classifyRedisTtlProbe(-1, rth);
+    assert.equal(verdict.outcome, "flag", `rth=${rth}: a no-expiry key must flag regardless of market hours`);
+    assert.match(verdict.detail, /no expiry/i);
+    assert.equal(verdict.actual, -1);
+  }
+});
+
+test("classifyRedisTtlProbe: TTL -2 (key genuinely absent) during RTH is consistency-only, not a silent skip masquerading as success", async () => {
+  const { classifyRedisTtlProbe } = await mod();
+  const verdict = classifyRedisTtlProbe(-2, true);
+  assert.equal(verdict.outcome, "consistency-only");
+  assert.equal(verdict.actual, -2);
+});
+
+test("classifyRedisTtlProbe: TTL -2 off-RTH is skipped (writer legitimately idle)", async () => {
+  const { classifyRedisTtlProbe } = await mod();
+  const verdict = classifyRedisTtlProbe(-2, false);
+  assert.equal(verdict.outcome, "skipped");
+});
+
+test("classifyRedisTtlProbe: null (Redis unreachable) is always skipped, never flag or consistency-only", async () => {
+  const { classifyRedisTtlProbe } = await mod();
+  for (const rth of [true, false]) {
+    assert.equal(classifyRedisTtlProbe(null, rth).outcome, "skipped");
+  }
+});
+
+test("classifyRedisTtlProbe: a bounded positive TTL within the expected window passes", async () => {
+  const { classifyRedisTtlProbe } = await mod();
+  const verdict = classifyRedisTtlProbe(30, true);
+  assert.equal(verdict.outcome, "pass");
+  assert.equal(verdict.actual, 30);
+});
+
+test("classifyRedisTtlProbe: a positive TTL far outside the expected window flags", async () => {
+  const { classifyRedisTtlProbe } = await mod();
+  const verdict = classifyRedisTtlProbe(3600, true);
+  assert.equal(verdict.outcome, "flag");
+  assert.match(verdict.detail, /outside the expected/i);
 });
 
 // BUG FIX regression: an EMPTY nighthawk_editions table (pre-launch, or the publish writer never
