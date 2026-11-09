@@ -87,6 +87,30 @@ export function roundFloats<T>(value: T, dp = 2, keyDp?: RoundFloatsKeyDp): T {
     if (v !== null && typeof v === "object") {
       const out: Record<string, unknown> = {};
       for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = walk(val, k);
+      // sectorLeadershipFacts shape detection (Night Hawk Swings `industryGroupRsFacts()`,
+      // live-caught 2026-11-09 — see reconcileSectorLeadershipDelta's doc comment below for the
+      // full root cause). Unlike reconcileStrikeTotal/reconcileCellStrikeTotals/
+      // reconcileTrancheFractions, which are called explicitly at each known call site, this
+      // shape is detected right here so EVERY current and future consumer of roundFloats gets
+      // the fix automatically, not just the one route that happened to be audited — exactly
+      // because the live bug already shipped the SAME underlying object to three different
+      // surface points (committed/research/scaling_out sections) in one payload, and a
+      // per-route opt-in would have had to be threaded through all three (and any future one)
+      // to actually close the gap.
+      const name = out.nameReturnPct;
+      const group = out.groupReturnPct;
+      const delta = out.deltaPct;
+      if (typeof name === "number" && typeof group === "number" && typeof delta === "number") {
+        // Use whatever dp deltaPct's OWN key-specific rounding would apply (its keyDp override
+        // if one is ever added, else the payload's default dp) — the reconciliation is a
+        // replacement value for deltaPct specifically, so it should round to the same precision
+        // deltaPct would otherwise have been served at.
+        const deltaDp = overrides?.get("deltaPct") ?? dp;
+        return reconcileSectorLeadershipDelta(
+          out as Record<string, unknown> & { nameReturnPct: number; groupReturnPct: number; deltaPct: number },
+          deltaDp
+        );
+      }
       return out;
     }
     return v;
@@ -203,4 +227,64 @@ export function reconcileTrancheFractions<T extends { fraction: number }>(
   const out = tranches.slice();
   out[lastIdx] = { ...last, fraction: (Math.round(last.fraction * factor) + residualUnits) / factor };
   return out;
+}
+
+/**
+ * Reconcile a `{ nameReturnPct, groupReturnPct, deltaPct }` triple — Night Hawk Swings'
+ * `sectorLeadershipFacts` (`industryGroupRsFacts()`, `src/lib/swing/industry-group-rs.ts`) —
+ * AFTER roundFloats rounds each of the three fields INDEPENDENTLY from its own unrounded
+ * source value. `deltaPct` is computed upstream as the raw, full-precision `nameRet - groupRet`
+ * and carried unmodified through swing-ingest.ts -> dossier.ts -> serving-ingest.ts ->
+ * serving-lane.ts -> adapters.ts (plain passthrough at every hop — no rounding/reconcile call
+ * touches any of these three keys anywhere in that chain). By the time roundFloats() rounds all
+ * three fields to 2dp independently, `deltaPct` frequently does not equal
+ * `round(nameReturnPct,2) - round(groupReturnPct,2)` — the subtraction a member, or a direct
+ * API/Largo-tool consumer, would actually perform from the two DISPLAYED operands sitting right
+ * next to it in the same object.
+ *
+ * Live-caught in a real `GET /api/market/nighthawk/horizons?view=swings` payload, 2026-11-09:
+ * 5-7 of ~12 `sectorLeadershipFacts` occurrences mismatched by 0.01pp, e.g.
+ * `nameReturnPct: -12.16, groupReturnPct: -10.95, deltaPct: -1.22` (true delta -1.21), repeated
+ * across `board.lanes.SWING.committed[]`, `sections.RESEARCH[]`, `sections.SCALING_OUT[]` — the
+ * same underlying dossier object served at multiple surface points in one payload.
+ *
+ * Same rounding-composition bug class as reconcileStrikeTotal/reconcileCellStrikeTotals/
+ * reconcileTrancheFractions above — but unlike those three, which are invoked explicitly at
+ * each known call site (because they either need extra caller context, e.g.
+ * reconcileCellStrikeTotals needs `nearTermExpiries`, or match on key names — `total`,
+ * `strike_totals` — generic enough that auto-detecting them on any object anywhere in any
+ * payload would be a real false-positive risk), this triple's three key names are specific
+ * enough, and the fix is self-contained enough (a pure function of the object's own three
+ * fields, no extra context needed), that it is safe to detect and fix directly inside the
+ * walker itself (see the call site in `roundFloats`'s object branch above) — fixing every
+ * current and future consumer of `roundFloats` that ever serves this shape at once, rather than
+ * requiring each one to remember to call this explicitly. That is exactly how the live bug
+ * reached three separate sections of one payload despite sharing a single underlying object.
+ *
+ * Exported standalone (same as its three siblings) so it can be unit-tested directly and, if
+ * ever needed, invoked explicitly outside a `roundFloats` pass. A non-finite or missing operand
+ * on any of the three fields returns the block untouched rather than guessing.
+ */
+export function reconcileSectorLeadershipDelta<
+  B extends { nameReturnPct?: number; groupReturnPct?: number; deltaPct?: number },
+>(block: B, dp = 2): B {
+  const { nameReturnPct, groupReturnPct, deltaPct } = block;
+  if (
+    typeof nameReturnPct !== "number" ||
+    !Number.isFinite(nameReturnPct) ||
+    typeof groupReturnPct !== "number" ||
+    !Number.isFinite(groupReturnPct) ||
+    typeof deltaPct !== "number" ||
+    !Number.isFinite(deltaPct)
+  ) {
+    return block;
+  }
+  const factor = 10 ** dp;
+  // Same sign-safe, round-by-magnitude formula the main walk() uses (2026-10-26 fix, see its own
+  // comment above) — a plain `Math.round` here would reintroduce the identical negative-tie
+  // bias that fix already removed from the rest of this file.
+  const signedRound = (n: number) => (Math.sign(n) * Math.round(Math.abs(n) * factor)) / factor;
+  const reconciled = signedRound(nameReturnPct - groupReturnPct);
+  if (reconciled === deltaPct) return block; // already self-consistent — nothing to absorb
+  return { ...block, deltaPct: reconciled };
 }

@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals, reconcileTrancheFractions } from "./round-floats";
+import {
+  roundFloats,
+  reconcileStrikeTotal,
+  reconcileCellStrikeTotals,
+  reconcileTrancheFractions,
+  reconcileSectorLeadershipDelta,
+} from "./round-floats";
 
 test("rounds spurious float noise to 2dp by default", () => {
   assert.equal(roundFloats(7499.360000000001), 7499.36);
@@ -255,6 +261,149 @@ test("reconcileTrancheFractions: a 4-way even split (0.25 each) already sums to 
   ];
   const fixed = reconcileTrancheFractions(tranches);
   assert.strictEqual(fixed, tranches);
+});
+
+// ── reconcileSectorLeadershipDelta — live-caught (2026-11-09): Night Hawk Swings'
+// sectorLeadershipFacts.deltaPct is rounded INDEPENDENTLY of nameReturnPct/groupReturnPct, so the
+// displayed "leading/lagging by X%" frequently does not equal the subtraction a reader would do
+// from the two displayed operands right next to it ──────────────────────────────────────────────
+
+test("reconcileSectorLeadershipDelta: reproduces the live GOOG-style mismatch from a real /nighthawk/horizons?view=swings payload, and fixes it", () => {
+  // Real production numbers, 2026-11-09: deltaPct served as -1.22, but -12.16 - (-10.95) = -1.21 —
+  // the subtraction a member doing it by hand from the two displayed percentages gets.
+  const block = { nameReturnPct: -12.16, groupReturnPct: -10.95, deltaPct: -1.22 };
+  const fixed = reconcileSectorLeadershipDelta(block);
+  assert.equal(fixed.deltaPct, -1.21);
+  assert.equal(fixed.deltaPct, Math.round((fixed.nameReturnPct - fixed.groupReturnPct) * 100) / 100);
+});
+
+test("reconcileSectorLeadershipDelta: reproduces every mismatch in the live evidence set", () => {
+  // [nameReturnPct, groupReturnPct, served (wrong) deltaPct, correct reconciled deltaPct]
+  const cases: Array<[number, number, number, number]> = [
+    [-12.16, -10.95, -1.22, -1.21],
+    [-8.25, 2.29, -10.53, -10.54],
+    [-14.42, -14.45, 0.02, 0.03],
+    [-1.16, -10.95, 9.78, 9.79],
+  ];
+  for (const [nameReturnPct, groupReturnPct, served, trueDelta] of cases) {
+    const fixed = reconcileSectorLeadershipDelta({ nameReturnPct, groupReturnPct, deltaPct: served });
+    assert.equal(
+      fixed.deltaPct,
+      trueDelta,
+      `nameReturnPct=${nameReturnPct} groupReturnPct=${groupReturnPct}: expected ${trueDelta}, got ${fixed.deltaPct}`
+    );
+  }
+});
+
+test("reconcileSectorLeadershipDelta: leaves an already-self-consistent triple untouched (same object reference)", () => {
+  const block = { nameReturnPct: 5, groupReturnPct: 2, deltaPct: 3 };
+  assert.strictEqual(reconcileSectorLeadershipDelta(block), block);
+});
+
+test("reconcileSectorLeadershipDelta: passes through unchanged when any operand is missing or non-finite, rather than guessing", () => {
+  const noName = { groupReturnPct: 1, deltaPct: 1 } as {
+    nameReturnPct?: number;
+    groupReturnPct?: number;
+    deltaPct?: number;
+  };
+  assert.strictEqual(reconcileSectorLeadershipDelta(noName), noName);
+  const nanName = { nameReturnPct: NaN, groupReturnPct: 1, deltaPct: 1 };
+  assert.strictEqual(reconcileSectorLeadershipDelta(nanName), nanName);
+  const infGroup = { nameReturnPct: 1, groupReturnPct: Infinity, deltaPct: 1 };
+  assert.strictEqual(reconcileSectorLeadershipDelta(infGroup), infGroup);
+  const nanDelta = { nameReturnPct: 1, groupReturnPct: 1, deltaPct: NaN };
+  assert.strictEqual(reconcileSectorLeadershipDelta(nanDelta), nanDelta);
+});
+
+test("reconcileSectorLeadershipDelta: preserves every other field on the block (benchmarkEtf/benchmarkLabel/kind)", () => {
+  const block = {
+    benchmarkEtf: "XLK",
+    benchmarkLabel: "Technology",
+    kind: "sector" as const,
+    nameReturnPct: -12.16,
+    groupReturnPct: -10.95,
+    deltaPct: -1.22,
+  };
+  const fixed = reconcileSectorLeadershipDelta(block);
+  assert.equal(fixed.benchmarkEtf, "XLK");
+  assert.equal(fixed.benchmarkLabel, "Technology");
+  assert.equal(fixed.kind, "sector");
+  assert.equal(fixed.deltaPct, -1.21);
+});
+
+// ── roundFloats auto-wiring — fires for ANY sectorLeadershipFacts-shaped object anywhere in a
+// payload, not just one call site. The real route serves the SAME dossier object at multiple
+// surface points (board.lanes.SWING.committed[], sections.RESEARCH[], sections.SCALING_OUT[]) —
+// a per-call-site opt-in would have had to be threaded through every one of them. ───────────────
+
+test("roundFloats: auto-reconciles a bare sectorLeadershipFacts-shaped object passed directly, overwriting a wrong served deltaPct regardless of its own independent rounding", () => {
+  const input = { nameReturnPct: -12.16, groupReturnPct: -10.95, deltaPct: -999 };
+  const out = roundFloats(input) as typeof input;
+  assert.equal(out.nameReturnPct, -12.16);
+  assert.equal(out.groupReturnPct, -10.95);
+  assert.equal(out.deltaPct, -1.21);
+});
+
+test("roundFloats: reconciles the actual raw-float shape (unrounded upstream values) end to end", () => {
+  // industryGroupRsFacts() ships deltaPct as the raw, full-precision nameRet - groupRet — this
+  // exercises BOTH roundFloats' own per-field rounding AND the reconciliation in one pass.
+  const input = {
+    nameReturnPct: -12.160000000001,
+    groupReturnPct: -10.950000000002,
+    deltaPct: -12.160000000001 - -10.950000000002, // raw delta, unrounded — the real upstream shape
+  };
+  const out = roundFloats(input) as { nameReturnPct: number; groupReturnPct: number; deltaPct: number };
+  assert.equal(out.nameReturnPct, -12.16);
+  assert.equal(out.groupReturnPct, -10.95);
+  assert.equal(out.deltaPct, -1.21);
+});
+
+test("roundFloats: fixes the shape wherever it is nested — array elements AND nested objects — matching the real board.lanes.SWING.committed[]/sections.RESEARCH[]/sections.SCALING_OUT[] fan-out of one underlying dossier object", () => {
+  const sectorLeadershipFacts = {
+    benchmarkEtf: "XLK",
+    benchmarkLabel: "Technology",
+    kind: "sector" as const,
+    nameReturnPct: -12.16,
+    groupReturnPct: -10.95,
+    deltaPct: -1.22, // independently mis-rounded, same as the live evidence
+  };
+  const payload = {
+    board: {
+      lanes: { SWING: { committed: [{ ticker: "GOOG", sectorLeadershipFacts }] } },
+    },
+    sections: {
+      RESEARCH: [{ ticker: "GOOG", sectorLeadershipFacts }],
+      SCALING_OUT: [{ ticker: "GOOG", sectorLeadershipFacts }],
+    },
+  };
+  const out = roundFloats(payload) as typeof payload;
+  const committed = out.board.lanes.SWING.committed[0]!.sectorLeadershipFacts;
+  const research = out.sections.RESEARCH[0]!.sectorLeadershipFacts;
+  const scalingOut = out.sections.SCALING_OUT[0]!.sectorLeadershipFacts;
+  for (const f of [committed, research, scalingOut]) {
+    assert.equal(f.deltaPct, -1.21, "every surface point serving the same dossier object must be fixed");
+    assert.equal(f.deltaPct, Math.round((f.nameReturnPct - f.groupReturnPct) * 100) / 100);
+  }
+});
+
+test("roundFloats: does NOT fabricate deltaPct onto an object merely missing one of the three required keys", () => {
+  const out = roundFloats({ nameReturnPct: 5.001, groupReturnPct: 2.001 }) as {
+    nameReturnPct: number;
+    groupReturnPct: number;
+    deltaPct?: number;
+  };
+  assert.equal(out.nameReturnPct, 5);
+  assert.equal(out.groupReturnPct, 2);
+  assert.equal("deltaPct" in out, false);
+});
+
+test("roundFloats: a sectorLeadershipFacts triple that already agrees post-rounding is left as-is", () => {
+  const out = roundFloats({ nameReturnPct: 5, groupReturnPct: 2, deltaPct: 3 }) as {
+    nameReturnPct: number;
+    groupReturnPct: number;
+    deltaPct: number;
+  };
+  assert.deepEqual(out, { nameReturnPct: 5, groupReturnPct: 2, deltaPct: 3 });
 });
 
 // RTH-scan regression (2026-07-13): Vector served the weekly gamma flip as 7622.381430556295. The
