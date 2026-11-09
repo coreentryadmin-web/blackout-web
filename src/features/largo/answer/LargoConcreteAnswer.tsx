@@ -59,6 +59,21 @@ export function LargoConcreteAnswer({
   // untouched — the duplication is the bug, not the presence of a verdict.
   const bodyWithoutVerdict = verdict ? dropLeadingSentence(body, verdict) : body;
 
+  // BUG FIX: `envelope.tradeDecision` is documented in `decision-read.ts` as a "non-negotiable
+  // honesty flag" (board-committed vs speculative, edition vs ledger) that must NOT be gated
+  // behind any particular UI mode — but until this fix, only `LargoDeskRead.tsx` (the Deep-dive
+  // renderer, reached only when a member switches modes AND the envelope clears an unrelated
+  // `richEnough` bar) ever read it. Concrete is the DEFAULT `answerMode` in
+  // `LargoAnswerMessage.tsx`, so for the overwhelming majority of real answers this warning —
+  // e.g. "this ticker isn't on today's 0DTE board, this read is speculative" — never reached the
+  // member at all. Mirrors `LargoDeskRead`'s own `integrityNotes` construction exactly so the
+  // same envelope produces the same notes regardless of which renderer shows it.
+  const trade = envelope?.tradeDecision;
+  const integrityNotes: string[] = [];
+  if (trade?.notOnBoardWarning) integrityNotes.push(trade.notOnBoardWarning);
+  if (trade?.boardPlay) integrityNotes.push(`Board: ${trade.boardPlay.contract} (${trade.boardPlay.status})`);
+  if (trade?.existingPlay) integrityNotes.push(`Edition: ${trade.existingPlay.contract}`);
+
   return (
     <article className={clsx("largo-concrete-answer", className)}>
       {envelope?.asOf ? (
@@ -70,6 +85,16 @@ export function LargoConcreteAnswer({
 
       {verdict ? (
         <p className="largo-concrete-verdict">{renderInlineMarkdown(verdict)}</p>
+      ) : null}
+
+      {integrityNotes.length > 0 ? (
+        <div className="largo-read-integrity">
+          {integrityNotes.map((n) => (
+            <p key={n}>{n}</p>
+          ))}
+          {trade?.existingPlay?.note && <p className="largo-read-integrity-note">{trade.existingPlay.note}</p>}
+          {trade?.boardPlay?.note && <p className="largo-read-integrity-note">{trade.boardPlay.note}</p>}
+        </div>
       ) : null}
 
       <LargoMessageBody

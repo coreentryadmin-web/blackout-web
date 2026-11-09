@@ -9958,3 +9958,23 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   a leg whose raw P&L sits close to a hundredth-of-a-percent boundary now agree in magnitude with
   the mirror-image case, and that `summary.breakevens` no longer undercounts a real tiny loss that
   previously would have rounded to `-0` and read as a breakeven.
+## WATCH LIST — 2026-11-09 (Ask Largo "Concrete" mode dropped the `tradeDecision` integrity
+warning, `fix/largo-concrete-trade-decision-integrity`) — re-check once the next session asks
+Ask Largo a real play question
+
+- **`LargoConcreteAnswer.tsx` never read `envelope.tradeDecision`.** This is the "non-negotiable
+  honesty flag" object (`decision-read.ts`) that warns a member when a ticker they're asking
+  about is NOT committed on the live 0DTE board (`notOnBoardWarning`), or discloses an existing
+  board/edition play for the same ticker (`boardPlay`/`existingPlay`) — only `LargoDeskRead.tsx`
+  (Deep dive mode) ever rendered it, and Concrete is the DEFAULT `answerMode`, so most members
+  never saw it.
+- **Fix**: added the same `integrityNotes` construction `LargoDeskRead.tsx` already uses to
+  `LargoConcreteAnswer.tsx`, rendered between the verdict and the body with the existing
+  `.largo-read-integrity` CSS classes. New regression test
+  (`src/features/largo/answer/concrete-trade-integrity.test.ts`) — RED→GREEN confirmed via
+  `git stash` on just the fixed file; 403 related tests green, `tsc --noEmit` clean.
+- **Re-check once the market opens**: in Ask Largo, stay on the default Concrete mode (no toggle)
+  and ask a play-style question about a ticker that is NOT currently committed on the live 0DTE
+  board (e.g. a random mid-cap with no open 0DTE play). Confirm a short "not on board /
+  speculative" note now renders right under the verdict line — it did not render in Concrete mode
+  before this fix, even though switching to Deep dive for the same question already showed it.
