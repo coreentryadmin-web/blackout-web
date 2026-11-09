@@ -348,15 +348,26 @@ export function evaluateJob(
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const awaitingDualBand =
     Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
+  const scheduledOffWindowIdle = offScheduleGap || awaitingDualBand;
   const suppressStaleOffSchedule =
-    (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
+    scheduledOffWindowIdle && (last.status === "skipped" || last.status === "ok");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
   if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
+    // Post-close / dual-band UTC crons: between scheduled fires (e.g. Friday evening → Monday
+    // afternoon) a Friday "failed" handshake is not actionable — same shape as stale suppression
+    // for ok/skipped (ops #1983; cron-audit-query measured 2026-11-09 with three false P0s).
+    if (scheduledOffWindowIdle) {
+      status = "healthy";
+      statusLabel = awaitingDualBand
+        ? "Idle (awaiting in-window UTC band)"
+        : "Idle (outside cron schedule window)";
+    } else {
+      status = "failed";
+      statusLabel = "Last run failed";
+    }
   } else if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
@@ -529,14 +540,19 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
       const offWindow = marketHoursCronOffWindow(job, hbNow);
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
+      const failedHandshakeEngineLive =
+        !offWindow && health.status === "failed" && hbAgeMin != null && !playHb.stale;
 
-      if (cronStale && hbAgeMin != null) {
+      if ((cronStale || failedHandshakeEngineLive) && hbAgeMin != null) {
         if (!playHb.stale) {
           return {
             ...health,
             status: "healthy" as const,
             market_hours_stale: false,
-            status_label: `Engine tick ${hbAgeMin}m ago (cron handshake age not authoritative)`,
+            status_label:
+              health.status === "failed"
+                ? `Engine tick ${hbAgeMin}m ago (cron handshake failed; engine path live)`
+                : `Engine tick ${hbAgeMin}m ago (cron handshake age not authoritative)`,
             meta: {
               ...(health.meta ?? {}),
               play_engine_heartbeat: playHb,

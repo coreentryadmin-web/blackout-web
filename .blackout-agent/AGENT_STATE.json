@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T15:37:55.294Z",
+  "updated_at": "2026-11-09T15:58:21.709Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T15:37:34.397Z"
+      "released_at": "2026-11-09T13:18:07.217Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T15:37:39.432Z",
-      "lease_until": "2026-11-09T15:38:39.432Z",
+      "claimed_at": "2026-11-09T13:18:12.204Z",
+      "lease_until": "2026-11-09T13:19:12.204Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T15:37:39.436Z"
+      "released_at": "2026-11-09T13:18:12.208Z"
     }
   },
   "reviews": {
@@ -83,13 +83,79 @@
     }
   },
   "deploy": {
-    "last_main_sha": "90e43d5dea231fed5cdd9a496220e504aacfbd4f",
+    "last_main_sha": "da9d907b1b37de215f5c3def8b3d562bbc3f9203",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T15:36:52Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42646436457",
-    "last_deploy_sha": "90e43d5dea231fed5cdd9a496220e504aacfbd4f"
+    "last_deploy_at": "2026-11-09T15:50:42Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42648728418",
+    "last_deploy_sha": "1cc122c060b442a04c689049d133d87a46d54534"
   },
   "events": [
+    {
+      "at": "2026-10-31T22:58:19.113Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T00:50:11.237Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-11-01T00:50:17.269Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-11-01T00:50:23.154Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 8
+    },
+    {
+      "at": "2026-11-01T01:38:24.890Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T01:38:30.013Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T01:38:35.235Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-01T02:07:04.399Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T02:07:08.548Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T02:07:12.424Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-01T02:41:42.744Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
     {
       "at": "2026-11-01T02:41:48.732Z",
       "type": "context_sync",
@@ -1219,94 +1285,188 @@
       "open_pr_count": 4
     },
     {
-      "at": "2026-11-09T14:47:30.353Z",
-      "type": "task_released",
-      "task_id": "BO-TEST-0007",
-      "owner": "claude"
-    },
-    {
-      "at": "2026-11-09T14:47:35.201Z",
+      "at": "2026-11-09T15:58:21.709Z",
       "type": "context_sync",
       "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-11-09T14:47:35.208Z",
-      "type": "task_released",
-      "task_id": "BO-TEST-0009",
-      "owner": "claude"
-    },
-    {
-      "at": "2026-11-09T14:47:40.069Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-11-09T14:47:44.726Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-11-09T14:47:49.353Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 4
-    },
-    {
-      "at": "2026-11-09T15:37:34.397Z",
-      "type": "task_released",
-      "task_id": "BO-TEST-0007",
-      "owner": "claude"
-    },
-    {
-      "at": "2026-11-09T15:37:39.435Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-09T15:37:39.436Z",
-      "type": "task_released",
-      "task_id": "BO-TEST-0009",
-      "owner": "claude"
-    },
-    {
-      "at": "2026-11-09T15:37:44.706Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-09T15:37:50.198Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-09T15:37:55.294Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
+      "open_pr_count": 21
     }
   ],
   "open_prs": [
     {
-      "number": 7762,
-      "title": "fix(correctness): empty nighthawk_editions table reported skipped, not consistency-only",
-      "branch": "fix/data-integrity-pg-editions-empty-skip",
+      "number": 7780,
+      "title": "fix(ops): suppress post-close cron failed in schedule idle gap",
+      "branch": "cursor/autopilot-work-loop-3937",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "QUEUED/",
+      "updated_at": "2026-11-09T15:58:13Z"
+    },
+    {
+      "number": 7779,
+      "title": "fix(cron-health): stop Monday cron-audit false P0 on post-close jobs",
+      "branch": "cursor/autopilot-state-recovery-loop-72fa",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-11-09T15:58:12Z"
+    },
+    {
+      "number": 7778,
+      "title": "fix(cron-health): stop Monday pre-fire cron-audit false P0 on post-close jobs",
+      "branch": "cursor/autopilot-work-loop-68c8",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-09T15:58:11Z"
+    },
+    {
+      "number": 7777,
+      "title": "fix(ops): cron audit ignores post-close stale/failed during schedule idle gaps",
+      "branch": "cursor/bc-200a9b63-5185-4916-bd36-6f4def2b45b9-dd80",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-11-09T15:58:03Z"
+    },
+    {
+      "number": 7776,
+      "title": "fix(ops): suppress post-close cron failed handshakes before Monday fire",
+      "branch": "cursor/autopilot-work-loop-b7bf",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-11-09T15:58:02Z"
+    },
+    {
+      "number": 7775,
+      "title": "fix(ops): cron query — pre-fire post-close failures + spx-evaluate cache timeout",
+      "branch": "cursor/autopilot-state-recovery-loop-92cb",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-11-09T15:58:00Z"
+    },
+    {
+      "number": 7774,
+      "title": "fix(ops): suppress post-close cron failed status in schedule idle gaps",
+      "branch": "fix/cron-audit-monday-eod-false-p0",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
-      "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-09T15:34:05Z"
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-11-09T15:57:53Z"
+    },
+    {
+      "number": 7773,
+      "title": "fix(meridian): stop caching peer-reaction fetch failures as 6h-frozen \"no data\"",
+      "branch": "fix/array-mutation-cache-sweep",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-09T15:57:49Z"
+    },
+    {
+      "number": 7772,
+      "title": "fix(cron-health): Monday post-close idle cron-audit false P0",
+      "branch": "cursor/blackout-cursor-work-loop-fb4c",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-11-09T15:57:49Z"
+    },
+    {
+      "number": 7771,
+      "title": "fix(cron-health): suppress prior-window failed during off-schedule idle gap",
+      "branch": "fix/cron-audit-failed-off-schedule-gap",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-11-09T15:57:37Z"
+    },
+    {
+      "number": 7770,
+      "title": "fix(ops): cron audit query Monday pre-window false positives",
+      "branch": "cursor/blackout-cursor-work-loop-cd83",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-11-09T15:57:29Z"
+    },
+    {
+      "number": 7769,
+      "title": "fix(cron-health): suppress prior-session failed before post-close fire",
+      "branch": "cursor/autopilot-work-loop-d607",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "unknown",
+      "updated_at": "2026-11-09T15:57:25Z"
+    },
+    {
+      "number": 7768,
+      "title": "fix(ops): suppress prior failed post-close crons in off-schedule idle gap",
+      "branch": "fix/cron-idle-gap-suppress-prior-failed",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-11-09T15:57:20Z"
+    },
+    {
+      "number": 7767,
+      "title": "fix(ops): suppress post-close cron failed handshakes in schedule idle gap",
+      "branch": "cursor/autopilot-work-loop-4e86",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "COMPLETED/SUCCESS",
+      "updated_at": "2026-11-09T15:57:07Z"
+    },
+    {
+      "number": 7766,
+      "title": "fix(ops): cron audit query — failed post-close jobs in idle gaps + SPX HB",
+      "branch": "cursor/autopilot-work-loop-6370",
+      "author": "coreentryadmin-web",
+      "agent": "cursor",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-11-09T15:57:06Z"
+    },
+    {
+      "number": 7764,
+      "title": "docs(largo): fix stale \"Seven titles\" comment to \"Eight\" in play-brief-intel-collapse.ts",
+      "branch": "fix/narrative-collapse-title-count-comment",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-11-09T15:48:54Z"
+    },
+    {
+      "number": 7763,
+      "title": "fix: data-integrity verifier's redis_ttl check could never detect a no-expiry key",
+      "branch": "fix/redis-ttl-noexpiry-detection",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/",
+      "updated_at": "2026-11-09T15:46:30Z"
     },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
       "branch": "dependabot/npm_and_yarn/next-16.3.6",
-      "author": "dependabot[bot]",
+      "author": "app/dependabot",
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
@@ -1316,7 +1476,7 @@
       "number": 5546,
       "title": "chore(deps): Bump @whop/sdk from 0.0.42 to 2.0.0",
       "branch": "dependabot/npm_and_yarn/whop/sdk-2.0.0",
-      "author": "dependabot[bot]",
+      "author": "app/dependabot",
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
@@ -1326,7 +1486,7 @@
       "number": 5545,
       "title": "chore(deps-dev): Bump eslint-config-next from 15.5.19 to 16.3.6",
       "branch": "dependabot/npm_and_yarn/eslint-config-next-16.3.6",
-      "author": "dependabot[bot]",
+      "author": "app/dependabot",
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
@@ -1336,7 +1496,7 @@
       "number": 4477,
       "title": "Bump eslint-plugin-tailwindcss from 3.18.3 to 4.4.0",
       "branch": "dependabot/npm_and_yarn/eslint-plugin-tailwindcss-4.4.0",
-      "author": "dependabot[bot]",
+      "author": "app/dependabot",
       "agent": "human",
       "draft": false,
       "verify": "COMPLETED/FAILURE",
