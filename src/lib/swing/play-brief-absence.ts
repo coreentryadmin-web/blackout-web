@@ -1045,6 +1045,25 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
       retryable: true,
     });
   }
+  // BUG FIX (2026-11-09, Ask Largo standing mandate): rollHistory and tickerTrackRecord were the
+  // two remaining siblings still missing the archetypeTrackRecordFetchFailed distinction above —
+  // same rationale, disclosed regardless of play status.
+  if (ctx.rollHistoryFetchFailed) {
+    out.push({
+      source: "Roll history",
+      reason: "fetch failed",
+      what_is_missing: "this position's roll ledger",
+      retryable: true,
+    });
+  }
+  if (ctx.tickerTrackRecordFetchFailed) {
+    out.push({
+      source: "Ticker track record",
+      reason: "fetch failed",
+      what_is_missing: "this ticker's prior-trade history",
+      retryable: true,
+    });
+  }
   // FINDINGS 2026-09-06 (#22) + live probe 2026-09-07: sync-without-timestamp AND aged markAsOf
   // must both reach unavailableSources — prose in dataHonestyCoaching alone is not enough (C3).
   const markAbsence = collectOptionMarkStalenessAbsence(ctx.play, readMs);

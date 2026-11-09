@@ -1116,6 +1116,42 @@ test("collectBriefUnavailableSources: archetypeTrackRecord null WITHOUT a fetch 
   );
 });
 
+// BUG FIX (2026-11-09, Ask Largo standing mandate): rollHistory and tickerTrackRecord were the
+// two remaining C3 siblings missing the archetypeTrackRecordFetchFailed distinction above — a
+// genuine withBriefSourceTimeout rejection was indistinguishable from "never rolled"/"no prior
+// trade" absence.
+test("collectBriefUnavailableSources: a genuine roll-history fetch failure (timeout) surfaces in envelope, distinct from a legitimate 'never rolled' absence", () => {
+  const ctx = {
+    rollHistory: null,
+    rollHistoryFetchFailed: true,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(sources.some((s) => s.source === "Roll history" && s.reason === "fetch failed"));
+});
+
+test("collectBriefUnavailableSources: rollHistory null WITHOUT a fetch failure does not fabricate an absence entry (Largo C6 omission, not fabrication, preserved)", () => {
+  const ctx = { rollHistory: null } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "Roll history"));
+});
+
+test("collectBriefUnavailableSources: a genuine ticker track-record fetch failure (timeout) surfaces in envelope, distinct from a legitimate 'no prior trade' absence", () => {
+  const ctx = {
+    tickerTrackRecord: null,
+    tickerTrackRecordFetchFailed: true,
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "Ticker track record" && s.reason === "fetch failed"),
+  );
+});
+
+test("collectBriefUnavailableSources: tickerTrackRecord null WITHOUT a fetch failure does not fabricate an absence entry (Largo C6 omission, not fabrication, preserved)", () => {
+  const ctx = { tickerTrackRecord: null } as SwingPlayBriefContext;
+  assert.ok(!collectBriefUnavailableSources(ctx).some((s) => s.source === "Ticker track record"));
+});
+
 test("collectBriefUnavailableSources: a total Vector fetch failure surfaces in envelope (FINDINGS 2026-09-06 #11)", () => {
   const ctx = {
     vector: null,
