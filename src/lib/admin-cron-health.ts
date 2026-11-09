@@ -388,17 +388,18 @@ export function evaluateJob(
   let marketHoursStale = Boolean(job.market_hours_only) && !offWindow && status === "stale";
 
   // Weekday-only EventBridge crons (nighthawk-outcomes, gex-eod-snapshot, banger-discovery, …): between
-  // Friday's post-close fire and Monday's next tick, scheduled cron-audit-query must not P0 on stale
-  // or Friday failed handshakes — same suppression shape as off-schedule idle gaps on trading days
-  // (ops #1983). First meaningful run is Monday; banger-discovery registry note: "weekend does not alert."
-  const nonTradingScheduledIdle =
+  // scheduled fires (e.g. Friday post-close → Monday ~4:30 PM ET), cron-audit-query must not P0 on
+  // stale/failed handshakes left over from the prior tick — including Monday morning while still a
+  // trading day (measured: query CI RED 2026-11-09 10:54 ET with gap:true but non-trading guard off).
+  const weekdayScheduleIdleGap =
     job.weekdays_only &&
     Boolean(job.schedule_cron_utc) &&
-    !isTradingDayEt(formatEtDate(now)) &&
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-  if (nonTradingScheduledIdle && (status === "stale" || status === "failed")) {
+  if (weekdayScheduleIdleGap && (status === "stale" || status === "failed")) {
     status = "healthy";
-    statusLabel = "Idle (non-trading day — outside weekday schedule)";
+    statusLabel = isTradingDayEt(formatEtDate(now))
+      ? "Idle (outside cron schedule window)"
+      : "Idle (non-trading day — outside weekday schedule)";
     marketHoursStale = false;
   }
 
@@ -529,6 +530,24 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       // the heartbeat block re-flag a healthy off-hours skip (FIX-1) as stale/warning.
       const offWindow = marketHoursCronOffWindow(job, hbNow);
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
+
+      if (
+        health.status === "failed" &&
+        hbAgeMin != null &&
+        !playHb.stale &&
+        !offWindow
+      ) {
+        return {
+          ...health,
+          status: "healthy" as const,
+          market_hours_stale: false,
+          status_label: `Engine tick ${hbAgeMin}m ago (cron handshake failed but engine live)`,
+          meta: {
+            ...(health.meta ?? {}),
+            play_engine_heartbeat: playHb,
+          },
+        };
+      }
 
       if (cronStale && hbAgeMin != null) {
         if (!playHb.stale) {
