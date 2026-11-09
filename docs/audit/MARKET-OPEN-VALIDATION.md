@@ -11037,3 +11037,36 @@ and `/play` are actually serving a real price again
   in its `last_message` for a sustained window. Also worth a quick cross-check that
   `spx-evaluate`/`spx-issues-sync` (which showed the same breaker-open symptom, sibling lane's
   scope) have recovered too, since they share the identical root-cause breaker.
+
+## WATCH LIST — 2026-11-09 (Ask Largo swing Counter-thesis bullet cited the wrong fading pillar — array-order `.find()` instead of the worst real `deltaPts`, `fix/swing-counter-thesis-fading-pillar-selection`) — re-check a live SHORT/multi-fade COMMIT position's play-brief
+
+- **What was broken**: `counterThesisLine()` (`src/lib/swing/play-brief-narrative.ts`) picked its
+  "fading pillar" reason with a bare `Array.prototype.find()` over `play.thesisHealth.pillars` —
+  no reference to `deltaPts` — so it always returned the FIRST pillar in fixed declaration order
+  (Persistence, Entry geometry, Signal stack, Regime fit, Theta budget) whose status was
+  `lost`/`faded`, regardless of which pillar actually moved the most. Live repro (SHORT PLTR,
+  positionId 74, manageAction `TAKE_PARTIAL`, FORMING setup): the SAME brief's own Thesis-health
+  breakdown showed "Persistence — scale-out (Delta +0.0 pts)" and "Theta budget — DTE 4 migrate
+  (Delta -3.0 pts)", yet the Counter-thesis bullet cited **Persistence**, not Theta budget —
+  directly contradicting the brief's own displayed numbers two bullets above. Reproduced
+  identically on GOOG (positionId 73).
+- **Fix**: mirrors the sibling renderer `thesisPillarCoaching()` (play-brief-narrative-coaching.ts),
+  which already selects correctly — filter to lost/faded pillars, sort by `deltaPts` ascending,
+  take the worst (most negative) real mover, relying on `Array.prototype.sort`'s stability to keep
+  today's array-order fallback in the all-ties-at-zero edge case. No change to
+  `thesisHealthUncalibrated()` gating, the 2026-09-21/2026-10-21 sibling fixes, or
+  `thesisPillarCoaching()` itself. RED→GREEN confirmed via plain file-copy backup/restore of
+  `play-brief-narrative.ts` (not `git stash`): the new regression test reproduces the exact live
+  bug pre-fix (cites Persistence instead of Theta budget) and passes post-fix.
+  `play-brief-narrative.test.ts` 174/174, `thesis-health.test.ts` 23/23 (210/210 together);
+  `npx tsc --noEmit` clean; full `npm test` — see the PR for the final tally.
+- **Specific thing to check once live**: open Ask Largo's swing play-brief for any committed
+  (OPEN/HOLD/TRIM) SHORT or LONG position whose manage action has fired a scale-out
+  (`TAKE_PARTIAL`/`EXIT_RUNNER`) while the setup itself is still only `FORMING` (persistence's own
+  `deltaPts` reads 0) AND a second pillar — most plausibly Theta budget as DTE migrates/cliffs, but
+  Regime fit or Signal stack can also genuinely fade — carries a real nonzero delta. Confirm the
+  Counter-thesis bullet's "fading pillar" now names the pillar with the real delta, matching the
+  Thesis-health section's own numbers a few bullets above, not Persistence by default. PLTR
+  (positionId 74) and GOOG (positionId 73) were in this exact state at audit time — if either is
+  still open at the next RTH open, they are the fastest live confirmation; otherwise, the next
+  committed swing position whose manage engine fires a trim while its setup is merely FORMING is.
