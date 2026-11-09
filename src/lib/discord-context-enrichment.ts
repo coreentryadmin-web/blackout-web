@@ -56,8 +56,21 @@ export async function getTickerAdv20d(ticker: string): Promise<number | null> {
   try {
     const to = todayEt();
     const from = subtractCalendarDays(to, 35);
-    const { fetchStockDailyBars } = await import("@/lib/providers/polygon");
-    const data = await fetchStockDailyBars(key, from, to, "25");
+    // Relative, not "@/lib/providers/polygon" — tsx does not rewrite path aliases for a dynamic
+    // `import()` the same way it does for a static one, and registering `mock.module()` anywhere
+    // in this file's test breaks alias resolution for this call entirely (see FINDINGS.md's
+    // "mock.module()-alias-crash" note). A relative specifier is both correct and testable.
+    const { fetchStockDailyBars } = await import("./providers/polygon");
+    // Do NOT pass an explicit limit here. `fetchStockDailyBars` fetches with `sort=asc`, so a cap
+    // smaller than the real session count returns the OLDEST N sessions and silently drops the
+    // most recent ones — the exact "Polygon aggregate limit must be derived from the window, never
+    // fixed" trap this repo has hit before (see CLAUDE.md). A 35-calendar-day window almost always
+    // covers 25-26 trading sessions (5 weeks x 5 weekdays, +1 when the window's end date is itself
+    // a weekday, which it always is here since ADV is only read during RTH), so the previous
+    // hardcoded "25" cap dropped TODAY/yesterday's volume on every call in practice — the one
+    // session this live Discord ADV context line most needs. Omitting the limit lets it fall back
+    // to `dailyBarLimitForWindow`, which is generous enough (>=120) to never truncate this window.
+    const data = await fetchStockDailyBars(key, from, to);
     const bars = Array.isArray(data) ? data : [];
     const vols = bars
       .map((b) => Number(b.v ?? 0))
