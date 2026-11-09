@@ -6,6 +6,7 @@ import type { VectorBar } from "@/features/vector/components/VectorChart";
 import {
   fetchVectorClientSeed,
   fetchVectorEmbedFastSeed,
+  shouldAdoptFullVectorSeed,
 } from "@/features/vector/lib/vector-client-seed";
 import { defaultVectorDeskOpenProps } from "@/features/vector/lib/vector-ticker";
 import type { VectorPlayDeskSnapshot } from "@/features/vector/lib/vector-play-desk-snapshot";
@@ -88,15 +89,21 @@ export function SpxVectorEmbed({
 
         const full = await fetchVectorClientSeed("SPX");
         if (cancelled) return;
-        setSeed({
-          bars: full.initialBars,
-          sessionYmd: full.sessionYmd,
-          wallHistory: full.initialWallHistory,
-          horizonWallHistory: full.initialHorizonWallHistory,
-          walls: full.initialWalls,
-          gammaFlip: full.initialGammaFlip,
-          wallTrailSec: full.initialWallTrailSec,
-        });
+        // A degraded/failed phase-2 fetch resolves with empty bars rather than throwing (see
+        // `shouldAdoptFullVectorSeed`'s doc comment) — only upgrade the display when the full seed
+        // actually carries bars, so a transient enrichment-fetch hiccup can never blank a chart that
+        // the fast seed already rendered correctly.
+        if (shouldAdoptFullVectorSeed(fast.initialBars.length, full.initialBars.length)) {
+          setSeed({
+            bars: full.initialBars,
+            sessionYmd: full.sessionYmd,
+            wallHistory: full.initialWallHistory,
+            horizonWallHistory: full.initialHorizonWallHistory,
+            walls: full.initialWalls,
+            gammaFlip: full.initialGammaFlip,
+            wallTrailSec: full.initialWallTrailSec,
+          });
+        }
       } catch {
         if (cancelled) return;
         setSeed({

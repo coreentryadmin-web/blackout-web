@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchVectorEmbedFastSeed } from "./vector-client-seed";
+import { fetchVectorEmbedFastSeed, shouldAdoptFullVectorSeed } from "./vector-client-seed";
 
 /**
  * Regression test for a missing-normalization bug in `fetchVectorEmbedFastSeed`: every sibling
@@ -89,4 +89,30 @@ test("fetchVectorEmbedFastSeed still skips the rail-bootstrap for a genuine non-
       assert.equal(hitRailBootstrap, false, "a non-oracle ticker must never hit the oracle-only rail-bootstrap route");
     }
   );
+});
+
+/**
+ * Regression test for `shouldAdoptFullVectorSeed` (SpxVectorEmbed's phase-1/phase-2 seed-adoption
+ * guard). `fetchJson` (this module) swallows every network/parse failure and resolves `null` rather
+ * than throwing, so a transient hiccup on the phase-2 `fetchVectorClientSeed` fetch never rejects —
+ * it resolves successfully with `initialBars: []`. Without this guard, SpxVectorEmbed's
+ * `setSeed(full)` was unconditional, so that degraded-but-successful phase-2 response replaced an
+ * already-rendering chart (real bars from the phase-1 fast seed) with an empty one. The fix: only
+ * adopt the full seed when it actually carries bars, or the fast seed never had any to begin with.
+ */
+test("shouldAdoptFullVectorSeed rejects a degraded (empty-bars) full seed when the fast seed already had real bars", () => {
+  // THE BUG: fast seed rendered 390 real RTH bars; phase-2 fetch degraded to empty (e.g. a
+  // transient 500 on just the bars endpoint, swallowed by fetchJson into `initialBars: []`).
+  // Adopting it would blank a chart that was already showing real data for no real reason.
+  assert.equal(shouldAdoptFullVectorSeed(390, 0), false);
+});
+
+test("shouldAdoptFullVectorSeed adopts a full seed that genuinely carries bars", () => {
+  assert.equal(shouldAdoptFullVectorSeed(390, 391), true);
+});
+
+test("shouldAdoptFullVectorSeed adopts an empty full seed when the fast seed was ALSO empty", () => {
+  // Both legitimately empty (e.g. a pre-open session with no bars yet anywhere) — adopting is a
+  // bars no-op but still lets the full seed's other fields (walls/history) take effect.
+  assert.equal(shouldAdoptFullVectorSeed(0, 0), true);
 });
