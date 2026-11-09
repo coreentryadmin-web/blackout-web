@@ -24,8 +24,15 @@ import { SwingThesisHealthPanel } from "./SwingThesisHealthPanel";
 import { closedCapturePct, closedRealizedPct } from "./play-card-lifecycle";
 
 const usd = (n: number | null | undefined): string => (n != null ? `$${n.toFixed(2)}` : "—");
+// `Math.round()` always rounds a .5 tie toward +Infinity (`Math.round(-2.5) === -2` but
+// `Math.round(2.5) === 3`), so a bare `Math.round(n)` paired with a separate sign prefix
+// silently understates the magnitude of a NEGATIVE reading at the .5 boundary relative to the
+// same-magnitude positive one. `trough` (always <= 0) and `realizedPct`/`peak` (can be negative
+// for a losing closed trade) all render through this helper, so `Math.sign(n) * Math.round(Math.abs(n))`
+// rounds the magnitude correctly regardless of sign — same fix pattern as fmt-money.ts's fmtPct,
+// round-floats.ts, and thermal/gex-heatmap/shift-math.ts.
 const signPct = (n: number | null | undefined): string =>
-  n != null ? `${n > 0 ? "+" : ""}${Math.round(n)}%` : "—";
+  n != null ? `${n > 0 ? "+" : ""}${Math.sign(n) * Math.round(Math.abs(n))}%` : "—";
 
 function fmtStrike(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);

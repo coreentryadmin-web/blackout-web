@@ -168,3 +168,34 @@ describe("ZeroDteCommandPanel — verdict band + ratchet marker use the trim-sca
     assert.equal(marker![1], "38", "marker must be positioned from the blended realized P&L, not the raw -50% stop (which would read 0%)");
   });
 });
+
+// BUG FIX (sign-bias rounding tie — Ask Largo / Night Hawk standing mandate, 2026-11-09): this
+// panel's own local `signPct` combined a bare `Math.round(n)` with a separate `n > 0 ? "+" : ""`
+// sign prefix. `Math.round()` always rounds a tie (`.5`) toward +Infinity, so a NEGATIVE value
+// landing exactly on a .5 boundary rounds toward zero (i.e. its magnitude is UNDERSTATED) while a
+// positive value at the same boundary rounds away from zero — e.g. `Math.round(-2.5) === -2` but
+// `Math.round(2.5) === 3`. `trough` (always <= 0, the mechanical worst-excursion read) and
+// `realizedPct`/`peak` (can be negative for a losing closed trade) are all formatted through this
+// helper, so every negative %.5 reading on this panel silently prints one point smaller in
+// magnitude than it should. This is the same bug class already fixed independently in
+// fmt-money.ts's fmtPct, round-floats.ts, thermal/shift-math.ts, and PlayTerminal.tsx's own
+// (differently-scoped, duplicate-named) `signPct` — this is a SEVENTH, previously-unfixed
+// instance, in a sibling command-deck file PlayTerminal.tsx's own fix did not touch. Fix pattern
+// is identical every time: `Math.sign(n) * Math.round(Math.abs(n))` instead of a bare
+// `Math.round(n)`, which rounds the magnitude correctly regardless of sign and leaves exact
+// integers and positive values untouched.
+describe("ZeroDteCommandPanel — signPct does not understate negative magnitudes at the .5 rounding boundary", () => {
+  it("renders trough -2.5% as -3% (correct magnitude), not -2% (sign-biased Math.round)", () => {
+    const html = render({ ...base, trough: -2.5 });
+    const trough = html.match(/Trough<\/span><span class="v nh-deck-neg">([^<]*)</);
+    assert.ok(trough, "expected a Trough stat");
+    assert.equal(trough![1], "-3%", "Math.round(-2.5) === -2 silently understates the real -2.5% magnitude");
+  });
+
+  it("still renders a positive peak -.5 boundary correctly (unaffected by the fix)", () => {
+    const html = render({ ...base, status: "CLOSED", closedReason: "time_stop", peak: 2.5 });
+    const peak = html.match(/Peak<\/span><span class="v nh-deck-pos">([^<]*)</);
+    assert.ok(peak, "expected a Peak stat");
+    assert.equal(peak![1], "+3%", "positive .5 boundary must round away from zero, same as before the fix");
+  });
+});
