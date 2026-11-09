@@ -536,6 +536,25 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       const offWindow = marketHoursCronOffWindow(job, hbNow);
       const cronStale = !offWindow && health.age_min != null && health.age_min > staleThreshold;
 
+      if (
+        health.status === "failed" &&
+        !offWindow &&
+        hbAgeMin != null &&
+        !playHb.stale &&
+        !playHb.critical_stale
+      ) {
+        return {
+          ...health,
+          status: "healthy" as const,
+          market_hours_stale: false,
+          status_label: `Engine tick ${hbAgeMin}m ago (cron handshake failed; heartbeat authoritative)`,
+          meta: {
+            ...(health.meta ?? {}),
+            play_engine_heartbeat: playHb,
+          },
+        };
+      }
+
       if (cronStale && hbAgeMin != null) {
         if (!playHb.stale) {
           return {
