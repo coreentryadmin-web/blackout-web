@@ -5,12 +5,13 @@ import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { BiasPill, ConfidenceBadge, SourceStamp, UnavailableChip } from "./BieChips";
 import { BieEvidencePanel } from "./BieEvidencePanel";
 import { BieKeyLevelsTable } from "./BieKeyLevelsTable";
+import { BieSectionTable } from "./BieSectionTable";
 
 /**
  * One analysis/section card — typically one per sub-question. Renders the section
  * body through the existing Largo markdown renderer, plus any section-scoped bias,
- * evidence, key levels, confidence, and provenance. An unavailable section is shown
- * as an explicit chip (§4) — never silently dropped.
+ * structured table, evidence, key levels, confidence, and provenance. An unavailable
+ * section is shown as an explicit chip (§4) — never silently dropped.
  */
 export function BieSectionCard({ section }: { section: BieSection }) {
   return (
@@ -27,6 +28,9 @@ export function BieSectionCard({ section }: { section: BieSection }) {
           {section.body ? (
             <LargoMessageBody content={section.body} className="bie-section-body" />
           ) : null}
+          {/* BUG FIX (Ask Largo standing mandate, 2026-11-09): see BieSectionTable.tsx's own
+              header — `section.table` reached the wire but was never rendered here. */}
+          <BieSectionTable table={section.table} />
           <BieEvidencePanel evidence={section.evidence} />
           <BieKeyLevelsTable levels={section.levels} />
           {section.confidence ? (

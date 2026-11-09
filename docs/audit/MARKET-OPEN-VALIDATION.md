@@ -9851,3 +9851,35 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   switch to Deep dive mode, and confirm the Structure Ladder (rung list, reward:risk, "Dealer regime
   aligned/differs" badge if present) now renders — it did not render in Deep dive mode before this
   fix, while Concrete mode already showed it correctly.
+
+## WATCH LIST — 2026-11-09 (Swing's shared underlying-excursion calculator `signedExcursionPct` had the sign-bias rounding tie bug, `fix/swing-underlying-excursion-sign-bias`, PR #7701) — re-check once real positions' excursion figures update next session
+
+- **`signedExcursionPct` in `src/lib/swing/underlying-excursion.ts`** — the shared,
+  direction-aware favorable/adverse underlying-excursion calculator used by BOTH the
+  active-refresh cron's persisted `running_mfe`/`running_mae` write (`manage-sync.ts`) and the
+  member/Largo-facing live serve path (`live-plays.ts`, which feeds every play-brief's
+  "Underlying excursion since entry: ... favorable / ... adverse." narrative line) — had its
+  internal `pct()` helper round with plain `Math.round(n*1e4)/1e4`, which ties toward `+Infinity`.
+  Since MFE is seeded `>= 0` and MAE `<= 0` by this module's own documented convention, a
+  mirror-image favorable/adverse move from the same entry price should always report EQUAL
+  magnitudes — a move sitting exactly on a tie at the 4th-decimal rounding boundary instead
+  rounded asymmetrically, the adverse side reading a smaller magnitude than the identical-distance
+  favorable side. Same bug shape as the now-14 prior sibling fixes of this exact class elsewhere
+  in the codebase this session.
+- **Fix**: round by magnitude then reapply sign (`Math.sign(raw) * Math.round(Math.abs(raw))`),
+  kept local to `pct()`'s own closure. New dedicated test file `underlying-excursion.test.ts`
+  (none existed before) with a dyadic (`entry=2`, exact binary-fraction `lo`/`hi`) fixture landing
+  EXACTLY on a `±7812.5` tie — RED→GREEN confirmed via `git stash` (3/5 pass pre-fix, asymmetric
+  `0.7813`/`-0.7812`; 5/5 pass post-fix, symmetric `0.7813`/`-0.7813`). Full `src/lib/swing/*.test.ts`
+  2303/2303 pass, full project `npm test` 18386/18389 pass (0 fail, 3 pre-existing skips), `tsc
+  --noEmit` clean.
+- **Re-check once the next session's active-refresh cron ticks update real positions' excursion
+  figures**: pull a real OPEN swing position via `GET /api/market/swing/play-brief` (or the
+  record/manage routes) whose underlying has moved roughly symmetrically around entry at some
+  point in its history, and confirm `running_mfe`/`running_mae` (and the narrative's "Underlying
+  excursion since entry" line) no longer disagree in magnitude at the 4th-decimal level for a
+  mirror-image move — the fix should only change rows that were previously exactly on a
+  0.0001-percentage-point tie, which should be rare in real data, so no position's displayed
+  narrative text (1dp `fmtPct` display round) should visibly change; the real effect to confirm is
+  on `feature-store.ts`'s trajectory studies (`studyIvKillsGoodSetups`'s `running_mae` vs `-3%`
+  threshold) reading the corrected full-precision value on the next real snapshot.
