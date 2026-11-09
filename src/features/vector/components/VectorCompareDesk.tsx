@@ -119,6 +119,44 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     [seeds]
   );
 
+  // BUG FIX (round 508 audit): each pane's `onReplayTimeline` used to be built INLINE in the
+  // `seeds.map()` JSX below — `(timeline) => handleReplayTimeline(seed.ticker, timeline)` — a
+  // brand-new function reference on every VectorCompareDesk render, regardless of whether
+  // anything about that specific pane changed. VectorChart's own replay-timeline effect
+  // deliberately lists its `onReplayTimeline` prop in its dependency array (so a genuine prop
+  // swap is honored), which means a churning reference re-fires that effect even when
+  // `sessionHistory`/`sessionBars` are byte-for-byte unchanged — contradicting this very file's
+  // own doc comments two paragraphs below and in FINDINGS.md, which describe
+  // `handleReplayTimeline` as firing "whenever [a pane's] own sessionHistory/sessionBars change,
+  // i.e. on its next bar" (the INTENDED model, never actually true while the callback churned).
+  // `handleReplayTimeline` always produces a FRESH array via `mergeReplayTimelines` (a `Set` →
+  // sorted array, no reference caching), and `setUnionTimeline` never bails on content equality —
+  // a new array is never `Object.is`-equal to the old one — so every spurious re-fire wrote a new
+  // `unionTimeline` reference, which re-renders VectorCompareDesk, which recreates the inline
+  // callback again: a self-sustaining render/effect loop with NO terminating condition tied to
+  // real data, reachable in ANY Compare session (1+ panes) independent of whether live ticks are
+  // even flowing (pegs the tab's CPU; neither React nor this file has any automatic guard against
+  // an effect-driven loop like this — unlike a synchronous setState-during-render loop, it never
+  // throws "Maximum update depth exceeded", so it would read as a quiet CPU/jank regression, not
+  // a crash). Fixed by caching ONE stable function per ticker instead of a fresh closure every
+  // render — `handleReplayTimelineRef` mirrors the latest `handleReplayTimeline` (itself still
+  // churns whenever `seeds` changes, so this prevents the cached per-ticker function from calling
+  // a stale version), and `getReplayTimelineHandler` returns the SAME function object for a given
+  // ticker across renders, breaking the identity churn `VectorChart`'s effect was reacting to.
+  const handleReplayTimelineRef = useRef(handleReplayTimeline);
+  useEffect(() => {
+    handleReplayTimelineRef.current = handleReplayTimeline;
+  });
+  const replayTimelineHandlersRef = useRef<Map<string, (timeline: number[]) => void>>(new Map());
+  const getReplayTimelineHandler = useCallback((ticker: string) => {
+    let fn = replayTimelineHandlersRef.current.get(ticker);
+    if (!fn) {
+      fn = (timeline: number[]) => handleReplayTimelineRef.current(ticker, timeline);
+      replayTimelineHandlersRef.current.set(ticker, fn);
+    }
+    return fn;
+  }, []);
+
   // Proactively prune `timelinesRef` the moment a ticker leaves the compare set (removeTicker /
   // a preset swap), mirroring the metaByTicker/playByTicker cleanup below. Without this,
   // `handleReplayTimeline` above only pruned a departed ticker's entry as a SIDE EFFECT of some
@@ -127,13 +165,20 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   // the only one still producing updates, the stale timeline could sit in `timelinesRef.current`
   // indefinitely, inflating `unionTimeline` (and the linked-replay scrubber's range) with steps
   // belonging to a pane that's no longer on screen. See `pruneStaleTickerMapEntries`'s own doc
-  // comment for the full account.
+  // comment for the full account. `replayTimelineHandlersRef` (the per-ticker callback cache
+  // above) gets the identical proactive cleanup so a departed ticker's cached function doesn't
+  // sit there indefinitely either — harmless memory, never a correctness issue, but kept in
+  // lockstep with its sibling ticker-keyed maps rather than left to accumulate.
   useEffect(() => {
     const active = new Set(seeds.map((s) => s.ticker));
     const pruned = pruneStaleTickerMapEntries(timelinesRef.current, active);
     if (pruned !== timelinesRef.current) {
       timelinesRef.current = pruned;
       setUnionTimeline(mergeReplayTimelines([...pruned.values()]));
+    }
+    const prunedHandlers = pruneStaleTickerMapEntries(replayTimelineHandlersRef.current, active);
+    if (prunedHandlers !== replayTimelineHandlersRef.current) {
+      replayTimelineHandlersRef.current = prunedHandlers;
     }
   }, [seeds]);
 
@@ -669,7 +714,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
                   onCompareVisibleRange={handleCompareVisibleRange}
                   linkedReplay={linkedReplayBind}
                   hideReplayControls={linked}
-                  onReplayTimeline={(timeline) => handleReplayTimeline(seed.ticker, timeline)}
+                  onReplayTimeline={getReplayTimelineHandler(seed.ticker)}
                   compareFourUp={seeds.length >= 4}
                   compareFourUpBackground={seeds.length >= 4 && focusedTicker !== seed.ticker}
                   onPlayDeskSnapshot={handlePlayDeskSnapshot}
