@@ -48,6 +48,7 @@ import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { DOSSIER_BATCH_SIZE, DOSSIER_FETCH_TIMEOUT_MS, DOSSIER_INTER_BATCH_MS, DOSSIER_TICKER_WALL_MS } from "./constants";
 import { dossierFetch } from "./fetch-timeout";
 import { parseLatestRealizedVol, parseLatestRiskReversalSkew } from "./vol-metrics";
+import { settledFinancialsOrThrow } from "./financials-bundle-core";
 import { summarizeTickerGreekFlow, type TickerGreekFlowSummary } from "./ticker-greek-flow-summary";
 export type { TickerGreekFlowSummary } from "./ticker-greek-flow-summary";
 export { summarizeTickerGreekFlow } from "./ticker-greek-flow-summary";
@@ -112,13 +113,22 @@ type FinancialsBundle = {
 
 async function fetchFinancialsBundle(sym: string): Promise<FinancialsBundle> {
   return serverCache(`nighthawk:financials:${sym}`, TTL.REFERENCE, async () => {
-    const [ratios, income, balance, cashFlow, priceTarget] = await Promise.all([
-      fetchPolygonFinancialRatios(sym).catch(() => null),
-      fetchPolygonIncomeStatements(sym, 6).catch(() => []),
-      fetchPolygonBalanceSheets(sym, 6).catch(() => []),
-      fetchPolygonCashFlowStatements(sym, 6).catch(() => []),
-      fetchBenzingaPriceTarget(sym).catch(() => null),
+    // No per-call `.catch()` here — a per-field swallow would let a total outage (all 5 calls
+    // failing) look like a successful "no financials" load and get cached for the full 1h TTL.
+    // `settledFinancialsOrThrow` (financials-bundle-core.ts) throws in exactly that all-failed
+    // case so `serverCache` sees a real rejection and never caches the all-null result; it
+    // falls back to today's same per-field null/[] whenever at least one call succeeded.
+    const settled = await Promise.allSettled([
+      fetchPolygonFinancialRatios(sym),
+      fetchPolygonIncomeStatements(sym, 6),
+      fetchPolygonBalanceSheets(sym, 6),
+      fetchPolygonCashFlowStatements(sym, 6),
+      fetchBenzingaPriceTarget(sym),
     ]);
+    const { ratios, income, balance, cashFlow, priceTarget } = settledFinancialsOrThrow(
+      settled,
+      `nighthawk:financials:${sym}`
+    );
     return {
       ratios,
       signals: computeFundamentalSignals(income, balance, cashFlow),

@@ -10272,3 +10272,33 @@ and `/play` are actually serving a real price again
   `pg_editions` no longer appears in the coverage-gaps list on a run where `nighthawk_editions`
   is genuinely empty (pre-launch state) — it should now show up only under `totals.skipped`, not
   `totals.consistencyOnly`, and should NOT be listed as a coverage gap at all.
+
+## WATCH LIST — 2026-11-09 (Night Hawk `fetchFinancialsBundle` could cache a total Polygon/Benzinga outage as "no financials data" for a full hour, `fix/financials-bundle-total-outage-cached`) — re-check next time a provider blip touches Night Hawk dossiers
+
+- **What was broken**: `src/features/nighthawk/lib/dossier.ts`'s `fetchFinancialsBundle(sym)`
+  wrapped each of its 5 independent upstream calls (Polygon ratios/income/balance/cash-flow +
+  Benzinga price target) in its OWN `.catch(() => null | [])` BEFORE the `Promise.all` that
+  formed the body of a `serverCache(..., TTL.REFERENCE, ...)` (1-hour) loader. Because every
+  individual failure was swallowed before the `Promise.all` could ever see it, that `Promise.all`
+  — and therefore the cache loader — could never reject, even on a total correlated outage of
+  all 5 calls at once. The resulting all-null bundle was then cached for the full hour,
+  indistinguishable from a genuinely successful "this ticker has no fundamentals" read, and
+  `serverCache`'s own failure-tracking/SWR retry machinery never got a chance to engage. Flagged
+  as a specific lead by the previous round (#7773's write-up) rather than freshly discovered.
+- **Fix**: `fetchFinancialsBundle` now uses `Promise.allSettled` with no per-call `.catch()`,
+  then calls a new pure helper, `settledFinancialsOrThrow` (`financials-bundle-core.ts`), which
+  throws only when ALL 5 results are rejected — propagating the rejection through
+  `serverCache`'s loader so the all-null bundle is never cached and the key's real
+  failure-tracking fires instead. When at least one call succeeds, the bundle is returned with
+  today's same per-field null/[] fallback for whichever calls failed, unchanged. 4 new unit
+  tests in `financials-bundle-core.test.ts`; RED confirmed (reverting the helper to swallow
+  unconditionally fails the all-5-rejected case, 1/4 fail), GREEN post-fix (4/4 pass);
+  `tsc --noEmit` clean.
+- **Specific thing to check once live**: this is hard to trigger deliberately (needs a genuine
+  correlated Polygon+Benzinga failure), so the realistic validation is passive: if the next
+  Benzinga/Polygon entitlement incident (per this repo's CLAUDE.md environment notes — these do
+  recur) coincides with Night Hawk dossier builds, confirm that once the provider recovers, a
+  previously-affected ticker's financials panel (ratios, revenue/margin trend, analyst PT)
+  refreshes with real data on the NEXT dossier build rather than staying frozen on "no data" for
+  up to an hour after recovery. No live state captured pre-fix to diff against — there is no way
+  to force a correlated 5-way failure safely against production from this sandbox.
