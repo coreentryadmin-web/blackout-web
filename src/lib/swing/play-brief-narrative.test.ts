@@ -2385,6 +2385,14 @@ test("tradeManagerNarrativeSection: Break watch says the stop is ALREADY breache
 // quote actually was. Live PHM repro: a 2026-10-23 16:00 ET quote read on 2026-10-25/26 (2+ days
 // stale) still said "right now" on the single most action-driving line in the brief ("exit or cut
 // size"), while every other bullet in the same section/response correctly said "stale".
+//
+// SEVERITY-TIERING UPDATE (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09, live repro
+// SWING:HLF:2473): this fixture's own quote is itself ~53 hours stale (2026-10-23T20:00 ->
+// 2026-10-26T01:00), past the new `SWING_OPTION_MARK_SEVERELY_STALE_MS` (4h) tier — exactly the
+// miscalibration this fix targets: a 53-hour-old quote on this single most action-driving line
+// ("exit or cut size") must NOT read identically to a 19-minute-old one. The flat mild-tier phrase
+// this test used to pin is now the escalated, `actionable: true` wording (see
+// `optionMarkStaleCaveat`'s own "SEVERITY-TIERING FIX" comment, play-brief-absence.ts).
 test("tradeManagerNarrativeSection: Break watch already-breached bullet carries the same stale-quote caveat as its sibling lines (live PHM repro)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
@@ -2411,8 +2419,8 @@ test("tradeManagerNarrativeSection: Break watch already-breached bullet carries 
   assert.ok(section);
   assert.match(
     section!.body,
-    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.00\*\*.*through your premium stop \*\*\$0\.40\*\* right now → exit or cut size\.\s*_\(stale — same quote Mark flagged above\)_/i,
-    `already-breached bullet must carry the same staleness caveat its sibling lines carry, got: ${section!.body}`,
+    /Break watch — stop already breached on the executable side.*bid \*\*\$0\.00\*\*.*through your premium stop \*\*\$0\.40\*\* right now → exit or cut size\.\s*_\(⚠️ severely stale, same quote Mark flagged above — last synced 2026-10-23 16:00 ET \(~2d ago\)\. This claim is UNCONFIRMED by live data — do not treat it as a current, actionable signal\.\)_/i,
+    `already-breached bullet must carry the escalated, actionable severely-stale caveat on a ~53h-old quote, got: ${section!.body}`,
   );
 });
 
@@ -2518,6 +2526,14 @@ test("tradeManagerNarrativeSection: Break watch cites the LIVE runner trail, not
 // "Mark: **$19.45** ... _(stale)_" for a `markAsOf` 64+ hours old, and the same brief's "Manage
 // plan"/"Executable P&L" bullets both carried the stale caveat for the identical $19.45 figure --
 // but this "Live read" bullet rendered "mark **$19.45**" with no caveat at all.
+//
+// SEVERITY-TIERING UPDATE (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09, live repro
+// SWING:HLF:2473): this fixture's own quote is ~64 hours stale, past the new
+// `SWING_OPTION_MARK_SEVERELY_STALE_MS` (4h) tier, so the caveat now names the actual elapsed span
+// instead of the flat mild-tier phrase this test used to pin — see `optionMarkStaleCaveat`'s own
+// "SEVERITY-TIERING FIX" comment (play-brief-absence.ts). This is a passive "Live read" line, not
+// an action-imperative one, so it gets the non-`actionable` severely-stale wording, unlike the
+// Break watch bullet's test directly above.
 test("tradeManagerNarrativeSection: degraded-read 'Live read' mark bullet carries the same stale-quote caveat as its sibling lines (live PANW repro)", () => {
   const section = tradeManagerNarrativeSection(
     ctx({
@@ -2542,8 +2558,8 @@ test("tradeManagerNarrativeSection: degraded-read 'Live read' mark bullet carrie
   assert.ok(section);
   assert.match(
     section!.body,
-    /Live read.*mark \*\*\$19\.45\*\*\s*_\(stale — same quote Mark flagged above\)_/i,
-    `degraded-read mark must carry the same staleness caveat its sibling lines carry, got: ${section!.body}`,
+    /Live read.*mark \*\*\$19\.45\*\*\s*_\(severely stale — same quote Mark flagged above, last synced 2026-10-23 16:00 ET \(~3d ago\)\)_/i,
+    `degraded-read mark must carry the escalated, severely-stale caveat on a ~64h-old quote, got: ${section!.body}`,
   );
 });
 

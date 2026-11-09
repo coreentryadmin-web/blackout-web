@@ -138,27 +138,57 @@ export function buildMacroBackdrop(
 /**
  * Fetch the current macro backdrop (latest Treasury curve + CPI). Market-wide, cached on the 1h
  * REFERENCE tier (yields update daily, CPI monthly — 1h is fresh with near-zero upstream cost). Returns
- * null only when Polygon is unconfigured or BOTH series come back empty (a transient total miss is NOT
- * cached, so the next call re-tries); a partial read (e.g. yields present, CPI missing) IS returned and
- * cached with the missing leg nulled.
+ * null only when Polygon is unconfigured, EITHER leg's fetch genuinely failed, or BOTH series
+ * legitimately came back empty (none of these are cached, so the next call re-tries); a partial
+ * read where a leg's fetch actually SUCCEEDED but legitimately returned no rows (e.g. CPI not yet
+ * printed this period) IS returned and cached with that leg nulled.
+ *
+ * BUG FIX (2026-11-09): the per-leg `.catch(() => ({ results: [] }))` below swallowed a genuine
+ * fetch failure (macroGet throws on any non-2xx status, including 429/5xx, or a network-level
+ * exception) into the IDENTICAL shape a leg that legitimately has no rows this period produces.
+ * The only gate on caching was "are BOTH series empty" — so a one-sided transient outage (e.g.
+ * /fed/v1/inflation 500s while /fed/v1/treasury-yields succeeds) got treated as "CPI legitimately
+ * has nothing to report" and pinned in the shared 1h cache with that leg falsely nulled, for every
+ * consumer (BIE's ecosystem-context + verdict builders), for up to an hour — long enough that a
+ * retry moments later (which would very likely have succeeded) never happened. Fixed by tracking
+ * whether each leg's fetch itself threw (vs returned a genuine empty/throw-free result) and
+ * refusing to cache when either one did, same as the existing "both legitimately empty" guard.
  */
 export async function fetchPolygonMacroBackdrop(): Promise<PolygonMacroBackdrop | null> {
   if (!polygonConfigured()) return null;
   try {
     return await serverCache<PolygonMacroBackdrop>("polygon:macro-backdrop:v1", TTL.REFERENCE, async () => {
+      let treasuryFetchFailed = false;
+      let inflationFetchFailed = false;
       const [treasury, inflation] = await Promise.all([
         macroGet<{ results?: Array<Record<string, unknown>> }>("/fed/v1/treasury-yields", {
           limit: "1",
           sort: "date.desc",
-        }).catch(() => ({ results: [] as Array<Record<string, unknown>> })),
+        }).catch(() => {
+          treasuryFetchFailed = true;
+          return { results: [] as Array<Record<string, unknown>> };
+        }),
         macroGet<{ results?: Array<Record<string, unknown>> }>("/fed/v1/inflation", {
           limit: "1",
           sort: "date.desc",
-        }).catch(() => ({ results: [] as Array<Record<string, unknown>> })),
+        }).catch(() => {
+          inflationFetchFailed = true;
+          return { results: [] as Array<Record<string, unknown>> };
+        }),
       ]);
+      // A genuine fetch failure (429/5xx/network error) on EITHER leg must never be cached as
+      // that leg's confirmed-empty state — throw so serverCache stores nothing and the next
+      // caller re-tries both legs fresh, same as the pre-existing "total miss" guard below.
+      if (treasuryFetchFailed || inflationFetchFailed) {
+        throw new Error(
+          `polygon-macro: fetch failed (treasury=${treasuryFetchFailed ? "failed" : "ok"}, ` +
+            `inflation=${inflationFetchFailed ? "failed" : "ok"})`
+        );
+      }
       const backdrop = buildMacroBackdrop(treasury.results ?? [], inflation.results ?? []);
-      // Don't cache a total miss (both series empty — likely a transient outage): throw so serverCache
-      // stores nothing and the next caller re-fetches, and the wrapper below returns null.
+      // Don't cache a total miss (both series genuinely empty — now known NOT to be a fetch
+      // failure, since that case already threw above): likely both series simply have nothing to
+      // report yet.
       if (backdrop.treasury.date == null && backdrop.inflation.date == null && backdrop.inflation.cpi == null) {
         throw new Error("polygon-macro: no treasury or inflation data returned");
       }

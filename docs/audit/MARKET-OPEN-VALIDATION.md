@@ -10324,6 +10324,36 @@ and `/play` are actually serving a real price again
   is genuinely empty (pre-launch state) — it should now show up only under `totals.skipped`, not
   `totals.consistencyOnly`, and should NOT be listed as a coverage gap at all.
 
+## WATCH LIST — 2026-11-09 (Meridian OpEx cross-market grouped-daily fetch swallowed its own failure inside the `serverCache` loader, `fix/servercache-swallow-failure`) — re-check on the next Meridian OpEx panel open, ideally during/after a real Polygon hiccup
+
+- **What was broken**: `meridian-opex-cross-market.ts`'s `groupedDailyForDate` caught
+  `fetchDailyMarketSummary`'s own failure INSIDE the function passed to `serverCache`
+  (`.then(...).catch(() => [])`), so a genuine Polygon grouped-daily outage for a given prior-
+  OpEx date got written into the cache as a successful "no movers" result for the full 30-minute
+  TTL — the exact "swallow-failure-before-the-combinator" bug class already fixed twice
+  elsewhere this session (`meridian-peer-reactions.ts`, `dossier.ts`). Since this fetch runs once
+  per prior-OpEx date (6 by default) via `Promise.all`, a correlated outage could silently zero
+  out movers across the entire 6-session comparison, each date frozen independently for its own
+  30-minute window.
+- **Fix**: extracted the cache-wrapping logic into a new, pure, side-effect-free sibling module
+  (`src/lib/meridian/meridian-opex-grouped-daily.ts`, `loadOpexGroupedDailyOrEmpty`) that moves
+  the `.catch` OUTSIDE the cached call, so a real rejection propagates through untouched and is
+  never written into the cache — `server-cache.ts`'s own degraded-key retry machinery now
+  actually sees the failure. New regression test (`meridian-opex-grouped-daily.test.ts`, 3/3
+  pass) pins both the fix and the original bug shape (a dedicated regression test re-creates the
+  buggy pattern inline and asserts it exhibits the defect). RED→GREEN confirmed by temporarily
+  reverting the fix and watching the "failure is NOT cached" test fail, then restoring it.
+  `tsc --noEmit` clean.
+- **Specific thing to check once live**: open the Meridian OpEx cross-market panel for a recent
+  monthly OpEx date and confirm top-gainer/top-loser rows are populated for every one of the 6
+  prior sessions shown. This bug is only VISIBLE during/shortly after a genuine Polygon
+  grouped-daily hiccup (the pre-fix failure mode produced an indistinguishable-looking "no
+  movers" result the rest of the time too, just for the honest reason of a quiet session) — so
+  the real confirmation is structural: if a live outage is ever observed in CloudWatch logs for
+  `fetchDailyMarketSummary`/grouped-daily around the time this panel is viewed, the panel should
+  now show stale/retrying behavior (or recover on the next 30-minute window) rather than a
+  frozen empty-movers result for the full TTL.
+
 ## WATCH LIST — 2026-11-09 (Vector 4H chart route cached a partial per-day fetch failure as complete, `fix/servercache-swallow-helix-vector-thermal`) — re-check during the next RTH session
 
 - **What was broken**: `GET /api/market/vector/4h-bars` walks back 12 trading days and fetches
@@ -10381,6 +10411,37 @@ and `/play` are actually serving a real price again
   refreshes with real data on the NEXT dossier build rather than staying frozen on "no data" for
   up to an hour after recovery. No live state captured pre-fix to diff against — there is no way
   to force a correlated 5-way failure safely against production from this sandbox.
+
+## WATCH LIST — 2026-11-09 (`fetchPolygonMacroBackdrop` cached a one-sided fetch failure as a confirmed-empty macro leg, `fix/polygon-macro-partial-fetch-failure-cached`) — re-check after the next Polygon/Massive blip on either `/fed/v1/treasury-yields` or `/fed/v1/inflation`
+
+- **What was broken**: `src/lib/providers/polygon-macro.ts`'s `fetchPolygonMacroBackdrop` fetched
+  Treasury yields + CPI under one `Promise.all`, each leg guarded by its own
+  `.catch(() => ({ results: [] }))`. `macroGet` throws on any non-2xx response (429/5xx) or a
+  network-level exception, so that `.catch` collapsed a genuine fetch FAILURE into the identical
+  shape a leg that legitimately has nothing to report (e.g. CPI not yet printed this period)
+  produces. The only cache-write guard checked whether BOTH legs came back empty, so a one-sided
+  outage (e.g. `/fed/v1/inflation` 500s while `/fed/v1/treasury-yields` succeeds) built a backdrop
+  with the failed leg falsely nulled and cached it for the full 1-hour `TTL.REFERENCE` window —
+  every consumer (BIE's `ecosystem-context.ts` + `verdict.ts`) saw a confidently-null macro reading
+  for up to an hour that was never actually confirmed empty, just never successfully checked.
+- **Fix**: track per-leg fetch-failed flags set only inside each leg's own `.catch`, and refuse to
+  cache (throw, same mechanism as the pre-existing both-empty guard) when either flag is true,
+  regardless of the other leg's state. A leg that genuinely succeeds with zero rows is untouched —
+  still builds and caches a partial backdrop with that leg nulled, exactly as originally intended.
+  New test file `polygon-macro-fetch-failure.test.ts` (6 cases, mocking `polygonTrackedFetch` +
+  bypassing the real cache): RED confirmed via `git stash` isolation (2/6 fail pre-fix — the two
+  genuine one-sided-failure cases returned a falsely-confident non-null backdrop instead of
+  `null`), GREEN post-fix (6/6 pass); existing `polygon-macro.test.ts` pure-function tests still
+  8/8 pass; `tsc --noEmit` clean.
+- **Specific thing to check once live**: this is hard to trigger deliberately (needs a genuine
+  Polygon/Massive failure on one of these two specific endpoints), so the realistic validation is
+  passive: watch for a `[polygon-macro]`-adjacent warning or a Polygon/Massive entitlement
+  incident touching `/fed/v1/*` (per this repo's CLAUDE.md environment notes — correlated upstream
+  entitlement losses do recur), and if one occurs, confirm that once the failing endpoint
+  recovers, the NEXT `fetchPolygonMacroBackdrop` call picks up real data for that leg immediately
+  rather than the macro backdrop staying pinned with that leg nulled for up to the remainder of
+  an hour-long window after recovery. No live state captured pre-fix to diff against — there is
+  no way to force a one-sided `/fed/v1/*` failure safely against production from this sandbox.
 
 ## WATCH LIST — 2026-11-09 (GEX heatmap chain-less negative cache could pin a transient Polygon/UW fetch failure for 10 minutes, `fix/gex-negative-cache-transient-failure`) — re-check during the next RTH session, especially any UW rate-limiter pressure window
 

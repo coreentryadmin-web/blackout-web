@@ -693,6 +693,12 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
   // both already in scope) so it can be appended here too, mirroring the Exec P&L line's own
   // unconditional append a few lines down.
   const staleCaveat = optionMarkStaleCaveat(play, readMs);
+  // Alarm-shaped variant of `staleCaveat`, for the one line below ("the executable exit is a total
+  // loss") that is an action-imperative claim rather than a passive fact — see that line's own
+  // "SEVERITY-TIERING FIX" comment and `optionMarkStaleCaveat`'s own doc comment (play-brief-
+  // absence.ts). `sameContractAsMarkAbove` stays explicit `true` (this function's own subject
+  // `play`, never a sibling's) so only the fourth, `actionable` argument differs from `staleCaveat`.
+  const execTotalLossStaleCaveat = optionMarkStaleCaveat(play, readMs, true, true);
   // GUARD #2 (2026-10-15, Ask Largo standing mandate — live ENOV repro, positionId 1739, BANGER-
   // origin TRIM/PARTIAL; kept unchanged by the 2026-10-16 fix above — `pnlForDisplay` is now
   // always the canonical `play.pnlPct`, so this guard's job (protecting against a STALE
@@ -928,9 +934,19 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
   // bid, which gets the line above. `play.execBidZero` (adapters.ts) distinguishes the two; a
   // confirmed zero bid means the executable exit is worth nothing regardless of entry price, so the
   // P&L is exactly -100% by construction — stated plainly rather than left silent.
+  //
+  // SEVERITY-TIERING FIX (Ask Largo standing mandate, 2026-11-09, live repro SWING:HLF:2473): "the
+  // executable exit is a total loss" is an alarm-shaped claim, not a passive fact — a severely
+  // stale $0.00 bid (many hours/sessions old, during e.g. the still-open 2026-11-06/07 Polygon
+  // real-time-snapshot entitlement outage, CLAUDE.md) carried the IDENTICAL flat caveat a
+  // 19-minute-old quote gets, giving a reader no way to tell "confirmed worthless, just now" from
+  // "unconfirmed for 3 days — we don't actually know the real quote any more". Uses a dedicated
+  // `actionable: true` caveat (computed once, right below `staleCaveat` above) rather than the
+  // shared, passive `staleCaveat` every other line in this section still uses unchanged — see
+  // `optionMarkStaleCaveat`'s own "SEVERITY-TIERING FIX" comment (play-brief-absence.ts).
   else if (play.execBidZero === true)
     lines.push(
-      `Exec P&L: **-100.0%** _(bid is $0.00 — no real buyer at any price; the executable exit is a total loss)_${blended != null ? " _(open runner only — trim already banked, see above)_" : ""}${staleCaveat}`,
+      `Exec P&L: **-100.0%** _(bid is $0.00 — no real buyer at any price; the executable exit is a total loss)_${blended != null ? " _(open runner only — trim already banked, see above)_" : ""}${execTotalLossStaleCaveat}`,
     );
   if (play.trackPct != null) lines.push(`Since flag: **${fmtPct(play.trackPct)}**`);
   return { title: "Position", body: lines.join("\n") };

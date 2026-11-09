@@ -14,6 +14,7 @@ import {
   newsCatalystAgeMs,
   newsCatalystStale,
   optionMarkIsStale,
+  optionMarkSeverelyStale,
   optionMarkStaleCaveat,
   resolveGammaPosture,
   trustedHelixFlow,
@@ -1429,6 +1430,151 @@ test("optionMarkStaleCaveat: sameContractAsMarkAbove=false returns an honest, si
     /same quote Mark flagged above/,
     `a distinct contract's own staleness must never claim identity with a different line's Mark — got "${caveat}"`,
   );
+});
+
+// SEVERITY-TIERING FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09, live repro
+// SWING:HLF:2473): `src/lib/swing/play-brief-absence.ts`'s `SWING_OPTION_MARK_STALE_MS` (18
+// minutes) was the ONE flat boolean gate behind `optionMarkStaleCaveat` — a 19-minute-old quote and
+// a ~264,780-second (~73.5h / 3+ trading session) quote rendered the byte-identical
+// " _(stale — same quote Mark flagged above)_" text, including on the brief's most action-driving
+// lines ("exit or cut size", "the executable exit is a total loss"). This block tests the new,
+// additive `optionMarkSeverelyStale`/`SWING_OPTION_MARK_SEVERELY_STALE_MS` tier directly.
+test("optionMarkSeverelyStale: a merely-mildly-stale mark (19 minutes) is NOT severely stale", () => {
+  const readMs = Date.parse("2026-09-15T19:19:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z", // 19 minutes old — past the mild bar, nowhere near 4h
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.equal(optionMarkIsStale(play, readMs), true, "sanity: this IS mildly stale");
+  assert.equal(optionMarkSeverelyStale(play, readMs), false);
+});
+
+test("optionMarkSeverelyStale: a quote right at the 4-hour severe bar IS severely stale, one second short is NOT", () => {
+  const markAsOf = "2026-09-15T15:00:00.000Z";
+  const atBar = Date.parse("2026-09-15T19:00:00.000Z"); // exactly 4h later
+  const justUnder = Date.parse("2026-09-15T18:59:59.000Z"); // 4h minus 1s
+  const play = {
+    markIsSync: false,
+    markAsOf,
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.equal(optionMarkSeverelyStale(play, atBar), true);
+  assert.equal(optionMarkSeverelyStale(play, justUnder), false);
+});
+
+test("optionMarkSeverelyStale: a live repro ~73.5-hour-old quote (SWING:HLF:2473 shape) is severely stale", () => {
+  const readMs = Date.parse("2026-11-09T18:00:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-11-06T16:19:00.000Z", // the live-observed frozen markAsOf from CLAUDE.md's entry
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.equal(optionMarkSeverelyStale(play, readMs), true);
+});
+
+test("optionMarkSeverelyStale: future skew (clock-skewed negative age) reads false, not escalated — a clock bug is not 'severely stale'", () => {
+  const readMs = Date.parse("2026-09-15T19:00:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:10:00.000Z", // 10 minutes in the FUTURE relative to readMs
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.equal(optionMarkSeverelyStale(play, readMs), false);
+});
+
+test("optionMarkSeverelyStale: a WATCH play (no live mark expected) is never severely stale regardless of age", () => {
+  const readMs = Date.parse("2026-11-09T18:00:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-11-06T16:19:00.000Z",
+    status: "WATCH",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.equal(optionMarkSeverelyStale(play, readMs), false);
+});
+
+// The RED/GREEN core of this fix: the mild tier (19 minutes) and the severe tier (~73.5 hours) used
+// to render the EXACT SAME caveat text — this proves they no longer do, for both the default
+// (passive) caveat and the new `actionable` escalation.
+test("optionMarkStaleCaveat: a 19-minute-stale quote and a ~73.5-hour-stale quote no longer render the same caveat text (live HLF repro)", () => {
+  const mildPlay = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z",
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  const mildCaveat = optionMarkStaleCaveat(mildPlay, Date.parse("2026-09-15T19:19:00.000Z"));
+
+  const severePlay = {
+    markIsSync: false,
+    markAsOf: "2026-11-06T16:19:00.000Z",
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  const readMs = Date.parse("2026-11-09T18:00:00.000Z"); // ~73.7 hours after markAsOf
+  const severeCaveat = optionMarkStaleCaveat(severePlay, readMs);
+
+  assert.match(mildCaveat, /^ _\(stale — same quote Mark flagged above\)_$/);
+  assert.notEqual(
+    severeCaveat,
+    mildCaveat,
+    `a ~73.7-hour-stale quote must not render the identical caveat text as a 19-minute-stale one — got "${severeCaveat}"`,
+  );
+  assert.match(severeCaveat, /severely stale/);
+  // Past the 48h hour/day-label switch (see `severelyStaleAgeLabel`), so this renders as a day
+  // count ("~3d ago"), not an hour count — still the actual elapsed span, just at the coarser
+  // granularity that is honest at this scale (see `ageDaysLabel`'s own "absurd precision" doc
+  // comment for why a seconds/hours-scale label is wrong once a fact is genuinely days old).
+  assert.match(severeCaveat, /~3d ago/, `expected the actual elapsed span named, got "${severeCaveat}"`);
+});
+
+test("optionMarkStaleCaveat: the mild tier's own wording is untouched (byte-identical) even when the new actionable=true argument is passed", () => {
+  const readMs = Date.parse("2026-09-15T19:19:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z", // 19 minutes — mild tier only
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  assert.equal(optionMarkStaleCaveat(play, readMs, true, false), " _(stale — same quote Mark flagged above)_");
+  assert.equal(
+    optionMarkStaleCaveat(play, readMs, true, true),
+    " _(stale — same quote Mark flagged above)_",
+    "actionable must only change wording once a quote is ALSO severely stale — it must never affect the mild tier",
+  );
+});
+
+test("optionMarkStaleCaveat: actionable=true on a severely-stale quote escalates to an explicit 'unconfirmed, not a live actionable signal' warning (live HLF Break-watch repro)", () => {
+  const readMs = Date.parse("2026-11-09T18:00:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-11-06T16:19:00.000Z", // ~73.5h stale
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  const passive = optionMarkStaleCaveat(play, readMs, true, false);
+  const actionable = optionMarkStaleCaveat(play, readMs, true, true);
+
+  assert.match(passive, /severely stale/);
+  assert.doesNotMatch(
+    passive,
+    /UNCONFIRMED/,
+    "the passive (non-actionable) variant must not carry the alarm-shaped escalation",
+  );
+
+  assert.match(actionable, /severely stale/);
+  assert.match(actionable, /UNCONFIRMED/i);
+  assert.match(actionable, /do not treat it as a current, actionable signal/i);
+  assert.notEqual(actionable, passive, "actionable escalation must produce distinguishable wording from the passive one");
+});
+
+test("optionMarkStaleCaveat: severely-stale sibling (sameContractAsMarkAbove=false) never borrows the 'same quote Mark flagged above' claim", () => {
+  const readMs = Date.parse("2026-11-09T18:00:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-11-06T16:19:00.000Z", // ~73.5h stale
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  const caveat = optionMarkStaleCaveat(play, readMs, false);
+  assert.match(caveat, /severely stale/);
+  assert.match(caveat, /its own quote, last synced/);
+  assert.doesNotMatch(caveat, /same quote Mark flagged above/);
 });
 
 // Sibling bug (Ask Largo standing mandate, 2026-10-20, same defect class as optionMarkIsStale's

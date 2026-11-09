@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T15:37:55.294Z",
+  "updated_at": "2026-11-09T17:06:31.151Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T15:37:34.397Z"
+      "released_at": "2026-11-09T17:06:07.972Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T15:37:39.432Z",
-      "lease_until": "2026-11-09T15:38:39.432Z",
+      "claimed_at": "2026-11-09T17:06:13.951Z",
+      "lease_until": "2026-11-09T17:07:13.951Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T15:37:39.436Z"
+      "released_at": "2026-11-09T17:06:13.958Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "90e43d5dea231fed5cdd9a496220e504aacfbd4f",
+    "last_main_sha": "8f4fc455192ee4b48db3ec3883ddd5c287f63027",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T15:36:52Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42646436457",
-    "last_deploy_sha": "90e43d5dea231fed5cdd9a496220e504aacfbd4f"
+    "last_deploy_at": "2026-11-09T17:04:39Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42661052091",
+    "last_deploy_sha": "8f4fc455192ee4b48db3ec3883ddd5c287f63027"
   },
   "events": [
-    {
-      "at": "2026-11-01T02:41:48.732Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T02:41:54.097Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T03:25:17.312Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T03:25:22.011Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T03:25:26.318Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T04:07:28.304Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
     {
       "at": "2026-11-01T04:07:32.214Z",
       "type": "context_sync",
@@ -1289,18 +1253,54 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T17:06:07.973Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T17:06:13.955Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T17:06:13.958Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T17:06:20.047Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T17:06:25.841Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T17:06:31.151Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
     {
-      "number": 7762,
-      "title": "fix(correctness): empty nighthawk_editions table reported skipped, not consistency-only",
-      "branch": "fix/data-integrity-pg-editions-empty-skip",
+      "number": 7797,
+      "title": "fix(providers): stop caching a one-sided Polygon macro-fetch failure as confirmed-empty",
+      "branch": "fix/polygon-macro-partial-fetch-failure-cached",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-09T15:34:05Z"
+      "updated_at": "2026-11-09T16:59:05Z"
     },
     {
       "number": 5547,
