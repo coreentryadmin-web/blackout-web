@@ -336,6 +336,45 @@ test("postPrintSurpriseLean scores beat and miss", () => {
   assert.equal(miss.score, -2);
 });
 
+test("postPrintSurpriseLean: a revenue-only print (EPS withheld) reads beat/miss from revenue alone, not 'mixed'", () => {
+  // Same real population `buildEarningsWeekRows`'s own test two lines below already names:
+  // Benzinga reports some prints with actual_revenue populated and actual_eps still null (EPS
+  // pending/withheld, e.g. a REIT or a name where EPS isn't the headline metric). `cal.is_printed`
+  // is true for exactly this row (benzingaToCalendarRow: actual_eps != null || actual_revenue !=
+  // null), but `eps_surprise_pct` has nothing to compute from, so `epsBeat` is null — not false,
+  // not true. The pre-fix logic only ever asks "does revenue AGREE with (or stay silent on) the
+  // EPS verdict" and never the mirror question ("does EPS agree with, or stay silent on, the
+  // REVENUE verdict"), so a clean revenue beat with no EPS data at all fell all the way through
+  // to the catch-all "inline" / "Mixed print vs street" — a false claim of contradiction when
+  // there was only ever one axis of evidence, not two that disagreed.
+  const revenueOnlyBeat = postPrintSurpriseLean({
+    is_printed: true,
+    eps_surprise_pct: null,
+    revenue_surprise_pct: 5.2,
+  } as never);
+  assert.equal(revenueOnlyBeat.lean, "beat");
+  assert.equal(revenueOnlyBeat.score, 2);
+  assert.match(revenueOnlyBeat.headline ?? "", /Rev \+5\.2%/);
+
+  const revenueOnlyMiss = postPrintSurpriseLean({
+    is_printed: true,
+    eps_surprise_pct: null,
+    revenue_surprise_pct: -4.1,
+  } as never);
+  assert.equal(revenueOnlyMiss.lean, "miss");
+  assert.equal(revenueOnlyMiss.score, -2);
+  assert.match(revenueOnlyMiss.headline ?? "", /Rev -4\.1%/);
+
+  // A GENUINE disagreement (both axes present, pointing opposite ways) must still read "mixed" —
+  // this fix must not collapse real contradiction into a one-sided verdict.
+  const genuinelyMixed = postPrintSurpriseLean({
+    is_printed: true,
+    eps_surprise_pct: 3,
+    revenue_surprise_pct: -2,
+  } as never);
+  assert.equal(genuinelyMixed.lean, "inline");
+});
+
 test("buildEarningsWeekRows: is_printed is true when only actual_revenue has landed (EPS pending)", () => {
   // Same complete-print check benzingaToCalendarRow already uses (actual_eps OR actual_revenue).
   // A row with actual_revenue populated but actual_eps still null is a real printed report —
