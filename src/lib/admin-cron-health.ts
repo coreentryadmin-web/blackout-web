@@ -348,13 +348,24 @@ export function evaluateJob(
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const awaitingDualBand =
     Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
+  // Between scheduled UTC fires (e.g. Monday 10 AM before the 4:30 PM ET post-close tick), the job
+  // is not due — a Friday `failed` or aged `ok` must not page cron-audit-query all morning (measured:
+  // run 42649315653, 2026-11-09). Weekend non-trading suppression is separate (nonTradingScheduledIdle).
+  const suppressOffScheduleIdle =
+    (offScheduleGap || awaitingDualBand) &&
+    (last.status === "skipped" || last.status === "ok" || last.status === "failed");
   const suppressStaleOffSchedule =
-    (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
+    suppressOffScheduleIdle && last.status !== "failed";
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
-  if (last.status === "failed") {
+  if (suppressOffScheduleIdle && last.status === "failed") {
+    status = "healthy";
+    statusLabel = awaitingDualBand
+      ? "Idle (awaiting in-window UTC band; last run failed)"
+      : "Idle (outside cron schedule window; last run failed)";
+  } else if (last.status === "failed") {
     status = "failed";
     statusLabel = "Last run failed";
   } else if (suppressStaleOffWindow) {
@@ -396,7 +407,12 @@ export function evaluateJob(
     Boolean(job.schedule_cron_utc) &&
     !isTradingDayEt(formatEtDate(now)) &&
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
-  if (nonTradingScheduledIdle && (status === "stale" || status === "failed")) {
+  if (
+    nonTradingScheduledIdle &&
+    (status === "stale" ||
+      status === "failed" ||
+      (status === "healthy" && suppressOffScheduleIdle))
+  ) {
     status = "healthy";
     statusLabel = "Idle (non-trading day — outside weekday schedule)";
     marketHoursStale = false;

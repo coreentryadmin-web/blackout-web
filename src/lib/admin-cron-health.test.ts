@@ -420,3 +420,43 @@ test("weekday scheduled post-close crons: stale/failed suppressed Saturday (cron
     assert.equal(health.market_hours_stale, false);
   }
 });
+
+test("weekday post-close crons: failed last run suppressed Monday before next fire (query 42649315653)", () => {
+  const now = new Date("2026-11-09T15:54:00.000Z");
+  const cases: Array<{ key: string; schedule_cron_utc: string; started_at: string }> = [
+    {
+      key: "nighthawk-outcomes",
+      schedule_cron_utc: "30 20,21 * * 1-5",
+      started_at: "2026-11-07T21:30:00.000Z",
+    },
+    {
+      key: "gex-eod-snapshot",
+      schedule_cron_utc: "10 20,21 * * 1-5",
+      started_at: "2026-11-07T21:10:00.000Z",
+    },
+    {
+      key: "banger-discovery",
+      schedule_cron_utc: "15 20,21 * * 1-5",
+      started_at: "2026-11-07T21:15:00.000Z",
+    },
+  ];
+  for (const { key, schedule_cron_utc, started_at } of cases) {
+    const health = evaluateJob(
+      jobDef({ key, weekdays_only: true, schedule_cron_utc, stale_after_min: 36 * 60 }),
+      {
+        id: 1,
+        job_key: key,
+        status: "failed",
+        started_at,
+        duration_ms: 10,
+        message: "probe",
+        meta_json: null,
+      },
+      [],
+      now
+    );
+    assert.equal(health.status, "healthy", key);
+    assert.match(health.status_label, /outside cron schedule window/i);
+    assert.equal(health.market_hours_stale, false);
+  }
+});
