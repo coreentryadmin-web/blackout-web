@@ -162,7 +162,16 @@ export function topGexWalls(levels: GexStrikeLevel[], spot: number, limit = 6): 
     net_gex: lv.net_gex,
     // Geometric kind (see contract note above) — NOT net_gex sign.
     kind: lv.strike > spot ? "resistance" : "support",
-    distance_pts: Math.round((lv.strike - spot) * 100) / 100,
+    // Round by MAGNITUDE, then reapply sign — plain `Math.round((strike - spot) * 100) / 100`
+    // ties toward +Infinity (`Math.round(-262.5) === -262` but `Math.round(262.5) === 263`), so a
+    // strike sitting exactly on a half-cent tie BELOW spot would round to a SMALLER magnitude
+    // than the mirror-image strike the same distance above — the same sign-biased asymmetry
+    // `fmt-money.ts`'s `fmtPct`, `round-floats.ts`, `shift-math.ts` and the two `signPct`
+    // formatters (PlayTerminal.tsx, ZeroDteCommandPanel.tsx) already carried. `distance_pts` is
+    // served straight into Largo's Night Hawk positioning text with an explicit sign
+    // (`positioning.ts`: `w.distance_pts >= 0 ? "+" : ""`), so this wasn't just an internal
+    // float — it reached a human-read "pts from spot" number.
+    distance_pts: (Math.sign(lv.strike - spot) * Math.round(Math.abs(lv.strike - spot) * 100)) / 100,
   });
 
   // Canonical extrema across the WHOLE chain (mirrors heatmap computeGexRegime): the largest
