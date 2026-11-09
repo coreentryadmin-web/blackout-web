@@ -12,6 +12,7 @@ import { NextRequest } from "next/server";
 
 let indexCalls = 0;
 let stockCalls = 0;
+let tslaCalls = 0;
 
 mock.module("../../../../../lib/market-api-auth", {
   namedExports: {
@@ -38,10 +39,35 @@ mock.module("../../../../../lib/providers/polygon", {
         { t: Date.UTC(2026, 0, 5, 18, 5, 0), o: 101, h: 103, l: 100.5, c: 102, v: 30 },
       ];
     },
-    fetchStockMinuteBars: async (_sym: string, from: string, to: string) => {
+    // TSLA's day 1 (most recent) succeeds with real bars, day 2 THROWS (a genuine upstream
+    // failure — not "legitimately no data"), and the rest are legitimately empty. Isolated from
+    // the plain `fetchStockMinuteBars` fixture below by ticker/symbol so the AAPL test is
+    // unaffected.
+    fetchStockMinuteBars: async (sym: string, from: string, to: string) => {
+      if (sym === "TSLA") {
+        tslaCalls++;
+        if (tslaCalls === 1) {
+          return [{ t: Date.UTC(2026, 0, 5, 14, 31, 0), o: 200, h: 201, l: 199, c: 200.5, v: 40 }];
+        }
+        if (tslaCalls === 2) throw new Error("upstream blip");
+        return [];
+      }
       stockCalls++;
       if (stockCalls > 1) return [];
       return [{ t: Date.UTC(2026, 0, 5, 14, 31, 0), o: 50, h: 51, l: 49, c: 50.5, v: 100 }];
+    },
+  },
+});
+
+// Spy on the shared cache so the write-gate (cache only a REAL, COMPLETE result) can be asserted
+// directly, isolated from the real module's Redis/in-memory fallback (which would otherwise let
+// one test's successful write silently serve a later test's request for the same ticker).
+let sharedCacheSetCalls: Array<{ key: string; value: unknown }> = [];
+mock.module("../../../../../lib/shared-cache", {
+  namedExports: {
+    sharedCacheGet: async () => null,
+    sharedCacheSet: async (key: string, value: unknown) => {
+      sharedCacheSetCalls.push({ key, value });
     },
   },
 });
@@ -93,5 +119,38 @@ describe("/api/market/vector/4h-bars", () => {
     const res = await GET(new NextRequest("http://localhost/api/market/vector/4h-bars?ticker=%20%20"));
     assert.equal(res.status, 400);
     assert.equal(res.headers.get("CDN-Cache-Control"), "no-store");
+  });
+
+  test("a genuine per-day fetch failure still returns the best-effort bars it has, but is NOT cached", async () => {
+    tslaCalls = 0;
+    sharedCacheSetCalls = [];
+    const res = await GET(new NextRequest("http://localhost/api/market/vector/4h-bars?ticker=TSLA"));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    // The one real, successful day's bar still reaches the response — a partial failure must
+    // never blank the whole chart.
+    assert.equal(body.bars.length, 1);
+    assert.equal(body.bars[0].open, 200);
+    // But because one of the twelve days' fetches genuinely THREW (not "legitimately empty"),
+    // the result is incomplete and must not be pinned in the shared cache for the next
+    // CACHE_TTL_SEC — the next request should retry the failed day, not be served this same
+    // hole in the series for two more minutes.
+    assert.equal(
+      sharedCacheSetCalls.length,
+      0,
+      "a result built from a genuine per-day fetch failure must not be cached"
+    );
+  });
+
+  test("an all-succeed result (including legitimately-empty older days) IS cached", async () => {
+    indexCalls = 0;
+    sharedCacheSetCalls = [];
+    const res = await GET(new NextRequest("http://localhost/api/market/vector/4h-bars?ticker=SPX"));
+    assert.equal(res.status, 200);
+    assert.equal(
+      sharedCacheSetCalls.length,
+      1,
+      "a fully-successful result (no day's fetch threw) should still be cached as before"
+    );
   });
 });
