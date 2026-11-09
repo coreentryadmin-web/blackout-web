@@ -61,11 +61,11 @@ export function etParts(now = new Date()) {
   };
 }
 
-/** Mon–Fri 09:00–16:15 ET (RTH + 15m post-close grace for crons). */
+/** Mon–Fri 09:00–16:35 ET (RTH + post-close grace; matches rth-deep-audit.yml 4:30 PM slot). */
 export function inRthOpenWindow(now = new Date()) {
   const { weekday, mins } = etParts(now);
   if (weekday === "Sat" || weekday === "Sun") return false;
-  return mins >= 9 * 60 && mins <= 16 * 60 + 15;
+  return mins >= 9 * 60 && mins <= 16 * 60 + 35;
 }
 
 export function isWeekdayEt(now = new Date()) {

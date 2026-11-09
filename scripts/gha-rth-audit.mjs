@@ -167,7 +167,7 @@ async function postgresRthChecks() {
   }
 }
 
-async function cronHttpChecks() {
+async function cronHttpChecks({ rthOpen: sessionOpen }) {
   console.log("\n── Cron HTTP checks ──");
   const H = { Authorization: `Bearer ${CRON}` };
   const routes = [
@@ -209,8 +209,15 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const keys = (json.problem_keys ?? []).join(", ");
+        if (!sessionOpen) {
+          console.log(
+            `  ⚠ ${label} → ${json.problems} problem(s): ${keys} (off-hours — not failing this run)`
+          );
+        } else {
+          failures.push(`${label}: ${keys}`);
+          console.log(`  ✗ ${label} → stale: ${keys}`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
@@ -264,8 +271,15 @@ run("Public HTTP smoke", "node", ["scripts/gha-http-smoke.mjs"]);
 run("Sentry smoke", "node", ["scripts/gha-sentry-smoke.mjs"]);
 
 if (!smokeOnly) {
-  run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
-  await cronHttpChecks();
+  if (rthOpen) {
+    run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  } else {
+    console.log("\n── Full-site deep audit ──");
+    console.log(
+      "  ⚠ Skipped — outside RTH audit window (09:00–16:35 ET). Late schedule drift must not RED on empty post-close desks."
+    );
+  }
+  await cronHttpChecks({ rthOpen });
   await postgresRthChecks();
 }
 
