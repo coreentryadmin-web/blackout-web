@@ -10929,3 +10929,26 @@ and `/play` are actually serving a real price again
   so a same-timezone (ET) spot-check from this sandbox cannot by itself prove the fix — the real
   confirmation needs a non-ET viewpoint, which is why it is listed here rather than closed purely
   on the unit test.
+
+## WATCH LIST — 2026-11-09 (Admin Users table account dates rendered in viewer-local timezone, not ET, `fix/et-timezone-display-bug`) — re-check `/admin` Users table from outside America/New_York
+
+- **What was broken**: `UserManagement.tsx`'s account-date formatter (feeding the Users table's
+  "Created"/"Last sign-in"/"Last active" columns and the user-detail drawer) called
+  `toLocaleDateString` on the absolute Clerk epoch-ms `createdAt`/`lastSignInAt`/`lastActiveAt`
+  instants with no `timeZone` option, so it rendered the admin's own BROWSER-local calendar date
+  instead of US/Eastern — this product's one clock everywhere else. An admin viewing the page from
+  outside America/New_York could see the wrong calendar day for any of these three columns whenever
+  the instant fell near the UTC/ET midnight boundary.
+- **Fix**: extracted the formatter into a pure sibling module (`src/lib/admin-user-account-date.ts`,
+  `formatAdminUserDate`) with `timeZone: "America/New_York"` added, and had `UserManagement.tsx`
+  delegate to it instead of keeping its own inline copy. RED confirmed by removing the `timeZone`
+  option (`expected 'Jan 15, 2026', actual 'Jan 16, 2026'` on this sandbox's default UTC runtime),
+  GREEN restored (2/2 in the new pure-module test, 8/8 in `UserManagement.test.ts`); `npx tsc
+  --noEmit` clean.
+- **Specific thing to check once live**: open `/admin` → Users (both the table rows and a
+  user-detail drawer) from a non-ET viewer-timezone browser session (or just set the OS/browser
+  timezone to something like UTC or a non-US zone) near the US market open/close and confirm the
+  three date columns now read the same calendar date an ET-based admin would see, including for a
+  user whose `createdAt`/`lastSignInAt`/`lastActiveAt` falls in the few hours around ET midnight.
+  No live pre-fix repro was captured from this sandbox (no real admin browser session with a
+  non-UTC/non-ET timezone to compare against), so this is a passive next-occurrence check.

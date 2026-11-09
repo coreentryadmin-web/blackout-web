@@ -8,6 +8,27 @@ const SRC = readFileSync(
   "utf8"
 );
 
+// Regression (DISCOVERY-lane ET-anchoring sweep, round 514): the admin Users table's account-date
+// formatter used to be a local `toLocaleDateString` call with no `timeZone` option, rendering the
+// VIEWER's browser-local calendar date for createdAt/lastSignInAt/lastActiveAt instead of this
+// product's one clock (US/Eastern). Fixed and unit-tested in the pure sibling module it now
+// delegates to — `admin-user-account-date.test.ts` — because importing this component module
+// directly pulls in a JSX-heavy chain (`src/components/marks/geometry.tsx`) that throws outside
+// Next.js's own JSX runtime; this assertion just guards that the delegation itself doesn't drift.
+test("UserManagement delegates its account-date formatting to the pure, ET-anchored formatAdminUserDate", () => {
+  assert.match(
+    SRC,
+    /import \{ formatAdminUserDate \} from "@\/lib\/admin-user-account-date";/,
+    "expected UserManagement.tsx to import formatAdminUserDate from the pure sibling module"
+  );
+  assert.match(
+    SRC,
+    /const formatDate = formatAdminUserDate;/,
+    "expected UserManagement.tsx's local formatDate to delegate to formatAdminUserDate, not " +
+      "re-implement its own toLocaleDateString call"
+  );
+});
+
 /**
  * Guards against the Tier <select> in CreateUserModal drifting out of sync with the one in
  * EditUserModal. Found live 2026-10-12: CreateUserModal offered only free/premium while
