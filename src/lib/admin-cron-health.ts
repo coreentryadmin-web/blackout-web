@@ -348,23 +348,29 @@ export function evaluateJob(
     isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const awaitingDualBand =
     Boolean(job.schedule_cron_utc) && isAwaitingSecondaryUtcBandFire(job.schedule_cron_utc!, now);
+  // A Friday post-close `failed` handshake must not page Monday morning cron-audit-query while
+  // we sit in the long idle gap before today's fire — same honest suppression as ok/skipped
+  // (ops #1983 covered weekends only via nonTradingScheduledIdle; trading-day gaps needed this).
   const suppressStaleOffSchedule =
-    (offScheduleGap || awaitingDualBand) && (last.status === "skipped" || last.status === "ok");
+    (offScheduleGap || awaitingDualBand) &&
+    (last.status === "skipped" || last.status === "ok" || last.status === "failed");
 
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
-  if (last.status === "failed") {
-    status = "failed";
-    statusLabel = "Last run failed";
-  } else if (suppressStaleOffWindow) {
+  if (suppressStaleOffWindow) {
     status = "healthy";
     statusLabel = last.status === "skipped" ? "Idle (market closed)" : "OK (market closed)";
   } else if (suppressStaleOffSchedule) {
     status = "healthy";
     statusLabel = awaitingDualBand
       ? "Idle (awaiting in-window UTC band)"
-      : "Idle (outside cron schedule window)";
+      : last.status === "failed"
+        ? "Idle (outside cron schedule window — prior run failed; not due yet)"
+        : "Idle (outside cron schedule window)";
+  } else if (last.status === "failed") {
+    status = "failed";
+    statusLabel = "Last run failed";
   } else if (
     job.key === "flow-ingest" &&
     last.status === "skipped" &&

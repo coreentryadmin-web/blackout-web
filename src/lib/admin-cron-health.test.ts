@@ -393,6 +393,32 @@ test("buildCronHealthSnapshot suppresses nighthawk-backfill-repair stale/failed 
   );
 });
 
+test("weekday scheduled post-close crons: prior failed handshake suppressed Monday pre-window idle gap", () => {
+  const now = new Date("2026-11-09T15:55:00.000Z");
+  const health = evaluateJob(
+    jobDef({
+      key: "nighthawk-outcomes",
+      weekdays_only: true,
+      schedule_cron_utc: "30 20,21 * * 1-5",
+      stale_after_min: 36 * 60,
+    }),
+    {
+      id: 1,
+      job_key: "nighthawk-outcomes",
+      status: "failed",
+      started_at: "2026-11-07T21:30:00.000Z",
+      duration_ms: 10,
+      message: "handshake",
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /outside cron schedule window/i);
+  assert.equal(health.market_hours_stale, false);
+});
+
 test("weekday scheduled post-close crons: stale/failed suppressed Saturday (cron-audit query)", () => {
   const now = new Date("2026-11-08T13:10:00.000Z");
   const cases: Array<{ key: string; schedule_cron_utc: string }> = [
@@ -416,7 +442,11 @@ test("weekday scheduled post-close crons: stale/failed suppressed Saturday (cron
       now
     );
     assert.equal(health.status, "healthy", key);
-    assert.match(health.status_label, /non-trading day/i);
+    assert.match(
+      health.status_label,
+      /non-trading day|outside cron schedule window/i,
+      key
+    );
     assert.equal(health.market_hours_stale, false);
   }
 });
