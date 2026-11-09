@@ -8,6 +8,7 @@ import { BiasPill, ConfidenceBadge, SourceStamp, UnavailableChip } from "./BieCh
 import { BieEvidencePanel } from "./BieEvidencePanel";
 import { BieKeyLevelsTable } from "./BieKeyLevelsTable";
 import { BieScenarioCards } from "./BieScenarioCards";
+import { BieFollowupChips } from "./BieFollowupChips";
 import { BieSectionCard } from "./BieSectionCard";
 import { BieStructureLadder } from "./BieStructureLadder";
 import { answeredParts, relativeTime } from "./answer-format";
@@ -156,23 +157,7 @@ export function BieAnswer({
         </footer>
       ) : null}
 
-      {onFollowup && envelope.followups && envelope.followups.length > 0 ? (
-        <div className="bie-answer-followups">
-          <span className="bie-block-label">Ask next</span>
-          <div className="bie-answer-followups-row">
-            {envelope.followups.slice(0, 4).map((f) => (
-              <button
-                key={f}
-                type="button"
-                className="bie-followup-chip"
-                onClick={() => onFollowup(f)}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      <BieFollowupChips followups={envelope.followups} onFollowup={onFollowup} />
     </div>
   );
 }
