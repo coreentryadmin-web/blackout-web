@@ -141,7 +141,15 @@ test("board route rounds member-visible floats at the API boundary (sim frames b
   // (e.g. reconcileTrancheFractions, #6744) rather than requiring an exact one-name
   // import list, which broke the moment a second helper from the same module was added.
   assert.match(route, /import \{[^}]*\broundFloats\b[^}]*\} from "@\/lib\/round-floats"/);
-  assert.match(route, /roundFloats\(await getSimBoardPayload\(\)\)/);
+  // BUG FIX (2026-11-09, five-engine-largo-cycle audit): this used to be a strict literal match on
+  // the BUGGY bare 2-arg call (`roundFloats(await getSimBoardPayload())`), actively pinning the
+  // missing ZERODTE_BOARD_WIRE_DP override as "correct" source text — a sim/replay frame carrying
+  // real sub-cent greeks or a condor width at a calibration boundary (e.g. 0.00825) was silently
+  // collapsing to 0.00/0.01, exactly the destructive-rounding defect the member path was hardened
+  // against. Now asserts the SPECIFIC fixed override, mirroring the member-path call exactly,
+  // rather than loosening to a tail wildcard that would also pass with any other (possibly wrong)
+  // third argument.
+  assert.match(route, /roundFloats\(await getSimBoardPayload\(\),\s*2,\s*ZERODTE_BOARD_WIRE_DP\)/);
   // Tolerate an optional dp/keyDp tail on the member-path call (2026-10-26: a keyDp override
   // was added here — ZERODTE_BOARD_GREEKS_WIRE_DP — so setups[].plan.greeks/ledger[].greeks
   // keep real gamma/vega precision instead of quantizing to 0.00 at the flat 2dp default; see

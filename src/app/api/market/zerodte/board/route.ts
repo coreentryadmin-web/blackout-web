@@ -68,7 +68,14 @@ export async function GET(req: NextRequest) {
     const isAdmin = await isAdminUser(authResult.userId, sessionClaims);
     if (shouldServeSimBoard(isAdmin, true)) {
       ensureDataSockets();
-      const simPayload = roundFloats(await getSimBoardPayload());
+      // BUG FIX (2026-11-09, five-engine-largo-cycle audit): this sim/replay branch never carried
+      // ZERODTE_BOARD_WIRE_DP, unlike the member branch below (line ~95) — a bare 2-arg roundFloats
+      // call silently quantizes greeks (gamma/vega need 6dp) and condor calibration-bucket widths
+      // (put_width_pct/call_width_pct need 4dp — 0.00825, the 92% win-rate bucket boundary, would
+      // collapse to the indistinguishable 0.01) to a flat 2dp. Neither getSimBoardPayload() nor the
+      // admin ingest route (zerodte-sim-board.ts, "written verbatim to the sim key") round upstream,
+      // so this is the only chokepoint that could protect precision on this path, and it didn't.
+      const simPayload = roundFloats(await getSimBoardPayload(), 2, ZERODTE_BOARD_WIRE_DP);
       return NextResponse.json(simPayload, {
         headers: {
           ...NO_STORE_HEADERS,
