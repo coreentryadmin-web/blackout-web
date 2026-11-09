@@ -18,6 +18,7 @@ import { Modal } from "@/components/ui";
 import type { ToolKey } from "@/lib/tool-access";
 import type { ToolAccessMode, ToolAccessRow } from "@/lib/tool-user-access";
 import { emptyToolAccessMap } from "@/lib/tool-user-access";
+import { formatAdminUserDate } from "@/lib/admin-user-account-date";
 import {
   ADMIN_ACCESS_LABELS,
   classifyAdminUserAccess,
@@ -936,11 +937,6 @@ function DeskAccessBadge({ allowed }: { allowed: boolean }) {
   );
 }
 
-function formatDate(ts: number): string {
-  if (!ts) return "—";
-  return new Date(ts).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+// Account-date formatting (ET-anchored) lives in a pure sibling module — see
+// `admin-user-account-date.ts`'s own header for why it's split out and the bug it fixes.
+const formatDate = formatAdminUserDate;

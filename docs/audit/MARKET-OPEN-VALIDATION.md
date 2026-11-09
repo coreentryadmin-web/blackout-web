@@ -10867,6 +10867,41 @@ and `/play` are actually serving a real price again
   (needs that specific sign-disagreement live at the moment of inspection), so this is a passive
   next-occurrence check.
 
+## WATCH LIST — 2026-11-09 (admin SPX Signal Analytics "Date Range" label used the viewer's local calendar date, not ET, `fix/legacy-local-tz-display`) — re-check the admin SPX dashboard's Signal Analytics panel for any viewer outside US/Eastern
+
+- **What was broken**: `SignalAnalyticsPanel.tsx`'s `formatDate()` rendered its "Date Range"
+  header (`data.summary.date_range.from`/`to`, real `observed_at` timestamps from
+  `spx_signal_observations`) via a bare `new Date(iso).toLocaleDateString("en-US", { month:
+  "short", day: "numeric" })` with no `timeZone` — which silently renders the VIEWER's local
+  calendar date, not the market's. Two lines below, the same file's `formatTime()` already
+  renders the identical table's per-row timestamps correctly via `etClock` (`@/lib/et-clock`) —
+  so the panel paired an ET-anchored time column with a viewer-local date label for the exact
+  same underlying data, the DATE-half of the "two clocks on one screen" bug class
+  `@/lib/et-clock`'s own module header documents for TIME (PR #2368, 11 prior instances). Any
+  admin viewing this panel from a timezone that disagrees with ET across a date's midnight
+  boundary (anyone from roughly UTC+0 eastward, i.e. most of Europe/Asia/Australia, for any
+  `observed_at` instant in the evening ET) would see a "Date Range" window shifted by a day from
+  the market's own session boundary.
+- **Fix**: added `etDateShort()` to `@/lib/et-clock` (ET-anchored month+day, no time — the
+  date-only sibling of the existing `etDateTimeShort`), and pointed `formatDate` at it instead of
+  the raw, timeZone-less `toLocaleDateString`. Single call site (`grep` confirmed), fully
+  contained to this one panel.
+- **Evidence**: RED confirmed via `git stash` isolating just the `et-clock.ts` addition (test
+  file's new assertions kept) — 2/2 new `etDateShort` tests fail (`is not a function`) against
+  the un-fixed module; GREEN after `git stash pop` — 11/11 in `src/lib/et-clock.test.ts`,
+  including a cross-midnight-ET assertion (`2026-08-19T02:00:00Z` = 10 PM EDT on Aug 18 — must
+  read "Aug 18" regardless of host timezone, not "Aug 19" the way the old code would for any
+  host at or ahead of UTC). `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: open `/admin` → SPX Signal Analytics (`AdminSpxDashboard`
+  → `SignalAnalyticsPanel`) from a browser set to a timezone ahead of US/Eastern (e.g. set the
+  OS/browser clock to `Europe/London` or `Australia/Sydney`, or use DevTools' sensor-tab timezone
+  override) during or shortly after a live session with recent `spx_signal_observations` rows,
+  and confirm the "Date Range" header's end date matches the ET calendar date of the most recent
+  observation's `observed_at` (cross-check against the "Recent Observations" table's own `formatTime`
+  column, which is already ET-anchored) rather than reading one day ahead. No live pre-fix repro
+  was possible from this sandbox (no real multi-timezone browser session here), so this is a
+  passive next-occurrence check.
+
 ## WATCH LIST — 2026-11-09 (Helix DarkPoolPanel's ticker-filtered date column rendered in the viewer's local timezone, not ET, `fix/darkpool-panel-fmtdate-et`) — re-check the filtered dark-pool tape on a non-ET browser during/after a late RTH session
 
 - **What was broken**: `DarkPoolPanel.tsx`'s `fmtDate()` (the absolute date/time shown in the
@@ -10926,3 +10961,26 @@ and `/play` are actually serving a real price again
   figure. As of the 5-engine audit that found this, 8 live positions (listed above) were in
   exactly this state — if any are still open at the next RTH open, they are the fastest
   confirmation; if all have since closed, the next position to reach its own +100% trim rung is.
+
+## WATCH LIST — 2026-11-09 (Admin Users table account dates rendered in viewer-local timezone, not ET, `fix/et-timezone-display-bug`) — re-check `/admin` Users table from outside America/New_York
+
+- **What was broken**: `UserManagement.tsx`'s account-date formatter (feeding the Users table's
+  "Created"/"Last sign-in"/"Last active" columns and the user-detail drawer) called
+  `toLocaleDateString` on the absolute Clerk epoch-ms `createdAt`/`lastSignInAt`/`lastActiveAt`
+  instants with no `timeZone` option, so it rendered the admin's own BROWSER-local calendar date
+  instead of US/Eastern — this product's one clock everywhere else. An admin viewing the page from
+  outside America/New_York could see the wrong calendar day for any of these three columns whenever
+  the instant fell near the UTC/ET midnight boundary.
+- **Fix**: extracted the formatter into a pure sibling module (`src/lib/admin-user-account-date.ts`,
+  `formatAdminUserDate`) with `timeZone: "America/New_York"` added, and had `UserManagement.tsx`
+  delegate to it instead of keeping its own inline copy. RED confirmed by removing the `timeZone`
+  option (`expected 'Jan 15, 2026', actual 'Jan 16, 2026'` on this sandbox's default UTC runtime),
+  GREEN restored (2/2 in the new pure-module test, 8/8 in `UserManagement.test.ts`); `npx tsc
+  --noEmit` clean.
+- **Specific thing to check once live**: open `/admin` → Users (both the table rows and a
+  user-detail drawer) from a non-ET viewer-timezone browser session (or just set the OS/browser
+  timezone to something like UTC or a non-US zone) near the US market open/close and confirm the
+  three date columns now read the same calendar date an ET-based admin would see, including for a
+  user whose `createdAt`/`lastSignInAt`/`lastActiveAt` falls in the few hours around ET midnight.
+  No live pre-fix repro was captured from this sandbox (no real admin browser session with a
+  non-UTC/non-ET timezone to compare against), so this is a passive next-occurrence check.

@@ -17,6 +17,22 @@
 // decides whether spot is genuinely pinned between dominant walls in a long-gamma tape, and if so
 // which way the fade points; a clean pin → pick an ATM fade contract off the live chain → build the
 // seed setup. NO clean pin, a provider miss, or off-hours → SKIP (return [], logged) — never fabricate.
+//
+// FETCH-FAILURE-VS-GENUINE-EMPTY DISCLOSURE (found 2026-11-09, live production audit, the PIN/
+// MOMENTUM half of the gap breakout-discovery.ts's `skip_fetch_failed` fixed for BREAKOUT the same
+// day — #7786). Both per-ticker IO calls below (`fetchGexHeatmap`, `resolveTickerChainRows`) used to
+// be wrapped in a bare `.catch(() => null)`, which collapsed a THROWN upstream error (confirmed live:
+// `GET /api/market/gex-heatmap?ticker=SPY|SPX|AAPL` all returned `available:false` during active RTH
+// — the already-documented Polygon/Massive real-time-snapshot entitlement outage in CLAUDE.md) onto
+// the IDENTICAL per-ticker "this name has no clean pin" outcome a genuinely quiet, fully-fetched
+// ticker produces. Scanned across the whole curated universe, a universe-wide outage (every ticker's
+// fetch throwing) was indistinguishable from "nothing in the market is pinned today" — both drove
+// `setups.length === 0`, and scan.ts reported `discovery_health.PIN: {status:"ok", setups:0}` either
+// way, the exact absence-vs-failure conflation the Largo product contract forbids. We now track
+// whether EACH per-ticker fetch actually threw (never whether it merely found nothing), and when
+// FETCH_FAILURE_RATE_THRESHOLD (90%) or more of the evaluated universe's fetches threw, report a
+// `skip_fetch_failed` outcome instead of a genuine `ok` zero — a lone flaky name among ~20 evaluated
+// never trips this, only a real, near-universal outage does.
 
 import {
   PIN_CONDOR_LATE_CUTOFF_ET_MINUTES,
@@ -80,6 +96,39 @@ export const PIN_MAX_CANDIDATES = 16; // raised 8→16 with uncapped open-play d
  *  we pick the best regimes, not the first N list-order names (FINDINGS 2026-07-28). Condor-eligible
  *  roots are always included in the eval window first. */
 export const PIN_EVAL_CAP = 20;
+
+/** Injectable IO seam — real providers by default; tests substitute hermetic fakes (same shape as
+ *  breakout-discovery.ts's `BreakoutDiscoveryDeps` / momentum-signal-discovery.ts's
+ *  `MomentumDiscoveryDeps`). Only the two network-touching calls are injected — everything else
+ *  (`evaluatePinRegime`, `pinPassesTemporalStabilityGate`, the condor builder) is already pure or
+ *  self-gates off a disabled-by-default env flag, so it needs no seam to test hermetically. */
+export type PinDiscoveryDeps = {
+  fetchHeatmap: (ticker: string) => ReturnType<typeof fetchGexHeatmap>;
+  resolveChain: (ticker: string) => ReturnType<typeof resolveTickerChainRows>;
+};
+
+const DEFAULT_PIN_DEPS: PinDiscoveryDeps = {
+  fetchHeatmap: fetchGexHeatmap,
+  resolveChain: resolveTickerChainRows,
+};
+
+/** See the file-header "FETCH-FAILURE-VS-GENUINE-EMPTY DISCLOSURE" note. A HIGH bar deliberately —
+ *  this must separate a real, near-universal upstream outage from ordinary per-name flakiness. */
+export const PIN_FETCH_FAILURE_RATE_THRESHOLD = 0.9;
+
+/** Discriminated result of a PIN discovery pass (added 2026-11-09 alongside the fetch-failure
+ *  disclosure fix above — previously this returned a bare `EnrichedZeroDteSetup[]`, which is why
+ *  `status` only has two members today instead of breakout-discovery.ts's richer set: PIN's other
+ *  "nothing to report" paths were already carved out by scan.ts's OWN `pinWindowStatus` check
+ *  before this fix and still are — only the fetch-failure disclosure is new here). */
+export type PinDiscoveryOutcome = {
+  status: "ok" | "skip_fetch_failed";
+  setups: EnrichedZeroDteSetup[];
+  /** Present only when status === "skip_fetch_failed" — the last thrown fetch's own error message
+   *  (free text, diagnostics only, never parsed as structured data — same convention as
+   *  breakout-discovery.ts's `reason`). */
+  reason?: string;
+};
 
 /** Calendar days between two YYYY-MM-DD dates (UTC-noon anchored) — local copy so this module
  *  doesn't reach into pin-source's private helper. */
@@ -158,10 +207,13 @@ function buildCondorFromChain(input: {
 }
 
 /**
- * Discover PIN-origin setups for the live board. Returns [] (a logged SKIP) whenever no clean pin
- * exists — off-hours, a provider miss, or simply no ticker in the range/long-gamma regime — so the
- * source never fabricates candidates. Best-effort throughout: any per-ticker failure degrades to a
- * skip of that ticker; a total failure degrades to [] and the flow board is untouched.
+ * Discover PIN-origin setups for the live board. Returns a discriminated {@link
+ * PinDiscoveryOutcome}: `ok` (setups may be empty — off-hours, a clean-pin miss, or simply no
+ * ticker in the range/long-gamma regime are all genuine zeros) or `skip_fetch_failed` (90%+ of the
+ * evaluated universe's own fetches THREW — see the file-header disclosure note). The source never
+ * fabricates candidates. Best-effort throughout: any per-ticker failure degrades to a skip of that
+ * ticker; a total failure degrades to an empty `ok` (or `skip_fetch_failed`, per the above) and the
+ * flow board is untouched either way.
  */
 export async function discoverPinSetups(opts: {
   today: string;
@@ -173,23 +225,25 @@ export async function discoverPinSetups(opts: {
    *  unrestricted (PIN's full curated list), same as before this option existed. */
   includeTickers?: Set<string> | null;
   maxCandidates?: number;
-}): Promise<EnrichedZeroDteSetup[]> {
+  deps?: Partial<PinDiscoveryDeps>;
+}): Promise<PinDiscoveryOutcome> {
   const { today, nowEtMinutes, excludeTickers, includeTickers } = opts;
   const maxCandidates = opts.maxCandidates ?? PIN_MAX_CANDIDATES;
+  const { fetchHeatmap, resolveChain } = { ...DEFAULT_PIN_DEPS, ...opts.deps };
 
   if (nowEtMinutes < RTH_OPEN_ET_MINUTES) {
     console.info("[zerodte-pin] before RTH open — SKIP (dealer-positioning read idle)");
-    return [];
+    return { status: "ok", setups: [] };
   }
   const lateCondorOnly =
     nowEtMinutes >= RTH_CUTOFF_ET_MINUTES && nowEtMinutes < CONDOR_LATE_CUTOFF_ET_MINUTES;
   if (nowEtMinutes >= RTH_CUTOFF_ET_MINUTES && !lateCondorOnly) {
     console.info("[zerodte-pin] past condor late window — SKIP (dealer-positioning read idle)");
-    return [];
+    return { status: "ok", setups: [] };
   }
   if (lateCondorOnly && !condorFlagEnabled()) {
     console.info("[zerodte-pin] past directional cutoff and CONDOR disabled — SKIP");
-    return [];
+    return { status: "ok", setups: [] };
   }
 
   let universe = resolvePinUniverse().filter(
@@ -209,16 +263,32 @@ export async function discoverPinSetups(opts: {
   universe = universe.slice(0, evalCap);
   if (universe.length === 0) {
     console.info("[zerodte-pin] pin universe empty after excludes — SKIP");
-    return [];
+    return { status: "ok", setups: [] };
   }
 
+  // Per-ticker result also carries whether EITHER IO call for this name actually THREW (never
+  // whether it merely found nothing) — see the file-header disclosure note. Aggregated below to
+  // decide ok vs skip_fetch_failed for the whole pass.
+  type PinTickerResult = { setup: EnrichedZeroDteSetup | null; threw: boolean; errorMessage?: string };
   const built = await Promise.all(
-    universe.map(async (ticker): Promise<EnrichedZeroDteSetup | null> => {
+    universe.map(async (ticker): Promise<PinTickerResult> => {
+      let threw = false;
+      let errorMessage: string | undefined;
       try {
         // Reuse the shared GEX matrix (cache-reader — never a second upstream). Cold matrix → skip.
-        const hm = await fetchGexHeatmap(ticker).catch(() => null);
+        // 2026-11-09: was `fetchGexHeatmap(ticker).catch(() => null)`, which collapsed a THROWN
+        // fetch onto the identical "no clean pin" outcome a genuinely cold/quiet matrix produces —
+        // catch it ourselves so a throw is counted, not silently swallowed.
+        let hm: Awaited<ReturnType<typeof fetchHeatmap>> = null;
+        try {
+          hm = await fetchHeatmap(ticker);
+        } catch (err) {
+          threw = true;
+          errorMessage = err instanceof Error ? err.message : String(err);
+          console.warn(`[zerodte-pin] ${ticker} GEX heatmap fetch THREW -- treating as a fetch failure, not "no pin":`, err);
+        }
         const pos = gexPositioningFromHeatmap(ticker, hm);
-        if (!hm || !pos || !(pos.spot > 0)) return null;
+        if (!hm || !pos || !(pos.spot > 0)) return { setup: null, threw, errorMessage };
 
         // Wall DOMINANCE from the SAME near-term-scoped ladder (computeGexWalls agrees with pos on
         // the top-wall strikes; we take the pct/share for the score's bracket-strength term).
@@ -236,17 +306,26 @@ export async function discoverPinSetups(opts: {
           putWallPct,
           gammaPosture: pos.gamma_posture,
         });
-        if (!regime) return null; // not a clean pin — never fabricate a fade
+        if (!regime) return { setup: null, threw, errorMessage }; // not a clean pin — never fabricate a fade
 
         const temporal = await pinPassesTemporalStabilityGate(ticker);
         if (!temporal.ok) {
           console.info(`[zerodte-pin] ${ticker} temporal stability HOLD — ${temporal.reason}`);
-          return null;
+          return { setup: null, threw, errorMessage };
         }
 
         // Pick the ATM fade contract off the live chain (call for a long/up fade, put for short/down).
-        const chain = await resolveTickerChainRows(ticker).catch(() => null);
-        if (!chain || !(chain.spot > 0) || chain.rows.length === 0) return null;
+        // 2026-11-09: was `resolveTickerChainRows(ticker).catch(() => null)` — same disclosure fix
+        // as the heatmap fetch above, so a thrown chain fetch is counted, not silently swallowed.
+        let chain: Awaited<ReturnType<typeof resolveChain>> = null;
+        try {
+          chain = await resolveChain(ticker);
+        } catch (err) {
+          threw = true;
+          errorMessage = err instanceof Error ? err.message : String(err);
+          console.warn(`[zerodte-pin] ${ticker} chain fetch THREW -- treating as a fetch failure, not "no pin":`, err);
+        }
+        if (!chain || !(chain.spot > 0) || chain.rows.length === 0) return { setup: null, threw, errorMessage };
         const rows: PinChainRow[] = chain.rows.map((r) => ({
           expiry: r.expiry,
           strike: r.strike,
@@ -277,48 +356,75 @@ export async function discoverPinSetups(opts: {
             putWall: pos.put_wall,
           });
           if (condorSetup) {
-            return stampPinSetupPositioning(condorSetup, {
-              gamma_posture: pos.gamma_posture,
-              call_wall: pos.call_wall,
-              put_wall: pos.put_wall,
-              gex_king_strike: pos.gex_king_strike ?? null,
-            });
+            return {
+              setup: stampPinSetupPositioning(condorSetup, {
+                gamma_posture: pos.gamma_posture,
+                call_wall: pos.call_wall,
+                put_wall: pos.put_wall,
+                gex_king_strike: pos.gex_king_strike ?? null,
+              }),
+              threw,
+              errorMessage,
+            };
           }
         }
 
         // Past directional cutoff: never open a directional PIN fade — late window is CONDOR-only.
-        if (lateCondorOnly) return null;
+        if (lateCondorOnly) return { setup: null, threw, errorMessage };
 
         // Pick the ATM fade contract off the live chain (call for a long/up fade, put for short/down).
         const side = regime.fadeDirection === "long" ? "call" : "put";
         const contract = pickAtmPinContract(rows, chain.spot, today, side);
-        if (!contract) return null; // no liquid same-day/weekly contract → shared plan gate would drop it
+        if (!contract) return { setup: null, threw, errorMessage }; // no liquid same-day/weekly contract → shared plan gate would drop it
 
-        return stampPinSetupPositioning(
-          buildPinSetup({ ticker, spot: chain.spot, regime, contract, todayYmd: today }),
-          {
-            gamma_posture: pos.gamma_posture,
-            call_wall: pos.call_wall,
-            put_wall: pos.put_wall,
-            gex_king_strike: pos.gex_king_strike ?? null,
-          }
-        );
+        return {
+          setup: stampPinSetupPositioning(
+            buildPinSetup({ ticker, spot: chain.spot, regime, contract, todayYmd: today }),
+            {
+              gamma_posture: pos.gamma_posture,
+              call_wall: pos.call_wall,
+              put_wall: pos.put_wall,
+              gex_king_strike: pos.gex_king_strike ?? null,
+            }
+          ),
+          threw,
+          errorMessage,
+        };
       } catch {
-        return null; // best-effort per ticker — one bad read never sinks the batch
+        // Best-effort per ticker — one bad read never sinks the batch. Deliberately NOT counted as
+        // `threw` for the fetch-failure aggregate: this catches bugs elsewhere in this block (e.g.
+        // a condor/fade-building error), not the two IO calls this fix tracks explicitly above.
+        return { setup: null, threw: false };
       }
     })
   );
 
+  const fetchFailures = built.filter((b) => b.threw).length;
+  const fetchFailureRate = universe.length > 0 ? fetchFailures / universe.length : 0;
+  if (fetchFailureRate >= PIN_FETCH_FAILURE_RATE_THRESHOLD) {
+    const lastErrorMessage = [...built].reverse().find((b) => b.threw)?.errorMessage;
+    console.warn(
+      `[zerodte-pin] ${fetchFailures}/${universe.length} evaluated name(s)' own fetch THREW -- ` +
+        `SKIP_FETCH_FAILED (not "no pins today")`
+    );
+    return {
+      status: "skip_fetch_failed",
+      setups: [],
+      reason: lastErrorMessage ?? `${fetchFailures}/${universe.length} per-ticker fetches threw`,
+    };
+  }
+
   const setups = built
+    .map((b) => b.setup)
     .filter((s): s is EnrichedZeroDteSetup => s != null)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, maxCandidates);
   if (setups.length === 0) {
     console.info(`[zerodte-pin] scanned ${universe.length} liquid name(s), no clean pin regime — SKIP`);
-    return [];
+    return { status: "ok", setups: [] };
   }
   console.info(
     `[zerodte-pin] built ${setups.length} pin setup(s) from ${universe.length} evaluated name(s) (ranked by score)`
   );
-  return setups;
+  return { status: "ok", setups };
 }

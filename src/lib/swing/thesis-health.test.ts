@@ -5,6 +5,7 @@ import {
   computeSwingThesisHealth,
   thesisHealthUncalibrated,
   thesisHealthUnchangedSinceCommit,
+  uncalibratedThesisPillars,
 } from "./thesis-health.ts";
 
 describe("computeSwingThesisHealth", () => {
@@ -235,6 +236,58 @@ describe("computeSwingThesisHealth", () => {
     assert.ok(keptIds.includes("structure"), "persistence (real: triggered) must still survive the filter");
     assert.ok(keptIds.includes("momentum"), "entry_geometry (real: at trigger) must still survive the filter");
     assert.ok(keptIds.includes("flow"), "flow_corroboration (real: FLOW signal) must still survive the filter");
+  });
+
+  test("uncalibratedThesisPillars: returns exactly the regime pillar for the live MRVL positionId 70 repro shape (2026-11-09)", () => {
+    // Identical setup to the "unread" regime test directly above — persistence/entry_geometry/
+    // flow_corroboration all real, only regime defaults to "unread". This is the exact shape
+    // play-brief-absence.ts's collectBriefUnavailableSources needs to name the real missing
+    // pillar(s) instead of a generic "setup/entry/signal" guess.
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW"],
+      dte: 9,
+      subLane: "STANDARD",
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const missing = uncalibratedThesisPillars(h);
+    assert.deepEqual(missing.map((p) => p.id), ["market"], "only the regime pillar should be reported missing");
+    assert.equal(missing[0]?.label, "Regime fit");
+  });
+
+  test("uncalibratedThesisPillars: returns every pillar for a Banger-origin row (all-or-nothing carve-out)", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["BANGER"],
+      regime: "BREAKOUT · BANGER", // the Banger-ledger stamped-constant sentinel (BANGER_LEDGER_REGIME_LABEL)
+      dte: 9,
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    const missing = uncalibratedThesisPillars(h);
+    assert.equal(missing.length, h!.pillars.length, "every pillar must be reported missing for a Banger-origin row");
+  });
+
+  test("uncalibratedThesisPillars: returns an empty array when every pillar is genuinely calibrated", () => {
+    const h = computeSwingThesisHealth({
+      direction: "LONG",
+      status: "OPEN",
+      setupState: "TRIGGERED",
+      entryStatus: "AT_TRIGGER",
+      signalKinds: ["FLOW", "VECTOR"],
+      regime: "momentum long",
+      dte: 9,
+      computedAtEt: "14:00 ET",
+    });
+    assert.ok(h);
+    assert.deepEqual(uncalibratedThesisPillars(h), []);
   });
 
   test("default persistence pillar stays intact at float boundary (not falsely faded)", () => {

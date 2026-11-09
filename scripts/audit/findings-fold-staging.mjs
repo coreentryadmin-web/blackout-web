@@ -8,6 +8,32 @@ import { alreadyPresent } from "./lib/findings-entry-set.mjs";
 const STAGING_DIR = process.env.FINDINGS_STAGING_DIR ?? "docs/audit/findings-staging";
 const FINDINGS = process.env.FINDINGS_STAGING_TARGET ?? "docs/audit/FINDINGS.md";
 
+// BUG FIX (2026-11-09, tooling): this script used to parse NO flags at all — `process.argv` was
+// never read anywhere — so `--dry-run` (the universal CLI convention for "show me what would
+// happen without writing anything") silently fell through to a REAL, full fold. A sibling agent
+// ran `--dry-run` expecting a safe preview and instead deleted every OTHER concurrent lane's
+// staged finding files and appended them all into FINDINGS.md (caught via `git status` and
+// reverted before anything was pushed — see the staged finding for this fix for the live repro).
+// Any unrecognized flag had the identical failure mode, not just `--dry-run` specifically, so this
+// guards both: an unknown flag is now a loud, non-zero-exit error instead of a silent no-op, and
+// `--dry-run` is now real — it runs the exact same discovery/parsing/validation below (so a
+// malformed staged file is still caught) but performs NO filesystem write (no edit to FINDINGS.md,
+// no deletion of any staged file), only prints what WOULD happen.
+const KNOWN_FLAGS = new Set(["--dry-run"]);
+const args = process.argv.slice(2);
+const unknownFlags = args.filter((a) => a.startsWith("-") && !KNOWN_FLAGS.has(a));
+if (unknownFlags.length) {
+  console.error(
+    `Unrecognized flag(s): ${unknownFlags.join(", ")}\n` +
+      `This script only supports: ${[...KNOWN_FLAGS].join(", ")} (no flags at all = real fold).\n` +
+      "Refusing to run rather than silently falling through to a real fold — see " +
+      "docs/audit/findings-staging/README.md."
+  );
+  process.exit(1);
+}
+const DRY_RUN = args.includes("--dry-run");
+if (DRY_RUN) console.log("[DRY RUN] previewing only — no files will be written or deleted.\n");
+
 // Backticks around the kind word are OPTIONAL to match — `> **kind:** FINDING` (bare) is a real,
 // common staged convention (23 files, 2026-08-25 through 2026-08-28) — but the canonical form
 // this function emits always wraps it, because findings-hygiene.test.ts's own kind-detection
@@ -199,8 +225,13 @@ if (duplicates.length) {
   for (const d of duplicates) console.log(`  = ${d.file}`);
 }
 if (fresh.length === 0) {
-  for (const s of valid) rmSync(join(STAGING_DIR, s.file));
-  console.log("Nothing new to fold — every valid staged finding was already present.");
+  if (DRY_RUN) {
+    console.log(`[DRY RUN] Nothing new to fold — would delete ${valid.length} duplicate staged file(s):`);
+    for (const s of valid) console.log(`  = ${s.file}`);
+  } else {
+    for (const s of valid) rmSync(join(STAGING_DIR, s.file));
+    console.log("Nothing new to fold — every valid staged finding was already present.");
+  }
   process.exit(invalid.length ? 1 : 0);
 }
 
@@ -216,14 +247,21 @@ const before = lines.slice(0, insertAt).join("\n");
 const after = lines.slice(insertAt).join("\n");
 const merged = `${before}\n${block}${after}`;
 
-writeFileSync(FINDINGS, merged.endsWith("\n") ? merged : `${merged}\n`);
+if (DRY_RUN) {
+  console.log(`[DRY RUN] Would fold ${fresh.length} staged finding(s) into ${FINDINGS}:`);
+  for (const s of fresh) console.log(`  + ${s.file}`);
+  console.log(`[DRY RUN] Would then delete ${valid.length} staged file(s) (folded + already-present duplicates):`);
+  for (const s of valid) console.log(`  - ${s.file}`);
+} else {
+  writeFileSync(FINDINGS, merged.endsWith("\n") ? merged : `${merged}\n`);
 
-// Only files that actually landed (folded fresh, or already-present duplicates) are removed — an
-// invalid file is left for a human to fix rather than silently vanishing.
-for (const s of valid) rmSync(join(STAGING_DIR, s.file));
+  // Only files that actually landed (folded fresh, or already-present duplicates) are removed — an
+  // invalid file is left for a human to fix rather than silently vanishing.
+  for (const s of valid) rmSync(join(STAGING_DIR, s.file));
 
-console.log(`Folded ${fresh.length} staged finding(s) into ${FINDINGS}:`);
-for (const s of fresh) console.log(`  + ${s.file}`);
+  console.log(`Folded ${fresh.length} staged finding(s) into ${FINDINGS}:`);
+  for (const s of fresh) console.log(`  + ${s.file}`);
+}
 if (invalid.length) {
   console.log(`${invalid.length} staged file(s) skipped for a missing heading/kind line — see above.`);
   process.exit(1);

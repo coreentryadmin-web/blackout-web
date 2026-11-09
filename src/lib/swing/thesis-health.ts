@@ -192,6 +192,29 @@ export function calibratedThesisPillars(h: ThesisHealthPayload): ThesisPillarSta
   return h.pillars.filter((p) => !UNCALIBRATED_MAPPED_LABELS[p.id]?.includes(p.currentLabel));
 }
 
+/**
+ * The exact complement of `calibratedThesisPillars` — every pillar WITHOUT a real,
+ * position-specific read (a generic-default sentinel, or every pillar at once for a Banger-origin
+ * row). Reuses that function's output by reference rather than re-deriving the membership test, so
+ * this can never drift from what `calibratedThesisPillars`/`thesisHealthSection` already consider
+ * calibrated.
+ *
+ * Built for `play-brief-absence.ts`'s `collectBriefUnavailableSources` (2026-11-09, Ask Largo x
+ * Night Hawk Swings standing mandate, live MRVL positionId 70 repro): that call site used to gate
+ * on the all-or-nothing `thesisHealthUncalibrated()` boolean alone and then push a FIXED
+ * "setup/entry/signal inputs unavailable" string regardless of which pillar(s) actually triggered
+ * it — correct for the original all-defaulted case (#4318) this boolean was built to catch, but
+ * wrong for the 2026-09-21 partial-calibration case (#5367) the NARRATIVE side (this file's own
+ * `thesisHealthSection` caller) already renders correctly: a position missing only `regime` (the
+ * live MRVL repro) got an absence entry naming "setup/entry/signal" — the three inputs that were
+ * actually PRESENT — while never naming the one that was actually missing. This lets that call
+ * site name the real missing pillar(s) instead of guessing.
+ */
+export function uncalibratedThesisPillars(h: ThesisHealthPayload): ThesisPillarState[] {
+  const calibrated = new Set(calibratedThesisPillars(h));
+  return h.pillars.filter((p) => !calibrated.has(p));
+}
+
 const DEFAULT_WEIGHTS: Record<SwingThesisPillarId, number> = {
   persistence: 0.28,
   entry_geometry: 0.22,
