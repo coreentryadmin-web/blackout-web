@@ -8,6 +8,7 @@ import { parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 import { extractLargoSegments } from "@/features/largo/blocks/extract";
 import { LargoBlockView } from "@/features/largo/blocks/LargoBlocks";
+import { BieSectionTable } from "./BieSectionTable";
 import { proseSections, summariseEvidence, hasExpandableEvidence } from "./section-policy";
 import { splitHeadline } from "./headline";
 import { signalRowsFromLevels, tallySignals, BIAS_GLYPH } from "./signal-rows";
@@ -162,6 +163,12 @@ export function LargoDeskRead({
           >
             <div className="largo-read-section-title">{sectionIcon(sec.title)} {sec.title}</div>
             <div className="largo-read-section-body">{renderInlineMarkdown(sec.body)}</div>
+            {/* BUG FIX (Ask Largo standing mandate, 2026-11-09): `sec.table` reached this render
+                block (swing's archetype/ticker track-record sections carry both a prose body and
+                a table) but was never read here — only `BieSectionCard` (the sibling renderer the
+                rarer non-rich-enough/fallback path uses) rendered it, fixed in #7702. This is the
+                more commonly rendered of the two branches, so the gap is the bigger one. */}
+            <BieSectionTable table={sec.table} />
           </div>
         ))}
       </React.Fragment>

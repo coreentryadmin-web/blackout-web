@@ -9861,3 +9861,33 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   narrative text (1dp `fmtPct` display round) should visibly change; the real effect to confirm is
   on `feature-store.ts`'s trajectory studies (`studyIvKillsGoodSetups`'s `running_mae` vs `-3%`
   threshold) reading the corrected full-precision value on the next real snapshot.
+
+## WATCH LIST — 2026-11-09 (`LargoDeskRead`'s "Deep dive" section block never rendered `BieSection.table`, sibling gap to #7702's `BieSectionCard` fix, `fix/largo-deskread-section-table`) — re-check once a table-bearing section reaches a real Ask Largo chat turn
+
+- **`LargoDeskRead.tsx`'s per-section render block** (`src/features/largo/answer/
+  LargoDeskRead.tsx`) rendered only `sec.body` for each `BieSection` — never `sec.table`. This is
+  the "Deep dive" renderer `LargoAnswerMessage.tsx` actually picks whenever an envelope is
+  `richEnough`, which is effectively every contract-conforming chat answer (every such answer
+  carries at least one section). #7702, earlier the same day, fixed the SIBLING renderer
+  (`BieSectionCard.tsx`, used by the rarer `BieAnswer` fallback path and by
+  `SwingLargoInsightsPanel.tsx`'s direct Command Deck panel render) to render `section.table` via
+  a new `BieSectionTable` component — but its own write-up mis-described `BieSectionCard` as "the
+  ONLY component that renders a `BieSection`," missing that `LargoDeskRead` renders sections too,
+  independently, and still dropped the table.
+- **Fix**: render `<BieSectionTable table={sec.table} />` in `LargoDeskRead`'s section block,
+  reusing the exact component #7702 added — no new CSS, no behavior change to any existing field.
+  New test file `LargoDeskRead.test.ts` (none existed for this component's rendered output before)
+  — RED confirmed pre-fix (table header/row text absent from `renderToStaticMarkup` output), GREEN
+  post-fix. Full `src/features/largo/answer/*.test.ts` 104/104 pass, `tsc --noEmit` clean.
+- **Currently not reachable by a real member chat turn** (disclosed in the staged finding): the
+  only live producer of a table-bearing `BieSection` is swing's `archetypeTrackRecordSection`/
+  `tickerTrackRecordSection`, and the only currently-wired path for those is the Command Deck
+  panel's direct `BieAnswer` render (now fixed by #7702), not the chat envelope
+  (`envelopeFromContract`/`parseAnswerEnvelope` never attaches a `table` to a model-prose
+  section). **Re-check once the swing play-brief is wired into the chat envelope directly (or any
+  future composer attaches a table to a section reaching `LargoDeskRead`)**: ask Largo chat a
+  swing-play question whose answer would naturally include the archetype/ticker track record, and
+  confirm the win-rate/Wilson-LB/edge table actually renders in the Deep dive view rather than
+  silently dropping to prose-only — this fix has no live-visible effect to confirm until that
+  wiring exists, so the check is "does the table now render when it finally reaches this
+  component," not "did a value change."
