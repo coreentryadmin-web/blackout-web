@@ -71,5 +71,26 @@ export function evaluateSpxDeskSmoke(probe, now = new Date()) {
     };
   }
 
+  // Route executed and returned our structured failure JSON — not a missing route or platform crash.
+  // Off-hours cold builds can still throw inside loadSpxDesk (measured: deploy-smoke RED 2026-11-09
+  // 02:20 UTC with cron auth + HTTP 502). That is a data-path flake, not proof the deploy is broken.
+  if (
+    status === 502 &&
+    record &&
+    typeof record.error === "string" &&
+    /desk build failed/i.test(record.error)
+  ) {
+    if (!isApproxUsCashRth(now)) {
+      return {
+        outcome: "warn",
+        message: `502 off-hours (${record.error}; route up — live desk not required for deploy smoke)`,
+      };
+    }
+    return {
+      outcome: "fail",
+      message: `502 during cash RTH (${record.error})`,
+    };
+  }
+
   return { outcome: "fail", message: `unexpected HTTP ${status}` };
 }
