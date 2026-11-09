@@ -39,4 +39,20 @@ describe("flow-brief moneyShort/sharesShort — round-first-then-promote", () =>
     assert.equal(sharesShort(450_000), "450K");
     assert.equal(sharesShort(3_200_000), "3.2M");
   });
+
+  // BUG FIX (round 489): sharesShort was missing the sub-1,000 raw-count tier every
+  // sibling formatter (moneyShort above, darkpool-discord-format.ts's fmtShares) has.
+  // Any n < 1000 fell into the K branch and got rounded to the nearest WHOLE THOUSAND —
+  // reachable live via flow-brief/route.ts's dark-pool block line, which gates only on
+  // premium (>= $15M), not share count: a $15M+ block in an ultra-high-priced name (e.g.
+  // BRK.A, ~$600K+/share) is tens of shares, independently of the premium threshold.
+  test("sharesShort sub-1,000 shares render the real count, not a rounded-to-zero/one K label", () => {
+    // A real ~25-share BRK.A-class block: Math.round(25 / 1000) === 0 under the old code,
+    // rendering the nonsensical "0K" for a genuine, nonzero print.
+    assert.equal(sharesShort(25), "25");
+    // Math.round(500 / 1000) === 1 under the old code, rendering "1K" (2000% too high)
+    // instead of the real count.
+    assert.equal(sharesShort(500), "500");
+    assert.equal(sharesShort(999), "999");
+  });
 });
