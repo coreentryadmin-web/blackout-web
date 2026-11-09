@@ -2570,27 +2570,38 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     vixPriorDayForPulseLane(rthOpenNow),
   ]);
 
+  let priorAnchor = prior;
+  let priorVixAnchor = priorVix;
+  if (!rthOpenNow) {
+    if (!(priorAnchor.pdc != null && priorAnchor.pdc > 0)) {
+      priorAnchor = await fetchPriorDayCached(rthOpenNow).catch(() => priorAnchor);
+    }
+    if (!(priorVixAnchor.pdc != null && priorVixAnchor.pdc > 0)) {
+      priorVixAnchor = await fetchVixPriorDayCached(rthOpenNow).catch(() => priorVixAnchor);
+    }
+  }
+
   const pulseTimeoutMs = deskPulseMaxBlockMs() + 200;
   const raced = await Promise.race([
     (async () => {
       const snapsRaw = await fetchPulseLaneSnapshots();
       const spxSnap = snapsRaw[SPX];
-      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? prior.pdc ?? 0;
+      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? priorAnchor.pdc ?? 0;
       if (!(price > 0)) return empty;
       const structure = cachedPulseStructure;
       return {
         ...empty,
         available: true,
         price,
-        prior_close: prior.pdc,
-        spx_change_pct: pulseChangePctFromPriorClose(price, prior.pdc, spxSnap?.change_pct),
+        prior_close: priorAnchor.pdc,
+        spx_change_pct: pulseChangePctFromPriorClose(price, priorAnchor.pdc, spxSnap?.change_pct),
         vix: snapsRaw[VIX]?.price ?? null,
         // Derived from priorVix.pdc — same "derive, don't transport" treatment spx_change_pct
         // gets two lines up (2026-11-01 fix). See fetchVixPriorDayCached's header for why a
         // transported change_pct is untrustworthy.
         vix_change_pct: pulseChangePctFromPriorClose(
           snapsRaw[VIX]?.price ?? null,
-          priorVix.pdc,
+          priorVixAnchor.pdc,
           snapsRaw[VIX]?.change_pct ?? null
         ),
         vwap: structure.vwap,

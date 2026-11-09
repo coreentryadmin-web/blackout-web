@@ -16,6 +16,11 @@ export function etMinutesAmericaNewYork(now = new Date()) {
 }
 
 /** Weekday cash RTH (9:30–4:00 ET) — good enough for deploy smoke; early-close/holiday skew is acceptable. */
+/** ECS rollouts / cold starts can briefly surface 502 on an otherwise healthy route. */
+export function isTransientDeployDeskHttpStatus(status) {
+  return status === 502 || status === 503 || status === 504;
+}
+
 export function isApproxUsCashRth(now = new Date()) {
   const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
