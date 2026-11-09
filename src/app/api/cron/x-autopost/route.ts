@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
+import { trimToLimit } from "@/lib/x-autopost-trim";
 import { xApiEnabled, postTweet, tweetWithImage } from "@/lib/x-api";
-import { xPostFooterLine } from "@/lib/x-whop-link";
 import { renderDeskCardPng } from "@/lib/x-desk-card";
 import { recordPostHook } from "@/lib/x-marketing-meta";
 import { recordBudgetUse, pauseForRateLimit } from "@/lib/x-rate-budget";
@@ -39,14 +39,6 @@ async function loadImage(key: string): Promise<Buffer | null> {
   } catch {
     return null;
   }
-}
-
-function trimToLimit(content: string, postType: PostType): string {
-  const footer = `\n${xPostFooterLine(postType)}`;
-  const maxBody = 280 - footer.length - 1;
-  if (content.length <= 280) return content;
-  const body = content.slice(0, content.lastIndexOf("\n"));
-  return body.slice(0, maxBody).trimEnd() + "…" + footer;
 }
 
 async function resolvePostImage(
