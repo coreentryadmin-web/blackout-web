@@ -135,8 +135,20 @@ function vixExtremeAgainst(desk: SpxDeskPayload, direction: "long" | "short"): b
   return false;
 }
 
-function newsAlreadyScored(factors: SpxSignalFactor[]): boolean {
-  return factors.some((f) => f.label === "News risk" || f.label.startsWith("News"));
+// BUG FIX (2026-11-09, five-engine-largo-cycle audit): same bug class as gexAlreadyScored/
+// vixAlreadyScored above (2026-11-01) — this guard used to suppress the newsOpposed() +2 bonus
+// whenever ANY News-labeled factor existed in `factors`, regardless of which side it agreed with.
+// scoreNewsRisk (spx-signals.ts, NEWS_BEAR_WORDS/NEWS_BULL_WORDS over the first 10 headlines) and
+// newsSentiment() above (BEAR_NEWS/BULL_NEWS, first 5 headlines) are independent classifiers over
+// the same news_headlines with genuinely different word lists — scoreNewsRisk can push an
+// AGREEING "News risk" factor (e.g. unrelated stimulus-deal headlines) at the exact same time
+// newsSentiment/newsOpposed reads the headline set as genuinely opposing. The old broad guard read
+// the agreeing factor's mere presence as "already counted" and silently dropped the real conflict.
+// Fixed the same way as the GEX/VIX guards: require factorOpposes(direction, f), not mere existence.
+function newsAlreadyScored(factors: SpxSignalFactor[], direction: "long" | "short"): boolean {
+  return factors.some(
+    (f) => (f.label === "News risk" || f.label.startsWith("News")) && factorOpposes(direction, f)
+  );
 }
 
 // BUG FIX (2026-11-01, five-engine-largo-cycle-60 audit): same bug class as gexAlreadyScored
@@ -177,7 +189,7 @@ export function computeWeightedConflicts(
     weighted += isHardOpposingFactor(f) ? 2 : 1;
   }
 
-  if (newsOpposed(desk, direction) && !newsAlreadyScored(factors)) {
+  if (newsOpposed(desk, direction) && !newsAlreadyScored(factors, direction)) {
     weighted += 2;
   }
   if (tideOpposed(desk, direction) && !factors.some((f) => f.label === "Market tide")) {
