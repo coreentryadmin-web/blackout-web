@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -191,8 +191,22 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const priorClose = d.prior_close ?? d.prev_close;
+  const sessionLive = d.market_open === true;
+  if (!(spot > 0)) {
+  // Off RTH the desk may honestly serve price:0 while still carrying prior_close (SPY-proxy / last settle).
+    if (!inRthOpenWindow() && !sessionLive) {
+      if (finite(priorClose) && priorClose > 0) {
+        ok("spx-desk", "spot", `off-hours prior_close ${priorClose} (live price not required)`);
+      } else if (d.available === false) {
+        ok("spx-desk", "spot", "off-hours unavailable shell (no live session price)");
+      } else {
+        fail("spx-desk", "SPOT", `off-hours spot ${spot} with no prior_close`, "P0");
+      }
+    } else {
+      fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
+    }
+  } else ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
@@ -228,8 +242,13 @@ async function auditPlatformSnapshot() {
   const spx = snap.spx;
   const flows = snap.flows;
   const nh = snap.nighthawk;
-  if (spx?.price > 0) ok("snapshot", "spx", `SPX ${spx.price} VIX ${spx.vix ?? "—"}`);
-  else fail("snapshot", "SPX", "missing SPX price in snapshot");
+  if (spx?.price > 0) {
+    ok("snapshot", "spx", `SPX ${spx.price} VIX ${spx.vix ?? "—"}`);
+  } else if (!inRthOpenWindow()) {
+    ok("snapshot", "spx", "off-hours — live SPX price not required in snapshot");
+  } else {
+    fail("snapshot", "SPX", "missing SPX price in snapshot");
+  }
 
   // Desk vs snapshot
   const desk = await getJson("/api/market/spx/desk");

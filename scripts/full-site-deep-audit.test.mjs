@@ -36,3 +36,13 @@ test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours groun
   assert.match(src, /I:SPX\/prev/);
   assert.doesNotMatch(src, /if \(d > 5\) fail\("oracle", "SPX"/);
 });
+
+test("full-site-deep-audit SPX desk spot allows honest off-hours prior_close", () => {
+  assert.match(src, /inRthOpenWindow/);
+  assert.match(src, /off-hours prior_close/);
+  assert.match(src, /off-hours unavailable shell/);
+});
+
+test("full-site-deep-audit platform snapshot skips live SPX off-hours", () => {
+  assert.match(src, /off-hours — live SPX price not required in snapshot/);
+});

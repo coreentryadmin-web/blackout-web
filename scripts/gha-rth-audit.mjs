@@ -208,9 +208,22 @@ async function cronHttpChecks() {
       } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
-      } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+      } else if (label === "cron-watchdog") {
+        const rthStale = json.rth_stale_keys ?? [];
+        const spike = json.error_spike ?? "none";
+        if (rthStale.length > 0) {
+          failures.push(`${label}: rth_stale=${rthStale.join(", ")}`);
+          console.log(`  ✗ ${label} → RTH stale: ${rthStale.join(", ")}`);
+        } else if (spike === "critical") {
+          failures.push(`${label}: error_spike=critical (${json.error_count ?? "?"} in ${json.error_window_min ?? "?"}m)`);
+          console.log(`  ✗ ${label} → critical error spike`);
+        } else if ((json.problems ?? 0) > 0) {
+          console.log(
+            `  ⚠ ${label} → non-RTH problems (not failing this gate): ${(json.problem_keys ?? []).join(", ") || json.problems}`
+          );
+        } else {
+          console.log(`  ✓ ${label} → ok`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
