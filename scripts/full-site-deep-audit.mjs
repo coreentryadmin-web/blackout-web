@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -110,9 +110,12 @@ async function auditCrons() {
   ]);
 
   if (wd.status === 200) {
-    const keys = wd.json.problem_keys ?? [];
+    const offHours = !inRthOpenWindow();
+    const keys = offHours
+      ? (wd.json.rth_stale_keys ?? [])
+      : [...new Set([...(wd.json.problem_keys ?? []), ...(wd.json.rth_stale_keys ?? [])])];
     if (keys.length) for (const k of keys) fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`);
-    else ok("crons", "watchdog", `${wd.json.checked ?? "?"} jobs OK`);
+    else ok("crons", "watchdog", offHours ? `${wd.json.checked ?? "?"} jobs OK (off-hours — RTH-stale only)` : `${wd.json.checked ?? "?"} jobs OK`);
   }
 
   if (dc.status === 200) {
@@ -191,12 +194,28 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const offHours = !inRthOpenWindow();
+  if (!(spot > 0)) {
+    if (offHours) {
+      ok(
+        "spx-desk",
+        "spot-off-hours",
+        `spot ${spot ?? "—"} (off-hours; schedule fires post-close — live spot not required)`
+      );
+    } else {
+      fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
+    }
+  } else ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
-  if (finite(low) && finite(high) && finite(spot) && (spot < low - 0.01 || spot > high + 0.01)) {
+  if (
+    !offHours &&
+    finite(low) &&
+    finite(high) &&
+    finite(spot) &&
+    (spot < low - 0.01 || spot > high + 0.01)
+  ) {
     fail("spx-desk", "RANGE", `spot ${spot} outside [${low}, ${high}]`, "P0");
   } else if (finite(low) && finite(high)) ok("spx-desk", "range", `spot ∈ [${low}, ${high}]`);
 
@@ -229,6 +248,7 @@ async function auditPlatformSnapshot() {
   const flows = snap.flows;
   const nh = snap.nighthawk;
   if (spx?.price > 0) ok("snapshot", "spx", `SPX ${spx.price} VIX ${spx.vix ?? "—"}`);
+  else if (!inRthOpenWindow()) ok("snapshot", "spx-off-hours", "missing SPX price off-hours (expected)");
   else fail("snapshot", "SPX", "missing SPX price in snapshot");
 
   // Desk vs snapshot
@@ -301,6 +321,10 @@ async function auditHeatmapMatrix() {
     if (status !== 200 || !(hm?.spot > 0)) {
       if (!tradingDay && ticker !== "SPX") {
         ok("heatmap", ticker, "empty on market holiday (expected)");
+        continue;
+      }
+      if (!inRthOpenWindow()) {
+        ok("heatmap", ticker, "unavailable off-hours (expected)");
         continue;
       }
       fail("heatmap", ticker, "unavailable or empty");

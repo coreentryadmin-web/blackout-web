@@ -208,9 +208,23 @@ async function cronHttpChecks() {
       } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
-      } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+      } else if (label === "cron-watchdog") {
+        const offHours = !rthOpen;
+        const staleKeys = offHours
+          ? (json.rth_stale_keys ?? [])
+          : [...new Set([...(json.problem_keys ?? []), ...(json.rth_stale_keys ?? [])])];
+        const staleCount = offHours ? (json.rth_stale ?? staleKeys.length) : (json.problems ?? staleKeys.length);
+        if (staleCount > 0 && staleKeys.length > 0) {
+          failures.push(`${label}: ${staleKeys.join(", ")}`);
+          console.log(
+            `  ✗ ${label} → stale: ${staleKeys.join(", ")}${offHours ? " (off-hours — RTH-stale only)" : ""}`
+          );
+        } else if (staleCount > 0) {
+          failures.push(`${label}: ${staleCount} problem(s)`);
+          console.log(`  ✗ ${label} → ${staleCount} problem(s)`);
+        } else {
+          console.log(`  ✓ ${label} → ok${offHours ? " (off-hours)" : ""}`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }
