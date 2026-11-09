@@ -1996,8 +1996,16 @@ export function tradeManagerNarrativeSection(
   // single most action-driving line in the brief ("exit or cut size"). Same bug class PRs #6726/
   // #6731/#6736 already swept through every other call site in this file; this one was missed.
   if (execBreached && (play.direction === "LONG" || play.direction === "SHORT")) {
+    // SEVERITY-TIERING FIX (Ask Largo standing mandate, 2026-11-09, live repro SWING:HLF:2473):
+    // this is the single most action-driving line in the brief ("exit or cut size") — pass
+    // `actionable: true` so a severely-stale quote (many hours/sessions old, not a routine missed
+    // refresh tick) escalates to the explicit "UNCONFIRMED by live data, do not treat as a current,
+    // actionable signal" wording instead of the same flat phrase a 19-minute-old quote gets. See
+    // `optionMarkStaleCaveat`'s own "SEVERITY-TIERING FIX" comment (play-brief-absence.ts) for the
+    // full repro and rationale. `sameContractAsMarkAbove` stays explicit `true` (its existing
+    // default) — this bullet always reads the brief's own subject `play`, never a sibling's.
     add(
-      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(execMarkForBreach)}** is at/through your ${stopRailLabel} **${fmtOptionUsd(effectiveStop)}** right now → exit or cut size.${optionMarkStaleCaveat(play, readMs)}`,
+      `**Break watch — stop already breached on the executable side** — bid **${fmtOptionUsd(execMarkForBreach)}** is at/through your ${stopRailLabel} **${fmtOptionUsd(effectiveStop)}** right now → exit or cut size.${optionMarkStaleCaveat(play, readMs, true, true)}`,
       { reserved: true },
     );
   } else if (!breakLine && play.direction === "LONG" && effectiveStop != null) {

@@ -523,6 +523,14 @@ export interface OptionMarkFreshnessSource {
  */
 export const SWING_OPTION_MARK_STALE_MS = 18 * 60_000;
 
+/**
+ * Second staleness tier on top of `SWING_OPTION_MARK_STALE_MS` — see `optionMarkSeverelyStale`'s
+ * own doc comment (below `optionMarkStaleCaveat`) for the full rationale and live repro. Placed
+ * next to its sibling constant so "how stale is too stale" stays answered in one neighborhood of
+ * this file, matching this file's own convention for its other staleness bounds.
+ */
+export const SWING_OPTION_MARK_SEVERELY_STALE_MS = 4 * 60 * 60_000; // 4 hours
+
 /** True when an OPEN/HOLD/TRIM row carries an aged markAsOf (not the markIsSync no-timestamp case). */
 export function optionMarkIsStale(play: OptionMarkFreshnessSource, readMs: number = Date.now()): boolean {
   if (!playExpectsLiveOptionMark(play.status)) return false;
@@ -560,11 +568,39 @@ export function optionMarkIsStale(play: OptionMarkFreshnessSource, readMs: numbe
  * "flagged above" anywhere in the document. Fix: an explicit `sameContractAsMarkAbove` flag (default
  * `true`, preserving every existing call site's behavior unchanged) lets a caller whose quote is a
  * genuinely different contract opt into honest wording instead of the borrowed "same quote" claim.
+ *
+ * SEVERITY-TIERING FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09, live repro
+ * SWING:HLF:2473): every branch above flattens staleness to ONE flat boolean — a quote 19 minutes
+ * past `SWING_OPTION_MARK_STALE_MS` and a quote `SWING_OPTION_MARK_SEVERELY_STALE_MS`-plus past it
+ * (live-observed: ~264,780s / ~73.5h / 3+ trading sessions, during the still-open 2026-11-06/07
+ * Polygon real-time-snapshot entitlement outage, CLAUDE.md) rendered the IDENTICAL
+ * " _(stale — same quote Mark flagged above)_" text, on lines ranging from passive-informational
+ * ("Entry: $0.20") to alarm-shaped, action-imperative ones ("exit or cut size", "the executable
+ * exit is a total loss") — the wording never scaled with how stale the data actually was, nor with
+ * how urgent the claim it was attached to was. Live HLF repro, same brief, same flat phrase on both:
+ *   "Break watch — stop already breached on the executable side ... → exit or cut size.
+ *    _(stale — same quote Mark flagged above)_"
+ *   "Exec P&L: -100.0% (... the executable exit is a total loss) ...
+ *    _(stale — same quote Mark flagged above)_"
+ * Nothing here was a hidden-absence (C2/C3) violation — `envelope.age_seconds`/the Data-freshness
+ * section already carried the true age honestly elsewhere in the same envelope — this is a
+ * SEVERITY-CALIBRATION gap in this one caveat's own wording.
+ *
+ * Fix is purely additive, layered on top of the existing mild (18-minute) tier, never replacing it:
+ * once a quote also clears `optionMarkSeverelyStale` (many hours, not a single missed refresh
+ * tick), the caveat names the actual elapsed span (`severelyStaleAgeLabel`) instead of repeating the
+ * flat phrase. A NEW fourth parameter, `actionable` (default `false`, so every pre-existing call
+ * site is byte-for-byte unaffected until it opts in), lets a caller whose claim is alarm-shaped
+ * (an "exit"/"cut size"/"total loss" claim, not a passive fact) escalate further still — explicitly
+ * flagging that claim as unconfirmed by live data rather than merely "severely stale". The mild
+ * tier's own two return strings (sameContractAsMarkAbove true/false) are untouched character-for-
+ * character — every existing caller sees identical output until a quote crosses the new, higher bar.
  */
 export function optionMarkStaleCaveat(
   play: OptionMarkFreshnessSource,
   readMs: number = Date.now(),
   sameContractAsMarkAbove: boolean = true,
+  actionable: boolean = false,
 ): string {
   if (optionMarkGenuinelyUnknown(play)) {
     return " _(entry-time read — no live tick since commit, do not read as current)_";
@@ -573,15 +609,74 @@ export function optionMarkStaleCaveat(
     return " _(live quote, no freshness timestamp)_";
   }
   if (optionMarkIsStale(play, readMs)) {
-    if (sameContractAsMarkAbove) {
-      return " _(stale — same quote Mark flagged above)_";
-    }
     // `optionMarkIsStale` returning true already guarantees `play.markAsOf` is a real, truthy
     // timestamp (it returns false early on `!play.markAsOf`) — safe to format unconditionally.
     const stamp = etStampFromIso(play.markAsOf!) ?? play.markAsOf!;
+    if (optionMarkSeverelyStale(play, readMs)) {
+      const markMs = Date.parse(play.markAsOf!);
+      const ageLabel = severelyStaleAgeLabel(readMs - markMs);
+      if (actionable) {
+        return sameContractAsMarkAbove
+          ? ` _(⚠️ severely stale, same quote Mark flagged above — last synced ${stamp} (~${ageLabel} ago). This claim is UNCONFIRMED by live data — do not treat it as a current, actionable signal.)_`
+          : ` _(⚠️ severely stale, its own quote — last synced ${stamp} (~${ageLabel} ago). This claim is UNCONFIRMED by live data — do not treat it as a current, actionable signal.)_`;
+      }
+      return sameContractAsMarkAbove
+        ? ` _(severely stale — same quote Mark flagged above, last synced ${stamp} (~${ageLabel} ago))_`
+        : ` _(severely stale — its own quote, last synced ${stamp} (~${ageLabel} ago))_`;
+    }
+    if (sameContractAsMarkAbove) {
+      return " _(stale — same quote Mark flagged above)_";
+    }
     return ` _(stale — its own quote, last synced ${stamp})_`;
   }
   return "";
+}
+
+/**
+ * Second staleness tier, layered on top of `SWING_OPTION_MARK_STALE_MS` (same mandate/repro as
+ * `optionMarkStaleCaveat`'s own "SEVERITY-TIERING FIX" comment above). The existing 18-minute bound
+ * answers "has this quote missed its own 15-minute swing-active-refresh tick" — appropriate for a
+ * quote that is minutes, not hours, behind, and deliberately generous about normal jitter (see
+ * `SWING_OPTION_MARK_STALE_MS`'s own doc comment). Four hours is comfortably past any single missed
+ * tick (which the mild tier already covers in full) and comfortably short of even one ordinary RTH
+ * session (~6.5h) or an overnight/weekend gap, so crossing it reliably means "something has stopped
+ * refreshing this quote for a materially long span", not merely "the next tick is a few minutes
+ * late" — exactly the distinction a trader needs named, rather than flattened into the identical
+ * phrase as a 19-minute-old mark.
+ *
+ * Mirrors `optionMarkIsStale`'s own guard shape (deliberately duplicated rather than refactored
+ * into a shared parse helper, so this fix stays additive and the mild tier's existing behavior is
+ * provably untouched — see that function's own history of narrowly-scoped, additive fixes). Future
+ * skew (a negative raw age) reads as `false` here, not escalated: `optionMarkIsStale` already fails
+ * that case closed on its own distinct (`freshnessFromObservedMs`) basis, and a clock-skew artifact
+ * is a different problem from genuine multi-hour staleness — conflating the two would mislabel a
+ * clock bug as "this is a 3-day-old quote".
+ */
+export function optionMarkSeverelyStale(play: OptionMarkFreshnessSource, readMs: number = Date.now()): boolean {
+  if (!playExpectsLiveOptionMark(play.status)) return false;
+  if (play.markIsSync === true || !play.markAsOf) return false;
+  const markMs = Date.parse(play.markAsOf);
+  if (!Number.isFinite(markMs)) return false;
+  const ageMs = readMs - markMs;
+  if (ageMs < 0) return false;
+  return ageMs >= SWING_OPTION_MARK_SEVERELY_STALE_MS;
+}
+
+/**
+ * Human-readable elapsed-span label for the severely-stale tier only — "4h" through "47h", then
+ * "Nd" beyond two days, so a trader reads the actual span ("~73h ago"/"~3d ago") instead of the
+ * absurd-precision-free but equally uninformative flat "stale" phrase the mild tier correctly keeps
+ * for a merely-minutes-old quote (`ageDaysLabel`'s own doc comment names the same "absurd
+ * precision" trap for a seconds-scale label on a days-scale fact — this is that same reasoning
+ * applied to this tier's own, narrower hour/day boundary). Not exported: only ever called from
+ * inside `optionMarkStaleCaveat` once `optionMarkSeverelyStale` has already confirmed `ageMs` is a
+ * real, non-negative span at or past `SWING_OPTION_MARK_SEVERELY_STALE_MS` (>= 4 hours), so the
+ * `hours < 48` branch can never under-round to "0h".
+ */
+function severelyStaleAgeLabel(ageMs: number): string {
+  const hours = ageMs / (60 * 60_000);
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
 }
 
 /**
