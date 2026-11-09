@@ -43,6 +43,12 @@ test("evaluateSpxDeskSmoke: cron secret drift is warn", () => {
   assert.equal(v.outcome, "warn");
 });
 
+test("evaluateSpxDeskSmoke: gateway 502 fails (gha-http-smoke retries before judging)", () => {
+  const v = evaluateSpxDeskSmoke({ status: 502, body: "Bad Gateway" });
+  assert.equal(v.outcome, "fail");
+  assert.match(v.message, /502/);
+});
+
 test("isApproxUsCashRth: Saturday is false", () => {
   assert.equal(isApproxUsCashRth(SATURDAY_MIDDAY_ET), false);
 });

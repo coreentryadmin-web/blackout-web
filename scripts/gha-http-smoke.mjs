@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
+import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -33,6 +34,25 @@ async function fetchJson(path, headers = {}) {
     body = text.slice(0, 120);
   }
   return { status, body };
+}
+
+/** Desk merge is heavier than /api/health — retry ALB/ECS blips during rolling deploy (502/503/524). */
+async function fetchJsonDesk(path, headers = {}) {
+  const url = `${BASE}${path}`;
+  const retries = Number(process.env.SPX_DESK_SMOKE_RETRIES ?? 4) || 4;
+  const res = await fetchRetry(
+    url,
+    { headers: { Accept: "application/json", ...headers } },
+    { retries, baseDelayMs: 2000, timeoutMs: 90_000 }
+  );
+  const text = await res.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text.slice(0, 120);
+  }
+  return { status: res.status, body };
 }
 
 const seoTextChecks = [
@@ -72,7 +92,7 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
+  const { status, body } = await fetchJsonDesk("/api/market/spx/desk", {
     Authorization: `Bearer ${CRON}`,
   });
   const verdict = evaluateSpxDeskSmoke({ status, body });
