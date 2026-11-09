@@ -5622,7 +5622,11 @@ test("composeSwingPlayBrief: Greeks and Spread both carry a 'stale' caveat when 
     mark: 6.1,
     pnlPct: 24.5,
     markIsSync: false,
-    markAsOf: "2026-10-18T13:00:00.000Z", // 4.5h before asOf below — well past the 18-min window
+    // 1h before asOf below — well past the 18-min mild-stale window but deliberately short of the
+    // 4-hour SWING_OPTION_MARK_SEVERELY_STALE_MS bar (2026-11-09 severity-tiering fix), so this
+    // fixture stays a pure test of the MILD tier's "(stale)" wording — the severely-stale case has
+    // its own dedicated test below.
+    markAsOf: "2026-10-18T16:30:00.000Z",
     greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 0.485 },
     subLane: "TACTICAL",
     liquidity: { bid: 5.9, ask: 6.3, spreadPct: 0.0656 },
@@ -5641,7 +5645,7 @@ test("composeSwingPlayBrief: Greeks and Spread both carry a 'stale' caveat when 
   });
   const stalePosition = staleBrief.envelope.sections.find((s) => s.title === "Position");
   assert.ok(stalePosition, "Position section expected");
-  assert.match(stalePosition!.body, /Mark:.*2026-10-18 09:00 ET.*\(stale\)/, `Mark line itself must flag stale, making "flagged above" true: got ${stalePosition!.body}`);
+  assert.match(stalePosition!.body, /Mark:.*2026-10-18 12:30 ET.*\(stale\)/, `Mark line itself must flag stale, making "flagged above" true: got ${stalePosition!.body}`);
   assert.match(stalePosition!.body, /Greeks:.*Δ \+0\.62.*stale — same quote Mark flagged above/, `got: ${stalePosition!.body}`);
   assert.match(stalePosition!.body, /Spread:.*stale — same quote Mark flagged above/, `got: ${stalePosition!.body}`);
 
@@ -5679,6 +5683,57 @@ test("composeSwingPlayBrief: Greeks and Spread both carry a 'stale' caveat when 
     /stale/,
     "fresh mark must not carry any staleness caveat",
   );
+});
+
+// SEVERITY-TIERING FIX, remaining call site #1 of 4 (Ask Largo x Night Hawk Swings standing
+// mandate, 2026-11-09 follow-up to #7795): #7795 tiered `optionMarkStaleCaveat()` by severity but
+// never migrated the Position section's own `Mark:` line, which still called `optionMarkIsStale`
+// directly and rendered the bare "(stale)" tag regardless of how stale the quote actually was —
+// even though every OTHER line in this same section (via `staleCaveat`) already escalated to
+// "severely stale ... (~Nh ago)" once a quote cleared the new 4-hour bar. Live repro 2026-11-09,
+// SWING:LABD:2484 (~77h-stale markAsOf): Greeks/Spread correctly said "severely stale" while the
+// Mark line they both cite as "flagged above" said only "(stale)".
+test("composeSwingPlayBrief: the Position section's own Mark line escalates to 'severely stale' with the real elapsed span once past the 4-hour bar, matching Greeks/Spread's own escalation for the identical quote", () => {
+  const severelyStalePlay = fixturePlay({
+    status: "HOLD",
+    recommendation: "HOLD",
+    entry: 4.9,
+    mark: 6.1,
+    pnlPct: 24.5,
+    markIsSync: false,
+    markAsOf: "2026-11-06T16:19:00.000Z", // ~73.7h before asOf/readMs below (live HLF/LABD shape)
+    greeks: { delta: 0.62, gamma: 0.031, theta: -0.084, vega: 0.112, iv: 0.485 },
+    subLane: "TACTICAL",
+    liquidity: { bid: 5.9, ask: 6.3, spreadPct: 0.0656 },
+  });
+  const brief = composeSwingPlayBrief({
+    play: severelyStalePlay,
+    asOf: "2026-11-09T18:00:00.000Z",
+    sessionDate: "2026-11-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    readMs: Date.parse("2026-11-09T18:00:00.000Z"),
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "Position section expected");
+  assert.match(
+    position!.body,
+    /Mark:.*severely stale.*~3d ago/,
+    `Mark line itself must escalate to severely-stale wording with the real elapsed span, matching Greeks/Spread's own escalation for the identical quote: got ${position!.body}`,
+  );
+  // The bare mild-tier "(stale)" tag must NOT also appear on the Mark line once escalated — this
+  // is the one new fact (severity), not an additional, redundant mild tag alongside it.
+  assert.doesNotMatch(
+    position!.body.split("P&L:")[0],
+    /Mark:.*\(stale\)/,
+    "the Mark line must not carry the flat mild-tier tag once it has escalated to severely stale",
+  );
+  assert.match(position!.body, /Greeks:.*severely stale/, `got: ${position!.body}`);
+  assert.match(position!.body, /Spread:.*severely stale/, `got: ${position!.body}`);
 });
 
 // GAP FOUND (Ask Largo standing mandate, 2026-09-18): `play.liquidity` (DeckLiquidity: bid/ask/

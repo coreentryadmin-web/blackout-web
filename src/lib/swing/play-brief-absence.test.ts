@@ -9,6 +9,7 @@ import {
   gexMatrixStale,
   headlineAgeLabel,
   archetypeTrackRecordIsStale,
+  collectOptionMarkStalenessAbsence,
   meridianCatalystAgeMs,
   meridianCatalystStale,
   newsCatalystAgeMs,
@@ -17,6 +18,7 @@ import {
   optionMarkSeverelyStale,
   optionMarkStaleCaveat,
   resolveGammaPosture,
+  severelyStaleAgeLabel,
   trustedHelixFlow,
   vectorAgeStale,
   vectorLiveForSession,
@@ -1575,6 +1577,83 @@ test("optionMarkStaleCaveat: severely-stale sibling (sameContractAsMarkAbove=fal
   assert.match(caveat, /severely stale/);
   assert.match(caveat, /its own quote, last synced/);
   assert.doesNotMatch(caveat, /same quote Mark flagged above/);
+});
+
+test("severelyStaleAgeLabel: hours below the 48h switch render as 'Nh', at/above render as 'Nd'", () => {
+  assert.equal(severelyStaleAgeLabel(4 * 60 * 60_000), "4h");
+  assert.equal(severelyStaleAgeLabel(47 * 60 * 60_000), "47h");
+  assert.equal(severelyStaleAgeLabel(48 * 60 * 60_000), "2d");
+  assert.equal(severelyStaleAgeLabel(73.5 * 60 * 60_000), "3d");
+});
+
+// SEVERITY-TIERING FIX, remaining call site #1 of 4 (Ask Largo x Night Hawk Swings standing
+// mandate, 2026-11-09 follow-up to #7795): PR #7795 tiered `optionMarkStaleCaveat()` by severity
+// but never touched `collectOptionMarkStalenessAbsence()` — the structured C3 feeder behind
+// `envelope.unavailableSources`'s "option mark" chip and `evidence[]` — which still called the
+// flat `optionMarkIsStale()` boolean directly and rendered the identical `reason` text regardless
+// of how stale the quote actually was. Live repro 2026-11-09, SWING:LABD:2484 (~77h-stale
+// markAsOf): this chip read a bare "stale — last synced ..." for the SAME quote the narrative
+// coaching section (via the already-tiered `optionMarkStaleCaveat`) called "severely stale ...
+// UNCONFIRMED by live data" a few lines later in the identical envelope.
+test("collectOptionMarkStalenessAbsence: a mildly-stale mark (19 minutes) keeps the flat 'stale — last synced' reason, unescalated", () => {
+  const readMs = Date.parse("2026-09-15T19:19:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-09-15T19:00:00.000Z", // 19 minutes old — mild tier only
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  const absence = collectOptionMarkStalenessAbsence(play, readMs);
+  assert.ok(absence, "expected a C3 absence entry for a mildly-stale mark");
+  assert.equal(absence!.source, "option mark");
+  assert.match(absence!.reason, /^stale — last synced /);
+  assert.doesNotMatch(
+    absence!.reason,
+    /severely stale/,
+    "a merely 19-minute-old mark must not read as severely stale",
+  );
+});
+
+test("collectOptionMarkStalenessAbsence: a severely-stale mark (~73.5h, live HLF/LABD repro shape) escalates the reason text with the real elapsed span", () => {
+  const readMs = Date.parse("2026-11-09T18:00:00.000Z");
+  const play = {
+    markIsSync: false,
+    markAsOf: "2026-11-06T16:19:00.000Z", // ~73.7h stale
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+  const absence = collectOptionMarkStalenessAbsence(play, readMs);
+  assert.ok(absence, "expected a C3 absence entry for a severely-stale mark");
+  assert.equal(absence!.source, "option mark");
+  assert.match(absence!.reason, /severely stale/);
+  assert.match(absence!.reason, /~3d ago/, `expected the real elapsed span named, got "${absence!.reason}"`);
+  // The literal "stale — last synced " PREFIX must survive escalation byte-for-byte —
+  // `dataHonestyCoaching` (play-brief-narrative-coaching.ts) extracts the stamp via
+  // `reason.startsWith("stale — last synced ")`; changing the prefix would silently route a
+  // severely-stale mark into that function's generic, stamp-less fallback wording instead.
+  assert.match(absence!.reason, /^stale — last synced /);
+});
+
+// Deliberately uses the SAME markAsOf for both cases, varying ONLY readMs — isolates severity as
+// the one variable that differs, so this cannot pass merely because the two reasons happen to cite
+// different timestamps (a weaker, false-positive-prone version of this test that used two
+// different markAsOf values would pass even without the fix, since the reasons would differ by
+// timestamp alone regardless of severity).
+test("collectOptionMarkStalenessAbsence: the mild and severe reasons are genuinely distinguishable text for the IDENTICAL quote, not just presence/absence of the same chip", () => {
+  const markAsOf = "2026-11-06T16:19:00.000Z";
+  const play = {
+    markIsSync: false,
+    markAsOf,
+    status: "OPEN",
+  } as unknown as import("@/features/nighthawk/command-deck/types").TerminalPlay;
+
+  const mild = collectOptionMarkStalenessAbsence(play, Date.parse("2026-11-06T16:38:00.000Z")); // 19 min
+  const severe = collectOptionMarkStalenessAbsence(play, Date.parse("2026-11-09T18:00:00.000Z")); // ~73.7h
+
+  assert.ok(mild && severe);
+  assert.notEqual(
+    severe!.reason,
+    mild!.reason,
+    "the IDENTICAL quote must not produce the identical unavailableSources reason once it crosses from 19-minute-stale to ~73.7-hour-stale",
+  );
 });
 
 // Sibling bug (Ask Largo standing mandate, 2026-10-20, same defect class as optionMarkIsStale's

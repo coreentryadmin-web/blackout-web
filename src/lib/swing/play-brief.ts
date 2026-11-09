@@ -33,10 +33,12 @@ import {
   archetypeTrackRecordIsStale,
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
+  optionMarkSeverelyStale,
   optionMarkStaleCaveat,
   playExpectsLiveOptionMark,
   darkPoolStale,
   resolveGammaPosture,
+  severelyStaleAgeLabel,
   trustedHelixFlow,
   vectorSnapshotStale,
 } from "./play-brief-absence";
@@ -699,6 +701,36 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
   // absence.ts). `sameContractAsMarkAbove` stays explicit `true` (this function's own subject
   // `play`, never a sibling's) so only the fourth, `actionable` argument differs from `staleCaveat`.
   const execTotalLossStaleCaveat = optionMarkStaleCaveat(play, readMs, true, true);
+  // SEVERITY-TIERING FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09 follow-up to
+  // #7795's own "SEVERITY-TIERING FIX" above `optionMarkStaleCaveat` (play-brief-absence.ts)):
+  // that fix's own commit message said "every pre-existing call site's output is unchanged" — true
+  // of every OTHER line in this section (P&L/Peak/Trough/Greeks/Spread/Exec P&L, all wired to
+  // `staleCaveat`/`execTotalLossStaleCaveat` above), but the Mark line a few lines below was never
+  // migrated at all — it still calls `optionMarkIsStale` directly and renders a bare "_(stale)_"
+  // tag unconditionally, with no severity distinction, for the EXACT quote those other lines'
+  // "...same quote Mark flagged above" wording cites as "above". Live-confirmed 2026-11-09
+  // (SWING:LABD:2484, ~77h-stale markAsOf, comfortably past SWING_OPTION_MARK_SEVERELY_STALE_MS):
+  // Greeks/Spread correctly read "severely stale ... (~77h ago)" while this Mark line, the very
+  // line they point back to, said only the bare "(stale)" — the self-contradiction this whole
+  // mandate exists to close, on the one line every other line's wording assumes already escalated.
+  //
+  // Deliberately NOT a plain swap to `optionMarkStaleCaveat(play, readMs, false, false)`: that
+  // variant's own "its own quote, last synced ${stamp}" wording would duplicate the date this line
+  // already renders a few characters to its left (`(${etStampFromIso(play.markAsOf)})`), and the
+  // default (`sameContractAsMarkAbove: true`) wording would have THIS line claim its own quote is
+  // "flagged above" — circular, since this line IS what every other line calls "above". Instead:
+  // additive only, mirroring #7795's own discipline — the mild tier's existing bare "_(stale)_" tag
+  // is untouched byte-for-byte (several tests depend on exactly that literal text, including the
+  // one asserting "Mark line itself must flag stale, making 'flagged above' true"), and only a
+  // quote that ALSO clears `optionMarkSeverelyStale` escalates to a short, dedicated severity tag
+  // naming the actual elapsed span via the shared `severelyStaleAgeLabel` (no "flagged above", no
+  // duplicated date — just the one new fact: how stale, really).
+  const markSeverelyStale = optionMarkSeverelyStale(play, readMs);
+  const markStaleTag = markSeverelyStale
+    ? ` _(severely stale — ~${severelyStaleAgeLabel(readMs - Date.parse(play.markAsOf!))} ago)_`
+    : optionMarkIsStale(play, readMs)
+      ? " _(stale)_"
+      : "";
   // GUARD #2 (2026-10-15, Ask Largo standing mandate — live ENOV repro, positionId 1739, BANGER-
   // origin TRIM/PARTIAL; kept unchanged by the 2026-10-16 fix above — `pnlForDisplay` is now
   // always the canonical `play.pnlPct`, so this guard's job (protecting against a STALE
@@ -750,7 +782,7 @@ function pnlSection(play: TerminalPlay, readMs: number): RichSection {
           // point back to. Appending the stale tag here, consistent with the other two branches'
           // own in-line caveats, makes every downstream "flagged above" reference accurate instead
           // of rewording each one around a cross-section reference that can drift again later.
-          `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}${optionMarkIsStale(play, readMs) ? " _(stale)_" : ""}`,
+          `Mark: **${fmtUsd(play.mark)}**${play.markAsOf ? ` (${etStampFromIso(play.markAsOf)})` : ""}${markStaleTag}`,
     `P&L: **${fmtPct(pnlForDisplay)}**${blended != null ? " _(open runner only — trim already banked, see below)_" : ""}${staleCaveat}`,
     // BUG FIX (2026-10-17, Ask Largo x Night Hawk Swings standing mandate — live NVDA:62 repro,
     // board-wide sweep found 9/63 committed positions affected). Before this fix, Peak/Trough

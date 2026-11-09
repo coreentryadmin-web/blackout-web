@@ -93,4 +93,45 @@ describe("play-card-display", () => {
     );
     assert.equal(primaryReturnLabel({ ...base, status: "SKIP", trackPct: -3 }), "Since flag");
   });
+
+  // BUG FIX (round 509 audit): `use-legacy-quotes.ts`'s `overlayLegacyQuotes` stamps
+  // `stockMovePct` UNCONDITIONALLY on every Legacy play with a resolvable entry band, and
+  // leaves it in place even after `overlayLegacyOptionMarks` (containers.tsx composes the two
+  // as `overlayLegacyOptionMarks(overlayLegacyQuotes(...), marks)`) later restores a REAL,
+  // live `pnlPct` from an actual option mark — so `stockMovePct != null` is true for nearly
+  // every OPEN Legacy row, real option P&L included, not just the no-mark-yet case this label
+  // was written for. `primaryReturnLabel` used to branch on `stockMovePct != null` alone,
+  // while the row's actual DISPLAYED number (`playListReturnPct` -> `openMetricsValues` ->
+  // `legacyPrimaryPnlPct`, play-card-lifecycle.ts) prefers the real `pnlPct` first — so a
+  // Legacy OPEN play with a working live option mark showed its genuine option premium P&L
+  // under the label "Stock", the exact mislabel the sibling, already-fixed call site at
+  // CommandDeck.tsx:872 avoids by checking `pnlPct != null` instead (`p.pnlPct != null ?
+  // "Premium" : "Stock"`). Fixed by mirroring that proven check here.
+  it("primaryReturnLabel: a LEGACY OPEN row with a real live option mark reads P&L, not Stock", () => {
+    const openWithRealMark: TerminalPlay = {
+      ...base,
+      horizon: "LEGACY",
+      status: "OPEN",
+      pnlPct: 12.5,
+      // Stamped unconditionally by overlayLegacyQuotes and never cleared once a real mark
+      // lands — present on nearly every OPEN Legacy row, not a special/rare case.
+      stockMovePct: -3.1,
+    };
+    assert.equal(
+      primaryReturnLabel(openWithRealMark),
+      "P&L",
+      "a real option pnlPct must label as P&L even though stockMovePct is also stamped",
+    );
+  });
+
+  it("primaryReturnLabel: a LEGACY OPEN row with NO live option mark yet still reads Stock", () => {
+    const openNoMarkYet: TerminalPlay = {
+      ...base,
+      horizon: "LEGACY",
+      status: "OPEN",
+      pnlPct: null,
+      stockMovePct: -3.1,
+    };
+    assert.equal(primaryReturnLabel(openNoMarkYet), "Stock");
+  });
 });

@@ -672,8 +672,16 @@ export function optionMarkSeverelyStale(play: OptionMarkFreshnessSource, readMs:
  * inside `optionMarkStaleCaveat` once `optionMarkSeverelyStale` has already confirmed `ageMs` is a
  * real, non-negative span at or past `SWING_OPTION_MARK_SEVERELY_STALE_MS` (>= 4 hours), so the
  * `hours < 48` branch can never under-round to "0h".
+ *
+ * Exported (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09 follow-up) so the OTHER
+ * direct `optionMarkIsStale()` call sites this same severity-tiering mandate swept
+ * (`pnlSection`'s own Mark line and `collectOptionMarkStalenessAbsence` in this file,
+ * `dataFreshnessSection` in play-brief-intel.ts) can name the identical elapsed-span text instead
+ * of each re-deriving the hour/day rounding rule a second (and third, and fourth) time — the exact
+ * "one fact, independently re-derived, risks drifting" shape this file's own `optionMarkStaleCaveat`
+ * doc comment already warns about for its sibling helpers.
  */
-function severelyStaleAgeLabel(ageMs: number): string {
+export function severelyStaleAgeLabel(ageMs: number): string {
   const hours = ageMs / (60 * 60_000);
   if (hours < 48) return `${Math.round(hours)}h`;
   return `${Math.round(hours / 24)}d`;
@@ -852,7 +860,38 @@ export function collectOptionMarkStalenessAbsence(
     };
   }
   if (optionMarkIsStale(play, readMs)) {
+    // `optionMarkIsStale` returning true already guarantees `play.markAsOf` is a real, truthy
+    // timestamp (see the comment above this branch) — safe to Date.parse unconditionally.
     const stamp = etStampFromIso(play.markAsOf!) ?? play.markAsOf!;
+    // SEVERITY-TIERING FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09 follow-up
+    // to #7795's own "SEVERITY-TIERING FIX" on `optionMarkStaleCaveat` above): this `reason` fed
+    // `envelope.unavailableSources`' "option mark" chip the identical flat "stale — last synced
+    // ${stamp}" text regardless of whether the quote was 19 minutes or 73+ hours past
+    // `SWING_OPTION_MARK_STALE_MS` — the same flattening #7795 fixed for `optionMarkStaleCaveat`'s
+    // own narrative callers, never swept to this structured C3 feeder (confirmed live 2026-11-09,
+    // SWING:LABD:2484: this exact chip read a bare "stale — last synced ..." for a ~77h-old mark,
+    // the same fact the SAME brief's narrative-coaching section called "severely stale ...
+    // UNCONFIRMED by live data" a few lines later in the identical envelope).
+    //
+    // Fix: name the actual elapsed span once a quote also clears `optionMarkSeverelyStale`,
+    // additive only — the literal "stale — last synced ${stamp}" PREFIX is deliberately preserved
+    // byte-for-byte in both branches (not reordered to "severely stale — ...", the narrative
+    // caveat's own wording) because `dataHonestyCoaching` (play-brief-narrative-coaching.ts) reads
+    // this exact `reason` string back with `reason.startsWith("stale — last synced ")` to extract
+    // the stamp for its own "option mark from **<stamp>**" bullet — changing the prefix would have
+    // silently routed every severely-stale mark into that function's generic `else` branch instead
+    // ("mark not synced to live tape"), losing both the stamp and the new severity disclosure. See
+    // this file's own `optionMarkStaleCaveat` for the narrative-caveat sibling of this exact fix.
+    if (optionMarkSeverelyStale(play, readMs)) {
+      const markMs = Date.parse(play.markAsOf!);
+      const ageLabel = severelyStaleAgeLabel(readMs - markMs);
+      return {
+        source: "option mark",
+        reason: `stale — last synced ${stamp} (severely stale, ~${ageLabel} ago)`,
+        what_is_missing: "a fresh option-quote sync",
+        retryable: true,
+      };
+    }
     return {
       source: "option mark",
       reason: `stale — last synced ${stamp}`,

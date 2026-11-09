@@ -1,3 +1,34 @@
+## WATCH LIST — 2026-11-09 (Ask Largo swing play-brief's option-mark stale-quote caveat — 4 remaining call sites now severity-tiered, `fix/swing-largo-option-mark-stale-caveat-remaining-sites`) — re-check a severely-stale committed swing position's full brief once live
+
+- **What was broken**: PR #7795 (merged earlier the same day) gave `optionMarkStaleCaveat()` a
+  severity tier (`optionMarkSeverelyStale()`, 4-hour bar) but only wired it into 2 of 6 real call
+  sites. Four others — the Position section's own `Mark:` line (`play-brief.ts`), the structured
+  `unavailableSources`/`evidence[]` feeder (`collectOptionMarkStalenessAbsence`,
+  `play-brief-absence.ts`), the "What to watch" premium stop/target rail caveat, and the
+  Data-freshness section's own "Option mark" line (both `play-brief-intel.ts`) — still called the
+  old flat `optionMarkIsStale()` boolean directly, so the SAME severely-stale quote (live repro
+  SWING:LABD:2484, ~77h stale) read as a bare, uninformative "(stale)" on those four lines while
+  the narrative-coaching section a few lines later in the identical brief correctly said "severely
+  stale ... UNCONFIRMED by live data."
+- **Fix**: all four sites now route through the shared, already-tiered `optionMarkStaleCaveat()`/
+  `optionMarkSeverelyStale()`/`severelyStaleAgeLabel()` (the last now exported for reuse). Mild-tier
+  wording is untouched byte-for-byte everywhere; only a quote past the 4-hour bar escalates, each
+  site naming the real elapsed span. `collectOptionMarkStalenessAbsence`'s `reason` string keeps its
+  existing `"stale — last synced "` prefix byte-for-byte so `dataHonestyCoaching`'s downstream
+  `reason.startsWith(...)` stamp-extraction keeps working unmodified. RED→GREEN confirmed via
+  plain file-copy backup/restore of the three touched source files (new/updated assertions fail
+  pre-fix, pass post-fix); full `src/lib/swing/*.test.ts` 2338/2338; `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: pull a real committed swing position's full play-brief
+  whose `markAsOf` is several hours stale (the kind of gap a missed/degraded `swing-active-refresh`
+  tick or an upstream data outage produces — see this file's own Polygon-entitlement watch-list
+  entries). Confirm the Position section's `Mark:` line, the "What to watch" rail lines, the
+  Data-freshness section's "Option mark" line, and `envelope.unavailableSources`'s "option mark"
+  chip all now read "severely stale" with a real elapsed-time label (not a bare "(stale)"), and that
+  the elapsed span they each name agrees with the narrative-coaching section's own figure for the
+  identical quote. No live reproduction of a fresh severely-stale position was forced for this fix
+  (the LABD read used to confirm the bug pre-fix is itself the evidence); this is a direct
+  confirmation that the live rendering now matches the fixed source, not a forced repro.
+
 ## WATCH LIST — 2026-11-09 VectorChart's live SSE tick handler mirrors five more regime/wall callbacks through refs (`onRegimeChange`/`onProximityChange`/`onMagnetChange`/`onConfluenceChange`/`onWallIntegrityChange`), same shape as the already-fixed `onFreshness`/`onSpotChange` gap (PR pending at time of writing — see commit for the merged SHA)
 
 **What was shipped:** DISCOVERY round 507's fresh pass on `VectorChart`'s ref-mirror lens (picking
@@ -10729,6 +10760,33 @@ and `/play` are actually serving a real price again
   values this large are rare by construction, so this is a passive next-occurrence check, not a
   forced repro.
 
+## WATCH LIST — 2026-11-09 (Command Deck list row mislabeled real Legacy option P&L as "Stock", `fix/legacy-play-row-stock-label-mislabel`) — re-check during live RTH on the Legacy desk's table/list view
+
+- **What was broken**: `primaryReturnLabel` (`play-card-display.ts`), used by the Command Deck's
+  shared compact list-row card (`PlayLifecycleCardBody`), decided between a "Stock" and "P&L"
+  label for Legacy OPEN rows purely on `play.stockMovePct != null`. `overlayLegacyQuotes`
+  (`use-legacy-quotes.ts`) stamps `stockMovePct` unconditionally on every Legacy play with a
+  resolvable entry band and never clears it even after `overlayLegacyOptionMarks` (run second in
+  `containers.tsx`) restores a REAL, live `pnlPct` from an actual option mark — so
+  `stockMovePct != null` was true for nearly every OPEN Legacy row, including the normal case
+  where the row's displayed number (`playListReturnPct` → `legacyPrimaryPnlPct`, which already
+  correctly prefers real `pnlPct`) is genuine option premium return. Net effect: a Legacy OPEN
+  play with a working live option mark showed its real P&L % under the misleading label "Stock".
+- **Fix**: changed the condition to `play.pnlPct != null` (mirroring the already-correct sibling
+  check at `CommandDeck.tsx:872`, `p.pnlPct != null ? "Premium" : "Stock"`). The "no live mark
+  yet" case (the branch's original intent) is unchanged and covered by its own regression test.
+  RED confirmed via `git stash` isolating the source change (new "reads P&L, not Stock" assertion
+  fails pre-fix with `'Stock' !== 'P&L'`), GREEN post-fix; full
+  `src/features/nighthawk/command-deck/*.test.ts` battery (505 tests) and `npx tsc --noEmit` both
+  clean.
+- **Specific thing to check once live**: open the Command Deck's Legacy lane table/list view
+  (the row-based layout `PlayLifecycleCardBody` renders, as opposed to the card grid) during RTH
+  for any OPEN Legacy play that already has a live, working option mark (a real, nonzero
+  premium-based P&L, not a stock-only fallback) — confirm its list-row label reads "P&L", never
+  "Stock". Before this fix, essentially every such row would have shown "Stock" regardless of
+  whether a real option mark was live, so this should flip visibly across the whole Legacy list
+  the first time it's checked live post-deploy.
+
 ## WATCH LIST — 2026-11-09 (VectorCompareDesk self-sustaining render/effect loop on `onReplayTimeline`, `fix/vector-array-mutation-sweep`) — re-check Vector Compare's CPU/jank during live RTH with 2+ panes open
 
 - **What was broken**: `VectorCompareDesk.tsx` built each compare pane's `onReplayTimeline` prop
@@ -10784,3 +10842,27 @@ and `/play` are actually serving a real price again
   call during RTH while SPX Slayer is holding a SHORT play, confirm the "Action"/"Play" row now
   renders `bear` (red) tone, not `bull` (green). No live pre-fix repro was captured — a short SPX
   Slayer play wasn't open at the time of the fix — so this is a passive next-occurrence check.
+
+## WATCH LIST — 2026-11-09 (Legacy board "Target path" meter colored a live premium return by the stock's sign, `fix/vector-compare-sweep`) — re-check the Legacy desk's board table during live RTH
+
+- **What was broken**: `legacyBoardMeter()` (`legacy-board-table-utils.ts`), which feeds the
+  Legacy board's "Target path" column (`legacy-board-columns.tsx`), already preferred the real
+  live option-PREMIUM return for its displayed value whenever one existed, falling back to the
+  underlying stock's move only when it didn't — but colored that value's tone (up/down/flat)
+  off the STOCK's sign unconditionally, regardless of which number was actually shown. An
+  actively tracked OPEN Legacy row with both a live stock quote and a live option mark (the
+  common case) could show a positive premium return in a bearish/red tone, or a negative premium
+  return in a bullish/green tone, whenever the two disagreed in sign — routine, since an option's
+  premium moves on its own vol/skew/decay dynamics independent of the stock's tick.
+- **Fix**: the meter's tone now follows the same precedence its own value label already uses —
+  the premium's tone when a live option mark exists, the stock's tone only when it doesn't. RED
+  confirmed via `git stash` isolating the source change (new assertion fails pre-fix,
+  `'down' !== 'up'`), GREEN post-fix (19/19 in the touched suite, 1719/1719 across every sibling
+  `src/features/nighthawk/{lib,components}/*.test.ts` suite); `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: open the Legacy board table during RTH and find any OPEN
+  row with both a live stock quote (visible stock price/change) and a live option mark (a real,
+  nonzero premium % in the "Premium vs entry" column) where the underlying's own move and the
+  premium's move disagree in sign — confirm the "Target path" meter's color now matches the
+  premium (the number it's actually showing), not the stock. No live pre-fix repro was possible
+  (needs that specific sign-disagreement live at the moment of inspection), so this is a passive
+  next-occurrence check.

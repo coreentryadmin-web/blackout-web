@@ -74,12 +74,29 @@ export function primaryReturnPct(play: TerminalPlay): number | null {
   return null;
 }
 
-/** Label beside the return % on list rows — WATCH uses "Since flag", not "P&L". */
+/** Label beside the return % on list rows — WATCH uses "Since flag", not "P&L".
+ *
+ * BUG FIX (round 509 audit): the LEGACY branch used to key off `play.stockMovePct != null`
+ * alone to decide between "Stock" and "P&L". `overlayLegacyQuotes` (use-legacy-quotes.ts)
+ * stamps `stockMovePct` UNCONDITIONALLY on every Legacy play with a resolvable entry band —
+ * and, critically, `containers.tsx` composes the overlays as
+ * `overlayLegacyOptionMarks(overlayLegacyQuotes(plays, ...), marks)`, so once a REAL live
+ * option mark lands and `overlayLegacyOptionMarks` restores a genuine `pnlPct`, the earlier
+ * `stockMovePct` stamp is simply never cleared. So `stockMovePct != null` was true for nearly
+ * every OPEN Legacy row, real option P&L included, not only the "no mark yet" case the label
+ * was written to distinguish. Meanwhile the actual number this label sits beside
+ * (`playListReturnPct` -> `openMetricsValues` -> `legacyPrimaryPnlPct`, play-card-lifecycle.ts)
+ * already prefers the real `pnlPct` first — so a Legacy OPEN play with a working live option
+ * mark rendered its genuine option premium return under the label "Stock" in the Command
+ * Deck's compact list rows (`PlayLifecycleCardBody`, which every lane's list view shares).
+ * The sibling call site at CommandDeck.tsx's own card body (~line 872) already gets this right
+ * — `p.pnlPct != null ? "Premium" : "Stock"` — by checking which VALUE is actually being shown
+ * rather than whether a stock-derived number merely exists alongside it. Mirrored here. */
 export function primaryReturnLabel(play: TerminalPlay): string {
   if (isWatchTrackStatus(play.status) && play.trackPct != null) return "Since flag";
   if (play.horizon === "LEGACY") {
     if (play.status === "CLOSED") return "Peak Return";
-    return play.stockMovePct != null ? "Stock" : "P&L";
+    return play.pnlPct != null ? "P&L" : "Stock";
   }
   if (play.status === "CLOSED") return "Peak Return";
   return "P&L";
