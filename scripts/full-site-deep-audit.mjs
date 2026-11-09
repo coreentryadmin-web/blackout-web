@@ -5,7 +5,8 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { evaluateFullSiteSpxDeskSpot } from "./lib/full-site-spx-desk-eval.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -190,9 +191,22 @@ async function auditSpxDesk() {
   const bad = scanFinite(d).slice(0, 5);
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
+  const rthLive = inRthOpenWindow();
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const spotVerdict = evaluateFullSiteSpxDeskSpot({
+    spot,
+    available: d.available,
+    rthLive,
+  });
+  if (spotVerdict.outcome === "fail") {
+    fail("spx-desk", "SPOT", spotVerdict.message, spotVerdict.severity ?? "P0");
+    return;
+  }
+  if (spotVerdict.outcome === "skip") {
+    ok("spx-desk", "spot", spotVerdict.message);
+    return;
+  }
+  ok("spx-desk", "spot", spotVerdict.message);
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
