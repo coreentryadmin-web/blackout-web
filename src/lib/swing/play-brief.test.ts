@@ -6952,6 +6952,60 @@ test("composeSwingPlayBrief: Exec P&L line surfaces a confirmed $0.00 bid as a t
   );
 });
 
+// SEVERITY-TIERING FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09, live repro
+// GET /api/market/swing/play-brief?playId=SWING:HLF:2473): the "total loss" wording above is an
+// alarm-shaped claim, not a passive fact — before this fix, it carried the IDENTICAL flat
+// " _(stale — same quote Mark flagged above)_" caveat regardless of whether the $0.00 bid was
+// confirmed 19 minutes ago or (as live-observed, ~264,780s / ~73.5h / 3+ trading sessions, during
+// the still-open 2026-11-06/07 Polygon real-time-snapshot entitlement outage, CLAUDE.md) multiple
+// trading sessions ago. This reproduces that exact live shape and proves the line now escalates to
+// an explicit "unconfirmed by live data, do not treat as a current, actionable signal" warning
+// instead of the flat phrase.
+test("composeSwingPlayBrief: a severely-stale confirmed $0.00 bid's 'total loss' claim escalates to an explicit unconfirmed/actionable warning, not the flat mild-tier caveat (live SWING:HLF:2473 repro)", () => {
+  const brief = composeSwingPlayBrief({
+    play: fixturePlay({
+      status: "OPEN",
+      recommendation: "HOLD",
+      entry: 0.25,
+      mark: 0.0,
+      markAsOf: "2026-11-06T16:19:00.000Z", // the live-observed frozen markAsOf from CLAUDE.md's entry
+      markIsSync: false,
+      pnlPct: -100,
+      peak: 5,
+      execMark: null,
+      execPnlPct: null,
+      execBidZero: true, // a confirmed $0.00 bid, same as the mild-tier EXPE repro above
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-11-09T18:00:00.000Z", // ~73.7 hours after markAsOf — multiple trading sessions
+    sessionDate: "2026-11-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    readMs: Date.parse("2026-11-09T18:00:00.000Z"),
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  });
+  const position = brief.envelope.sections.find((s) => s.title === "Position");
+  assert.ok(position, "expected Position section");
+  const execLine = position!.body.split("\n").find((l) => l.startsWith("Exec P&L:"));
+  assert.ok(execLine, `expected an Exec P&L line — got: ${position!.body}`);
+  assert.match(
+    execLine!,
+    /the executable exit is a total loss/,
+    "the underlying claim itself must be unchanged",
+  );
+  assert.doesNotMatch(
+    execLine!,
+    /_\(stale — same quote Mark flagged above\)_/,
+    `a severely-stale (~73.7h) 'total loss' claim must NOT render the same flat caveat a 19-minute-stale quote gets — got: ${execLine}`,
+  );
+  assert.match(execLine!, /severely stale/i);
+  assert.match(execLine!, /UNCONFIRMED/i);
+  assert.match(execLine!, /do not treat it as a current, actionable signal/i);
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-25, live repro MRNA): Exec P&L is priced off the
 // exact same bid/ask snapshot the Greeks/Spread lines already flag stale — this line must carry
 // the identical caveat, not render as if the fill-based figure were freshly measured.
