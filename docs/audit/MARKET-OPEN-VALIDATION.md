@@ -10208,3 +10208,21 @@ and `/play` are actually serving a real price again
   section shows a `deltaFromMedian` whose raw value (score minus lane median) lands near a
   `.x5`-at-one-decimal boundary, confirm the displayed "+X/-X vs median" magnitude matches the
   equivalent opposite-sign case rather than reading 0.1pt smaller on the negative side.
+
+## WATCH LIST — 2026-11-09 (`parseDow` silently dropped named weekday ranges like `MON-FRI`, `fix/cron-dow-named-range`, PR #7756) — re-check once the next cron-health/staleness dashboard pull happens
+
+- **What was broken**: `src/lib/cron-schedule-window.ts`'s `parseDow` had no branch for a named
+  weekday RANGE (`MON-FRI`, case-insensitive) — it fell through to `Number(part) % 7` = `NaN`,
+  so the allowed-day Set never matched any real day and `enumerateFiresOnUtcDay` silently
+  returned zero fires forever for that schedule. `isInOffScheduleIdleGap` then reported the job
+  as permanently off-schedule-idle (a quiet watchdog failure) for a schedule that's supposed to
+  fire every weekday — the literal EventBridge syntax `cron(*/5 11-21 ? * MON-FRI *)` already
+  appears in this codebase's own cron-registry comments.
+- **Fix**: added a named-range branch using the same non-wrapping semantics the numeric range
+  branch already has. Two regression tests added; RED confirmed pre-fix (2/21 fail), GREEN
+  post-fix (21/21 pass); `tsc --noEmit` clean.
+- **Specific thing to check once live**: pull the next cron-health/staleness dashboard read and
+  confirm any schedule actually registered with a `MON-FRI`-style (or other named-range) DOW
+  field now computes real expected-fire bounds instead of reading as permanently idle — if this
+  parser is consulted by a live staleness alarm, this fix should make a previously-silent gap
+  visible (or close one that was wrongly firing as idle).

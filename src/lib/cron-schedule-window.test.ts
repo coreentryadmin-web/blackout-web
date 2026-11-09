@@ -170,4 +170,41 @@ describe("cron-schedule-window", () => {
     assert.equal(last?.toISOString(), "2026-07-30T10:05:00.000Z");
     assert.equal(next?.toISOString(), "2026-07-30T10:20:00.000Z");
   });
+
+  // BUG: a named weekday RANGE ("MON-FRI", case-insensitive) matched none of parseDow's branches
+  // — not the numeric `rangeMatch` regex (letters, not digits), not the single-name `DOW_NAMES`
+  // lookup (the key is the whole "MON-FRI" string, which isn't in that map) — so it fell through
+  // to the bare `Number(part) % 7` branch, which is `NaN % 7` = NaN. The allowed-day Set then
+  // contains only NaN, which `.has(dow)` never matches for any real 0-6 day, so
+  // enumerateFiresOnUtcDay silently returns zero fires for EVERY day, forever. That is not a loud
+  // failure: lastExpectedCronFireUtc/nextExpectedCronFireUtc both return null with no throw, and
+  // isInOffScheduleIdleGap's `if (!bounds) return true` then reports the job as permanently
+  // off-schedule-idle — the watchdog's "nothing to see here" state — for a schedule that is
+  // actually supposed to fire every weekday. This form isn't hypothetical: it's the literal
+  // EventBridge syntax several real crons here are described in (`cron(*/5 11-21 ? * MON-FRI *)`
+  // — see heatmap-warm/uw-cache-refresh/bie-full-state-snapshot route comments), and
+  // isDualBandMorningUtcSchedule a few lines below already special-cases the exact string
+  // `dowField.toUpperCase() === "MON-FRI"`, proving this textual form is expected to reach this
+  // file's parser, not just the numeric "1-5" every `cron-registry.ts` row happens to use today.
+  it("named weekday range (MON-FRI) parses the same fires as the numeric range (1-5)", () => {
+    const numeric = "0 9 * * 1-5";
+    const named = "0 9 * * MON-FRI";
+    const now = new Date("2026-11-04T10:00:00.000Z"); // Wednesday
+    assert.equal(
+      lastExpectedCronFireUtc(named, now)?.toISOString(),
+      lastExpectedCronFireUtc(numeric, now)?.toISOString()
+    );
+    assert.equal(lastExpectedCronFireUtc(named, now)?.toISOString(), "2026-11-04T09:00:00.000Z");
+    assert.equal(
+      nextExpectedCronFireUtc(named, now)?.toISOString(),
+      nextExpectedCronFireUtc(numeric, now)?.toISOString()
+    );
+    assert.equal(nextExpectedCronFireUtc(named, now)?.toISOString(), "2026-11-05T09:00:00.000Z");
+  });
+
+  it("named weekday range (TUE-THU) is honored, not silently dropped", () => {
+    const cron = "0 9 * * TUE-THU";
+    const wednesday = new Date("2026-11-04T10:00:00.000Z"); // Wednesday
+    assert.equal(lastExpectedCronFireUtc(cron, wednesday)?.toISOString(), "2026-11-04T09:00:00.000Z");
+  });
 });
