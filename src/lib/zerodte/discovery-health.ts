@@ -39,7 +39,9 @@ export type DiscoveryLaneStatus =
   | "empty_market"
   /** Fail-closed: the snapshot could not be PROVEN fresh, so the lane declined to use it. */
   | "data_unavailable"
-  /** The lane threw and was caught by scan.ts's best-effort guard. */
+  /** The lane's own upstream fetch threw (network/429/4xx/5xx) and was caught — either inside the
+   *  lane's own discovery function (e.g. BREAKOUT's `skip_fetch_failed`, 2026-11-09) or one layer
+   *  out, by scan.ts's best-effort guard. Either way: never a market read, never "no breakouts". */
   | "failed";
 
 export interface DiscoveryLaneHealth {
@@ -82,6 +84,14 @@ export function laneStatusFromBreakoutOutcome(outcomeStatus: string): DiscoveryL
       return "off_hours";
     case "skip_empty_market":
       return "empty_market";
+    // 2026-11-09: the grouped-daily fetch ITSELF threw (network/429/4xx/5xx — confirmed live: a
+    // same-day entitlement 403). Honestly the same category as the generic `failed` below (an
+    // absence a reader must notice, not a market read) — just caught one layer deeper, inside
+    // discoverBreakoutSetups rather than scan.ts's outer try/catch. Listed explicitly rather than
+    // left to the `default` branch so this mapping is deliberate and covered by the "maps every
+    // known outcome status" test below, not an accident of the fallback.
+    case "skip_fetch_failed":
+      return "failed";
     case "data_unavailable":
       return "data_unavailable";
     default:
