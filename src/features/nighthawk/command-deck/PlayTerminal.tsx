@@ -828,17 +828,34 @@ function ManagePanel({ play, nowMs }: { play: TerminalPlay; nowMs: number }) {
   );
 }
 
+// REGRESSION (sibling of `signPct` above): this helper's `pct` leg applied a bare
+// `Math.round(pct)` with a separately-decided `pct >= 0 ? "+" : ""` sign prefix — the same
+// sign-biased rounding-tie paste `signPct`'s own doc comment names as already fixed elsewhere
+// (`fmt-money.ts`'s `fmtPct`, `round-floats.ts`, `shift-math.ts`'s `fmtShiftPercentForStrike`,
+// and `signPct` itself in this very file). `Math.round` ties toward +Infinity
+// (`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`), so a runner's target/stop level
+// sitting exactly a half-percent tie away from the live mark rendered a SMALLER magnitude on
+// the loss side than the identical-distance gain side would show — e.g. stop 2.5% below mark
+// read "-2% away" while an equidistant target 2.5% above read "+3% away". Extracted to a pure,
+// exported function (was an inline closure over `mark`) so it is unit-testable without
+// rendering the component, matching the `signPct` precedent immediately above.
+export function trimLadderDistanceLabel(
+  level: number | null,
+  mark: number | null | undefined
+): string {
+  if (level == null || mark == null) return "";
+  const dollars = level - mark;
+  const pct = mark > 0 ? (level / mark - 1) * 100 : null;
+  const roundedPct = pct != null ? Math.sign(pct) * Math.round(Math.abs(pct)) : null;
+  return ` · ${dollars >= 0 ? "+" : ""}${dollars.toFixed(2)}${roundedPct != null ? ` / ${roundedPct > 0 ? "+" : ""}${roundedPct}%` : ""} away`;
+}
+
 /** The real trim-scale ladder from the frozen exit policy: profit tranches (banked/pending) + the
  *  runner's target/stop rails with live distance-to-each in $ and %. */
 function TrimScaleLadder({ play }: { play: TerminalPlay }) {
   const p = play.exitPolicy!;
   const mark = play.mark;
-  const distTo = (level: number | null): string => {
-    if (level == null || mark == null) return "";
-    const dollars = level - mark;
-    const pct = mark > 0 ? (level / mark - 1) * 100 : null;
-    return ` · ${dollars >= 0 ? "+" : ""}${dollars.toFixed(2)}${pct != null ? ` / ${pct >= 0 ? "+" : ""}${Math.round(pct)}%` : ""} away`;
-  };
+  const distTo = (level: number | null): string => trimLadderDistanceLabel(level, mark);
   return (
     <>
       <div className="nh-deck-lab" style={{ marginTop: 4 }}>Trim-scale ladder — the engine banks partials, then runs the rest</div>
