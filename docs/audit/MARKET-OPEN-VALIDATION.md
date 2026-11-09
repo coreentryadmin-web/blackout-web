@@ -1,3 +1,34 @@
+## WATCH LIST — 2026-11-09 (Ask Largo swing play-brief's option-mark stale-quote caveat — 4 remaining call sites now severity-tiered, `fix/swing-largo-option-mark-stale-caveat-remaining-sites`) — re-check a severely-stale committed swing position's full brief once live
+
+- **What was broken**: PR #7795 (merged earlier the same day) gave `optionMarkStaleCaveat()` a
+  severity tier (`optionMarkSeverelyStale()`, 4-hour bar) but only wired it into 2 of 6 real call
+  sites. Four others — the Position section's own `Mark:` line (`play-brief.ts`), the structured
+  `unavailableSources`/`evidence[]` feeder (`collectOptionMarkStalenessAbsence`,
+  `play-brief-absence.ts`), the "What to watch" premium stop/target rail caveat, and the
+  Data-freshness section's own "Option mark" line (both `play-brief-intel.ts`) — still called the
+  old flat `optionMarkIsStale()` boolean directly, so the SAME severely-stale quote (live repro
+  SWING:LABD:2484, ~77h stale) read as a bare, uninformative "(stale)" on those four lines while
+  the narrative-coaching section a few lines later in the identical brief correctly said "severely
+  stale ... UNCONFIRMED by live data."
+- **Fix**: all four sites now route through the shared, already-tiered `optionMarkStaleCaveat()`/
+  `optionMarkSeverelyStale()`/`severelyStaleAgeLabel()` (the last now exported for reuse). Mild-tier
+  wording is untouched byte-for-byte everywhere; only a quote past the 4-hour bar escalates, each
+  site naming the real elapsed span. `collectOptionMarkStalenessAbsence`'s `reason` string keeps its
+  existing `"stale — last synced "` prefix byte-for-byte so `dataHonestyCoaching`'s downstream
+  `reason.startsWith(...)` stamp-extraction keeps working unmodified. RED→GREEN confirmed via
+  plain file-copy backup/restore of the three touched source files (new/updated assertions fail
+  pre-fix, pass post-fix); full `src/lib/swing/*.test.ts` 2338/2338; `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: pull a real committed swing position's full play-brief
+  whose `markAsOf` is several hours stale (the kind of gap a missed/degraded `swing-active-refresh`
+  tick or an upstream data outage produces — see this file's own Polygon-entitlement watch-list
+  entries). Confirm the Position section's `Mark:` line, the "What to watch" rail lines, the
+  Data-freshness section's "Option mark" line, and `envelope.unavailableSources`'s "option mark"
+  chip all now read "severely stale" with a real elapsed-time label (not a bare "(stale)"), and that
+  the elapsed span they each name agrees with the narrative-coaching section's own figure for the
+  identical quote. No live reproduction of a fresh severely-stale position was forced for this fix
+  (the LABD read used to confirm the bug pre-fix is itself the evidence); this is a direct
+  confirmation that the live rendering now matches the fixed source, not a forced repro.
+
 ## WATCH LIST — 2026-11-09 VectorChart's live SSE tick handler mirrors five more regime/wall callbacks through refs (`onRegimeChange`/`onProximityChange`/`onMagnetChange`/`onConfluenceChange`/`onWallIntegrityChange`), same shape as the already-fixed `onFreshness`/`onSpotChange` gap (PR pending at time of writing — see commit for the merged SHA)
 
 **What was shipped:** DISCOVERY round 507's fresh pass on `VectorChart`'s ref-mirror lens (picking

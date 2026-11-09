@@ -28,8 +28,10 @@ import {
   newsCatalystStale,
   optionMarkGenuinelyUnknown,
   optionMarkIsStale,
+  optionMarkSeverelyStale,
   optionMarkStaleCaveat,
   resolveGammaPosture,
+  severelyStaleAgeLabel,
   SWING_OPTION_MARK_STALE_MS,
   vectorAgeStale,
   vectorSnapshotStale,
@@ -1980,9 +1982,18 @@ export function watchForSection(ctx: SwingPlayBriefContext, bucket: "watch" | "o
   // section and a confident, unqualified "53% cushion"/"79% cushion" two sections later in the
   // SAME brief, built off that identical stale quote. Mirrors play-brief.ts's own wording so the
   // two call sites read as one consistent disclosure, not two independently-phrased ones.
-  const railStaleCaveat = optionMarkIsStale(play, readMs)
-    ? " _(stale — same quote Mark flagged above)_"
-    : "";
+  //
+  // SEVERITY-TIERING FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09 follow-up to
+  // #7795's own fix on `optionMarkStaleCaveat` above, play-brief-absence.ts): this local ternary
+  // re-derived the OLD, pre-#7795 flat boolean directly off `optionMarkIsStale` rather than going
+  // through the now-tiered `optionMarkStaleCaveat` pnlSection's own `staleCaveat` already calls —
+  // so a severely-stale quote (hours, not minutes, past SWING_OPTION_MARK_STALE_MS) still rendered
+  // the identical bare "stale — same quote Mark flagged above" here, even once the Position
+  // section's own Greeks/Spread lines (reading the SAME quote) had already escalated to "severely
+  // stale ... (~Nh ago)" via that shared function. Replaced the local re-derivation with a direct
+  // call through the shared, tiered function — the exact "same quote, same wording" discipline this
+  // comment's own 2026-10-21 fix already established, just not yet carried through #7795's tiering.
+  const railStaleCaveat = optionMarkStaleCaveat(play, readMs);
   const lines: string[] = [];
 
   if (bucket === "watch") {
@@ -3589,9 +3600,25 @@ export function dataFreshnessSection(ctx: SwingPlayBriefContext): RichSection | 
     // in the unavailable-source chip and evidence array, "as of <time>" with no qualifier here.
     // Live repro: CRWD:39/AAPL:38/AAPL:37 all carried a 2026-09-15 16:00 ET mark (prior session's
     // close print) read the next morning, ~14h past the 18-minute SWING_OPTION_MARK_STALE_MS bound.
+    //
+    // SEVERITY-TIERING FIX (Ask Largo x Night Hawk Swings standing mandate, 2026-11-09 follow-up
+    // to #7795's own fix on `optionMarkStaleCaveat`, play-brief-absence.ts): this is the section
+    // named specifically for data-freshness disclosure, yet it carried the LEAST information of
+    // any call site on this exact fact — no severity, no elapsed-time age label at all — even
+    // after #7795 gave every OTHER stale-mark caveat in this brief a severity tier. Live repro
+    // 2026-11-09 (SWING:LABD:2484, ~77h-stale markAsOf): this line read a bare "Option mark
+    // **stale** — last synced **11:19 ET**" while the SAME envelope's Position section (via the
+    // now-tiered `optionMarkStaleCaveat`) correctly said "severely stale ... (~77h ago)" for the
+    // identical quote — in the one section whose whole job is to state how fresh the data is.
+    // Escalates to naming the actual elapsed span, via the shared `severelyStaleAgeLabel`
+    // (play-brief-absence.ts — same helper #7795's own fix uses, so the age text can never drift
+    // from what the Position section names for the identical fact), once the quote also clears
+    // `optionMarkSeverelyStale`. The plain "stale"/"as of" branches are untouched.
     lines.push(
       optionMarkIsStale(play, readMs)
-        ? `Option mark **stale** — last synced **${etStampFromIso(play.markAsOf)}**`
+        ? optionMarkSeverelyStale(play, readMs)
+          ? `Option mark **severely stale** — last synced **${etStampFromIso(play.markAsOf)}** (~${severelyStaleAgeLabel(readMs - Date.parse(play.markAsOf))} ago)`
+          : `Option mark **stale** — last synced **${etStampFromIso(play.markAsOf)}**`
         : `Option mark as of **${etStampFromIso(play.markAsOf)}**`,
     );
   } else if (play.markIsSync && playExpectsLiveOptionMark(play.status)) {

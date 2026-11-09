@@ -4092,6 +4092,41 @@ test("dataFreshnessSection: stale option mark on an OPEN position is labeled sta
   assert.match(section!.body, /Option mark \*\*stale\*\*/);
 });
 
+// SEVERITY-TIERING FIX, remaining call site #4 of 4 (Ask Largo x Night Hawk Swings standing
+// mandate, 2026-11-09 follow-up to #7795): this is the section named specifically for freshness
+// disclosure, yet it carried the LEAST information of any of the four remaining call sites — no
+// severity, no elapsed-time age label at all — even after #7795 gave every OTHER stale-mark
+// caveat in this brief a severity tier. Live repro 2026-11-09, SWING:LABD:2484 (~77h-stale
+// markAsOf): this line read a bare "Option mark **stale** — last synced ..." for the SAME quote
+// the Position section (via the already-tiered `optionMarkStaleCaveat`) correctly called
+// "severely stale ... (~77h ago)".
+test("dataFreshnessSection: escalates to 'severely stale' with the real elapsed span once past the 4-hour bar, not the bare 'stale' phrase with no age at all (live HLF/LABD repro shape)", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      markAsOf: "2026-11-06T16:19:00.000Z", // ~73.7h before readMs below
+      markIsSync: false,
+    }),
+    asOf: "2026-11-09T18:00:00.000Z",
+    sessionDate: "2026-11-09",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+    readMs: Date.parse("2026-11-09T18:00:00.000Z"),
+  };
+  const section = dataFreshnessSection(ctx);
+  assert.match(section!.body, /Option mark \*\*severely stale\*\*/, `got: ${section!.body}`);
+  assert.match(section!.body, /~3d ago/, `expected the real elapsed span named, got: ${section!.body}`);
+  assert.doesNotMatch(
+    section!.body,
+    /Option mark \*\*stale\*\*/,
+    "must not ALSO render the bare mild-tier phrase once escalated",
+  );
+});
+
 test("dataFreshnessSection: fresh option mark on an OPEN position still renders the plain 'as of' line (no regression)", () => {
   const freshMarkAsOf = new Date(Date.now() - 5 * 60_000).toISOString();
   const ctx: SwingPlayBriefContext = {
@@ -4341,11 +4376,13 @@ test("dataFreshnessSection: suppresses HELIX-stale prose for a dead (extended-ch
 // Date.now() sample can land on the opposite side of a staleness cutoff from a sibling section
 // (watchForSection, already fixed in #5351) reasoning about the SAME underlying field — the exact
 // "same fact, two answers within one envelope" defect #5351 fixed for a different pair of sections.
-// This test anchors ctx.readMs far in the future (well past every staleness window) while the
-// real wall clock (Date.now()) at test-run time is NOT stale — proving the section must consult
-// ctx.readMs rather than silently falling back to the real clock.
+// This test anchors ctx.readMs in the future (well past the 18-minute mild-stale window, but
+// deliberately short of the 4-hour SWING_OPTION_MARK_SEVERELY_STALE_MS bar added 2026-11-09 — this
+// test is about readMs-vs-real-clock, not severity tiering, which has its own dedicated coverage
+// below) while the real wall clock (Date.now()) at test-run time is NOT stale — proving the
+// section must consult ctx.readMs rather than silently falling back to the real clock.
 test("dataFreshnessSection: uses ctx.readMs as the staleness anchor, not the real wall clock (Ask Largo standing mandate, #5351 follow-up)", () => {
-  const anchorFarFuture = Date.now() + 365 * 24 * 60 * 60_000; // 1 year past real now
+  const anchorFarFuture = Date.now() + 60 * 60_000; // 1 hour past real now — mild-stale, not severe
   const freshMarkAsOf = new Date(Date.now() - 5 * 60_000).toISOString(); // fresh vs real now
   const ctx: SwingPlayBriefContext = {
     play: fixturePlay({ status: "OPEN", markAsOf: freshMarkAsOf, markIsSync: false }),
@@ -9802,6 +9839,55 @@ test("watchForSection: Premium stop/target rails carry the same 'stale — same 
   assert.doesNotMatch(freshSection.body, /stale — same quote Mark flagged above/, `got: ${freshSection.body}`);
   assert.match(freshSection.body, /Premium stop rail/);
   assert.match(freshSection.body, /Premium target rail/);
+});
+
+// SEVERITY-TIERING FIX, remaining call site #3 of 4 (Ask Largo x Night Hawk Swings standing
+// mandate, 2026-11-09 follow-up to #7795): the test above proves the mild tier; this proves the
+// rails ALSO escalate to the "severely stale" wording once the quote clears the new 4-hour bar —
+// `railStaleCaveat` used to re-derive the flat boolean locally rather than going through the
+// already-tiered `optionMarkStaleCaveat` the Position section's own `staleCaveat` already uses.
+test("watchForSection: Premium stop/target rails escalate to 'severely stale' with the real elapsed span once past the 4-hour bar, not the flat mild-tier phrase (live HLF/LABD repro shape)", () => {
+  const severelyStalePlay = fixturePlay({
+    status: "HOLD",
+    direction: "LONG",
+    mark: 12.53,
+    execMark: 12.25,
+    markAsOf: "2026-11-06T16:19:00.000Z", // ~73.7h before readMs below
+    exitPolicy: {
+      policy: "trim_scale",
+      hard_stop_pct: -60,
+      target_pct: 100,
+      trim_levels: [],
+      runner_fraction: 0.5,
+      stop_premium: 2.6,
+      target_premium: 25.0,
+    },
+  });
+  const section = watchForSection(
+    {
+      play: severelyStalePlay,
+      asOf: "2026-11-09T18:00:00.000Z",
+      sessionDate: "2026-11-09",
+      scanAsOf: null,
+      scanSessionDay: null,
+      laneRows: [],
+      meridian: null,
+      ecosystem: null,
+      vector: null,
+      readMs: Date.parse("2026-11-09T18:00:00.000Z"),
+    } as SwingPlayBriefContext,
+    "open",
+  );
+  assert.match(
+    section.body,
+    /Premium stop rail:.*severely stale.*~3d ago/,
+    `got: ${section.body}`,
+  );
+  assert.match(
+    section.body,
+    /Premium target rail:.*severely stale.*~3d ago/,
+    `got: ${section.body}`,
+  );
 });
 
 // Found during the 2026-09-11 Ask Largo catalysts-timing/cross-bucket-consistency pass. Same
