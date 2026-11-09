@@ -34,3 +34,23 @@ test("shortMonthDay guards bad input and formats YMD + ISO", () => {
   assert.equal(shortMonthDay("2026-12-05"), "12/5");
   assert.equal(shortMonthDay("2026-07-13T09:30:00-04:00"), "7/13");
 });
+
+test("shortMonthDay anchors an ISO instant to ET, not the viewer's local zone", () => {
+  // Same bug class as #7824/#7826: a formatter with no `timeZone` renders in whatever zone the
+  // VIEWER's browser is set to. `2026-07-13T09:30:00-04:00` is 7/13 in ET (its own offset) and
+  // also 7/13 UTC — but it is already 7/14 in Auckland (UTC+12 in July, NZST) and still 7/12 in
+  // Honolulu (UTC-10) is NOT crossed here; pick zones on both sides of ET to prove the pin, not
+  // just one. Before the fix (no `timeZone` on the instant branch), this test fails under both
+  // zones because the viewer's local day differs from the ET day; after the fix it passes under
+  // every zone because the render is pinned to America/New_York regardless of `process.env.TZ`.
+  const originalTz = process.env.TZ;
+  try {
+    process.env.TZ = "Pacific/Auckland"; // UTC+12 — one calendar day AHEAD of ET in July
+    assert.equal(shortMonthDay("2026-07-13T09:30:00-04:00"), "7/13");
+    process.env.TZ = "Pacific/Honolulu"; // UTC-10 — one calendar day BEHIND ET for a late instant
+    assert.equal(shortMonthDay("2026-07-13T23:30:00-04:00"), "7/13");
+  } finally {
+    if (originalTz === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTz;
+  }
+});
