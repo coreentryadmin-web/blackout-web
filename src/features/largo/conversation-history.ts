@@ -8,6 +8,8 @@
 // list and re-open a thread by re-fetching it. Keeping the merge/sort/cap logic
 // pure (operating on a passed-in array) makes it unit-testable with no DOM/storage.
 
+import { truncateText } from "@/lib/truncate-text";
+
 export type LargoConversation = {
   /** The Largo `session_id` — the key the server rehydrates a thread from. */
   id: string;
@@ -22,11 +24,24 @@ export const MAX_CONVERSATIONS = 24;
 
 export const LARGO_CONVERSATIONS_KEY = "blackout:largo-conversations";
 
-/** Trim a raw question into a stable, readable list label. */
+/**
+ * Trim a raw question into a stable, readable list label.
+ *
+ * BUG FIX (round 436): this used to hard-slice at 59 chars and append "…" directly
+ * (`${clean.slice(0, 59).trimEnd()}…`) — the exact duplicate of the bug `truncate-text.ts`
+ * was written to fix in its three OTHER copies (headlineFromMarkdown, x-content-humanize,
+ * generic-extract). This fourth copy was never migrated, so it kept both defects that
+ * module's header documents: no word-boundary backup (a long word straddling char 59 is cut
+ * mid-token, reading as a rendering fault) and no trailing-punctuation strip before the
+ * ellipsis (a question ending "...right now," at the cut produced the list label
+ * "...right now,…" — doubled punctuation, the identical artifact `truncate-text.ts`'s
+ * header calls out as "flow, …"). Fixed by routing through the shared, already-hardened
+ * `truncateText` instead of re-deriving the same logic a fourth time.
+ */
 export function conversationTitle(question: string): string {
   const clean = question.replace(/\s+/g, " ").trim();
   if (!clean) return "New conversation";
-  return clean.length > 60 ? `${clean.slice(0, 59).trimEnd()}…` : clean;
+  return truncateText(clean, 60);
 }
 
 /**
