@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T14:47:49.353Z",
+  "updated_at": "2026-11-09T15:37:55.294Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T14:47:30.353Z"
+      "released_at": "2026-11-09T15:37:34.397Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T14:47:35.199Z",
-      "lease_until": "2026-11-09T14:48:35.199Z",
+      "claimed_at": "2026-11-09T15:37:39.432Z",
+      "lease_until": "2026-11-09T15:38:39.432Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T14:47:35.208Z"
+      "released_at": "2026-11-09T15:37:39.436Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "4f46c544e948505dc8e744eb05fd6369dc607a11",
+    "last_main_sha": "90e43d5dea231fed5cdd9a496220e504aacfbd4f",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T14:46:11Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42637908575",
-    "last_deploy_sha": "4f46c544e948505dc8e744eb05fd6369dc607a11"
+    "last_deploy_at": "2026-11-09T15:36:52Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42646436457",
+    "last_deploy_sha": "90e43d5dea231fed5cdd9a496220e504aacfbd4f"
   },
   "events": [
-    {
-      "at": "2026-11-01T01:38:30.013Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T01:38:35.235Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T02:07:04.399Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T02:07:08.548Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T02:07:12.424Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T02:41:42.744Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
     {
       "at": "2026-11-01T02:41:48.732Z",
       "type": "context_sync",
@@ -1289,9 +1253,55 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T15:37:34.397Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T15:37:39.435Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T15:37:39.436Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T15:37:44.706Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T15:37:50.198Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T15:37:55.294Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 5
     }
   ],
   "open_prs": [
+    {
+      "number": 7762,
+      "title": "fix(correctness): empty nighthawk_editions table reported skipped, not consistency-only",
+      "branch": "fix/data-integrity-pg-editions-empty-skip",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-09T15:34:05Z"
+    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
