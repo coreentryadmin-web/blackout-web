@@ -43,9 +43,21 @@ function fmtSpot(n: number): string {
   return Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fmtShiftPct(pct: number | null): string {
+/**
+ * BUG FIX: plain `Math.round(pct)` ties toward +Infinity (`Math.round(-2.5) === -2` but
+ * `Math.round(2.5) === 3`), a sign-biased rounding asymmetry — a melting strike sitting exactly
+ * on a whole-percent tie (e.g. -2.5%) rounded to a SMALLER magnitude ("-2%") than the identical
+ * magnitude building the other way ("+3%" for +2.5%) would render in this Discord build/melt
+ * leaders line. Same bug class already fixed in `fmt-money.ts`'s `fmtPct` (2026-10-26) and in
+ * this exact Thermal-desk sibling `shift-math.ts`'s `fmtShiftPercentForStrike` — that fix's own
+ * doc comment names this file's `fmtShiftPct` as the one caller it missed. Rounding
+ * `Math.abs(pct)` first and reapplying `Math.sign(pct)` makes both signs tie the same direction
+ * (away from zero), so equal-magnitude opposite shifts render as equal-magnitude opposite labels.
+ */
+export function fmtShiftPct(pct: number | null): string {
   if (pct == null || !Number.isFinite(pct)) return "—";
-  return `${pct >= 0 ? "+" : ""}${Math.round(pct)}%`;
+  const rounded = Math.sign(pct) * Math.round(Math.abs(pct));
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
 }
 
 /**
