@@ -140,6 +140,39 @@ export async function sharedCacheGetWithTtl<T>(
   return null;
 }
 
+/**
+ * Literal Redis `TTL` result for `key` — unlike sharedCacheGetWithTtl, this does NOT filter the
+ * result through `ttl > 0` or fall back to the in-process memory mirror on a non-positive TTL.
+ * That filtering is correct for sharedCacheGetWithTtl's own job (hand back a value only when it
+ * has a live, bounded expiry so server-cache can re-seed memory with a trustworthy TTL), but it
+ * makes sharedCacheGetWithTtl structurally unable to ever report "the key exists with NO expiry
+ * set" (TTL -1) — that exact state is indistinguishable from "key absent" (TTL -2) once routed
+ * through the `raw && ttl > 0` gate, because a present-but-TTL-less key fails that gate the same
+ * as a missing one and falls through to the (separate, same-process-only) memory map, which a
+ * diagnostic caller in a different process will always miss.
+ *
+ * BUG this exists to let callers detect (found 2026-11-09, data-integrity-verifier.ts's
+ * `redis_ttl` check): that check's own detail text promises to flag a "-1 no expiry — stale-as-
+ * live risk" smell, but built on sharedCacheGetWithTtl it could never observe that state at all —
+ * a no-expiry key read back as a plain miss, silently indistinguishable from the key being
+ * genuinely absent. Returns the raw integer Redis' own TTL command defines: -2 not found, -1
+ * exists with no expiry, N>0 seconds remaining; null only when Redis itself is unconfigured/
+ * unreachable (can't assert anything). Read-only; never falls back to the in-memory mirror,
+ * because the question this answers ("what did REDIS itself say") has no in-process substitute.
+ */
+export async function sharedCacheRawTtlSec(key: string): Promise<number | null> {
+  const redis = await getRedis();
+  if (!redis) return null;
+  try {
+    return await Promise.race([
+      redis.ttl(`blackout:${key}`),
+      new Promise<number>((resolve) => setTimeout(() => resolve(-2), REDIS_GET_RACE_MS)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 export async function sharedCacheSet(key: string, value: unknown, ttlSec: number): Promise<void> {
   const payload = JSON.stringify(value);
   setMemoryEntry(key, { value: payload, expiresAt: Date.now() + ttlSec * 1000 });

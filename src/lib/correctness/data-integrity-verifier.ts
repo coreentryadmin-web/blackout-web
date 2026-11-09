@@ -9,7 +9,7 @@ import {
 } from "@/lib/correctness/types";
 import { dbConfigured, dbQuery, fetchLatestNighthawkEdition, fetchNighthawkEditionByDate } from "@/lib/db";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
-import { sharedCacheGetWithTtl } from "@/lib/shared-cache";
+import { sharedCacheRawTtlSec } from "@/lib/shared-cache";
 import { buildCronHealthSnapshot } from "@/lib/admin-cron-health";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
@@ -42,9 +42,9 @@ import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 //   • Postgres: lightweight AGGREGATE reads only (COUNT / MAX(ts) / AVG over a small
 //     recent window) — no row dumps, no per-row fan-out.
 //   • Redis: read through the SAME public cache-reader functions the app uses
-//     (getGexPositioning → the gex-heatmap:{ticker} cache; sharedCacheGetWithTtl for raw
-//     namespaces). NO raw ioredis client is opened here, NO credential is read/printed,
-//     and NO new uncapped provider fan-out is introduced.
+//     (getGexPositioning → the gex-heatmap:{ticker} cache; sharedCacheRawTtlSec for the raw
+//     Redis TTL verdict on that namespace). NO raw ioredis client is opened here, NO credential
+//     is read/printed, and NO new uncapped provider fan-out is introduced.
 //   • Writer health reuses buildCronHealthSnapshot (a DB reader already on this path).
 // READ-ONLY everywhere; this never writes a row or a key.
 //
@@ -354,8 +354,8 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
 //   • getGexPositioning(t) — the canonical reader over the gex-heatmap:{t} cache (in-mem
 //     + Redis). A non-null result with a parseable, in-window `asof` and spot>0 proves the
 //     key is present + the value parses + is sane + fresh (the warmer is writing it).
-//   • sharedCacheGetWithTtl — raw TTL probe for a representative warmed namespace, to
-//     assert the stored TTL is within the expected window (not expired / stale-as-live).
+//   • sharedCacheRawTtlSec — literal Redis TTL probe for a representative warmed namespace, to
+//     assert the stored TTL is within the expected window (not expired / no-expiry / stale-as-live).
 // ───────────────────────────────────────────────────────────────────────────
 
 async function checkRedis(ctx: Ctx): Promise<CheckResult[]> {
@@ -438,42 +438,88 @@ async function checkRedis(ctx: Ctx): Promise<CheckResult[]> {
   }
 
   // ── Raw TTL probe on the gex-heatmap namespace — confirm the STORED TTL is positive + bounded.
-  // sharedCacheGetWithTtl returns the remaining Redis TTL; a value present with TTL>0 proves the key
-  // exists in Redis (not just the in-memory fallback) and is not stuck without an expiry. The
-  // gex-heatmap entries are written via sharedCacheSet under `blackout:gex-heatmap:{t}`.
+  // sharedCacheRawTtlSec() hands back Redis' OWN literal TTL verdict (-2 absent / -1 no-expiry /
+  // N seconds), never filtered through a "ttl > 0" gate — see its doc comment for why
+  // sharedCacheGetWithTtl (the function this probe used before 2026-11-09) could not be used here:
+  // it folds "-1 no expiry" into the same "nothing" result as "-2 absent", which made the exact
+  // no-expiry/stale-as-live smell this check's own detail text has always claimed to catch
+  // structurally unreachable — dead code, confirmed via trace, never a reachable branch in
+  // production. The gex-heatmap entries are written via sharedCacheSet under `blackout:gex-heatmap:{t}`.
   {
-    let probe: Awaited<ReturnType<typeof sharedCacheGetWithTtl<{ at: number }>>> = null;
+    let rawTtl: number | null = null;
     try {
-      probe = await sharedCacheGetWithTtl<{ at: number }>("gex-heatmap:SPX");
+      rawTtl = await sharedCacheRawTtlSec("gex-heatmap:SPX");
     } catch {
-      probe = null;
+      rawTtl = null;
     }
-    if (!probe) {
-      checks.push(
-        mk("freshness", "redis_ttl", ctx.rth ? "consistency-only" : "skipped", `Raw TTL probe on gex-heatmap:SPX returned nothing (Redis miss → in-memory-only or cold). ${ctx.rth ? "Covered by the getGexPositioning checks above." : "Off-RTH — not asserted."}`, {
-          id: "redis-ttl-spx",
-        })
-      );
-    } else {
-      const ttl = probe.remainingTtlSec;
-      // Expected window: a positive TTL that isn't absurdly long (the GEX entry is short-TTL ~≤ a few
-      // minutes). -1 (no expiry) on a cache that should expire is itself a smell (stale-as-live risk).
-      const ok = ttl > 0 && ttl <= 600;
-      checks.push(
-        mk(
-          "freshness",
-          "redis_ttl",
-          ok ? "pass" : "flag",
-          ok
-            ? `gex-heatmap:SPX Redis key present with a bounded TTL (${ttl}s remaining ≤ 600s) — written to Redis with a real expiry (not a no-expiry stuck key).`
-            : `gex-heatmap:SPX Redis TTL is ${ttl}s (expected 1–600s) — ${ttl < 0 ? "NO expiry set (stale-as-live risk)" : "TTL far outside the expected short window"}.`,
-          { id: "redis-ttl-spx", actual: ttl, tolerance: 600 }
-        )
-      );
-    }
+    const verdict = classifyRedisTtlProbe(rawTtl, ctx.rth);
+    checks.push(mk("freshness", "redis_ttl", verdict.outcome, verdict.detail, { id: "redis-ttl-spx", actual: verdict.actual, tolerance: 600 }));
   }
 
   return checks;
+}
+
+/**
+ * Pure classifier for the raw gex-heatmap:SPX Redis TTL probe above — exported so it can be unit
+ * tested directly (this file imports "server-only", so a dedicated test mocks that import rather
+ * than needing a sibling module; see data-integrity-verifier.test.ts).
+ *
+ * Three real states, not two: `rawTtlSec` is Redis' own literal TTL verdict (see
+ * sharedCacheRawTtlSec's doc comment) — -2 (key genuinely absent), -1 (key present with NO
+ * expiry — the smell this check exists to catch), N>0 (a real bounded TTL), or `null` (Redis
+ * itself unreachable this call, nothing assertable). Each gets its own, honestly-labeled verdict:
+ *   - null            → skipped (Redis unavailable; nothing to assert).
+ *   - -2 (absent)      → during RTH: consistency-only (the companion getGexPositioning/redis_gex
+ *                        checks above already flag a genuine SPX cache outage; a true outright
+ *                        miss here, with no other signal, is the race-benign "cold/rebuilding"
+ *                        case those checks are positioned to catch, so this metric alone staying
+ *                        silent is not a false green). Off-RTH: skipped (writer legitimately idle).
+ *   - -1 (no expiry)   → ALWAYS flag, RTH or not — a permanently-live key is a stale-as-live
+ *                        defect in the KEY ITSELF, independent of market hours, and is exactly
+ *                        the one state the prior sharedCacheGetWithTtl-based probe could never see.
+ *   - N (bounded)      → pass when 0 < N <= 600, else flag (TTL far outside the expected window).
+ */
+export function classifyRedisTtlProbe(
+  rawTtlSec: number | null,
+  rth: boolean
+): { outcome: CheckResult["outcome"]; detail: string; actual: number | null } {
+  if (rawTtlSec === null) {
+    return {
+      outcome: "skipped",
+      detail: "Raw TTL probe on gex-heatmap:SPX could not run (Redis unreachable this call) — not assertable.",
+      actual: null,
+    };
+  }
+  if (rawTtlSec === -2) {
+    return rth
+      ? {
+          outcome: "consistency-only",
+          detail:
+            "Raw TTL probe on gex-heatmap:SPX found the key absent (Redis miss). Covered by the getGexPositioning checks above — a genuine SPX cache outage already flags there.",
+          actual: rawTtlSec,
+        }
+      : {
+          outcome: "skipped",
+          detail: "Off-RTH — gex-heatmap:SPX raw TTL probe not asserted (key legitimately cold, warmer idle).",
+          actual: rawTtlSec,
+        };
+  }
+  if (rawTtlSec === -1) {
+    return {
+      outcome: "flag",
+      detail:
+        "gex-heatmap:SPX Redis key is present with NO expiry set (TTL -1) — a stale-as-live risk: this key can never refresh via natural expiry, regardless of market hours.",
+      actual: rawTtlSec,
+    };
+  }
+  const ok = rawTtlSec > 0 && rawTtlSec <= 600;
+  return {
+    outcome: ok ? "pass" : "flag",
+    detail: ok
+      ? `gex-heatmap:SPX Redis key present with a bounded TTL (${rawTtlSec}s remaining ≤ 600s) — written to Redis with a real expiry (not a no-expiry stuck key).`
+      : `gex-heatmap:SPX Redis TTL is ${rawTtlSec}s (expected 1-600s) — TTL far outside the expected short window.`,
+    actual: rawTtlSec,
+  };
 }
 
 // ───────────────────────────────────────────────────────────────────────────
