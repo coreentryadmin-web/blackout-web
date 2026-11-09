@@ -53,6 +53,29 @@ import { ZERODTE_MARK_FUTURE_TOLERANCE_MS } from "@/lib/zerodte/marks-math";
 // the pipeline), so freshness/presence/writer checks that hold are reported PASS. Cross-
 // hop reconciliations with no independent oracle stay consistency-only. Nothing here is a
 // false green: a missing source SKIPS (closed market / DB not configured), never passes.
+//
+// BUG FIX (round 522, 2026-11-09): every one of those "reported PASS" checks (Postgres
+// freshness/row-count/garbage-rate, Redis sanity/freshness/TTL, writer health) emitted a
+// `CheckResult` with `outcome: "pass"` but never set `independentlyConfirmed`. types.ts's
+// `rollUpMetricStatus` — the shared rollup EVERY verifier in this directory funnels through —
+// only promotes a METRIC to "pass" when at least one of its checks carries
+// `independentlyConfirmed: true`; absent that, a clean "pass"-outcome check with no OTHER
+// check on the same metric silently demotes to "consistency-only" at the metric level, which
+// is the status `collectFlags`/`collectCoverageGaps`/`flattenTotals` (run-correctness.ts)
+// actually read. The practical effect: nearly every healthy check this surface emits — a
+// fresh flow_alerts write, a non-empty row count, a sane/fresh Redis cache, a bounded TTL, a
+// live writer cron — was reported "[pass]" in the per-check detail line but then listed as a
+// DATALAYER "coverage gap" ("No independent second source confirmed this metric.") in the
+// SAME scorecard, and counted toward `totals.consistencyOnly` instead of `totals.pass` /
+// `totals.independentlyConfirmed`. This is the identical mislabeled-outcome class already
+// fixed twice elsewhere in this directory (largo-verifier.ts's self-consistency-miscounted-
+// as-independent; nighthawk-verifier.ts's L4 premium check emitting "pass" when the
+// comparison never ran) — this file's own module doc above already states the INTENT
+// ("freshness/presence/writer checks that hold are reported PASS"), so this was that intent
+// failing to reach the generic rollup, not a design choice to keep DATALAYER at
+// consistency-only. Fixed by setting `independentlyConfirmed` to match each check's own
+// pass/fail verdict at every "pass"-outcome call site in this file (never on the cross-tool
+// HOP checks above, which are genuinely single-underlying consistency-only by design).
 // ---------------------------------------------------------------------------
 
 const TICKER = "DATALAYER";
@@ -194,7 +217,7 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
             fresh
               ? `flow_alerts latest row is ${aMin.toFixed(1)}m old during RTH (≤ 20m); ${rows60m} rows in the last 60m — tape is being written.`
               : `flow_alerts latest row is ${Number.isFinite(aMin) ? `${aMin.toFixed(0)}m` : "absent"} old during RTH — the flow-ingest writer is not landing rows (stale downstream tape).`,
-            { id: "pg-flow-fresh", actual: Number.isFinite(aMin) ? Number(aMin.toFixed(1)) : null, tolerance: 20 }
+            { id: "pg-flow-fresh", actual: Number.isFinite(aMin) ? Number(aMin.toFixed(1)) : null, tolerance: 20, independentlyConfirmed: fresh }
           )
         );
         // Row-count sanity — RTH with zero rows in 60m is an empty-table symptom.
@@ -206,7 +229,7 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
             rows60m > 0
               ? `flow_alerts has ${rows60m} rows in the last 60m during RTH (not unexpectedly empty).`
               : `flow_alerts has ZERO rows in the last 60m during RTH — unexpectedly empty (ingest dead or upstream dry).`,
-            { id: "pg-flow-rowcount", actual: rows60m, expected: ">0" }
+            { id: "pg-flow-rowcount", actual: rows60m, expected: ">0", independentlyConfirmed: rows60m > 0 }
           )
         );
       } else {
@@ -229,7 +252,7 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
             ok
               ? `total_premium is populated on ${(100 * (1 - rate)).toFixed(0)}% of the last ${total24h} rows (not all-null/0).`
               : `total_premium is ≤0/null on ${(100 * rate).toFixed(0)}% of the last ${total24h} rows — a premium parse/write break (numbers display as $0).`,
-            { id: "pg-flow-garbage", actual: Number(rate.toFixed(3)), tolerance: 0.9 }
+            { id: "pg-flow-garbage", actual: Number(rate.toFixed(3)), tolerance: 0.9, independentlyConfirmed: ok }
           )
         );
       }
@@ -259,7 +282,7 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
             fresh
               ? `cron_job_runs newest row is ${aMin.toFixed(1)}m old during RTH (≤ 30m); ${Number(row.rows_60m)} runs logged in 60m — the cron plane is writing.`
               : `cron_job_runs newest row is ${Number.isFinite(aMin) ? `${aMin.toFixed(0)}m` : "absent"} old during RTH — NO cron is logging (the whole cron plane may be down → every PG/Redis writer is stale).`,
-            { id: "pg-cron-fresh", actual: Number.isFinite(aMin) ? Number(aMin.toFixed(1)) : null, tolerance: 30 }
+            { id: "pg-cron-fresh", actual: Number.isFinite(aMin) ? Number(aMin.toFixed(1)) : null, tolerance: 30, independentlyConfirmed: fresh }
           )
         );
       } else {
@@ -314,7 +337,7 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
             stale
               ? `Latest nighthawk_edition published ${Number.isFinite(aHours) ? `${aHours.toFixed(0)}h` : "never"} ago (> ${STALE_HOURS}h) — the edition publish pipeline appears stuck (the page would show a stale/old edition).`
               : `Latest nighthawk_edition published ${aHours.toFixed(0)}h ago (within the ${STALE_HOURS}h cadence ceiling); ${total} editions total.`,
-            { id: "pg-ed-fresh", actual: Number.isFinite(aHours) ? Number(aHours.toFixed(0)) : null, tolerance: STALE_HOURS }
+            { id: "pg-ed-fresh", actual: Number.isFinite(aHours) ? Number(aHours.toFixed(0)) : null, tolerance: STALE_HOURS, independentlyConfirmed: !stale }
           )
         );
       }
@@ -341,7 +364,7 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
           bad === 0
             ? `nighthawk_play_outcomes: all ${Number(row.total)} rows carry an in-vocabulary outcome enum (clean ledger backing the track record).`
             : `nighthawk_play_outcomes has ${bad} row(s) with an out-of-vocabulary outcome — garbage in the ledger that backs hit-rate.`,
-          { id: "pg-nh-outcome-vocab", actual: bad, expected: 0 }
+          { id: "pg-nh-outcome-vocab", actual: bad, expected: 0, independentlyConfirmed: bad === 0 }
         )
       );
     } else {
@@ -418,7 +441,7 @@ async function checkRedis(ctx: Ctx): Promise<CheckResult[]> {
         sane
           ? `gex-heatmap:${t} cache value parses + is sane (spot ${pos.spot}, finite net GEX) — the cached matrix the website reads is well-formed.`
           : `gex-heatmap:${t} cache value is CORRUPT (spot ${pos.spot} / non-finite net GEX) — the website would render garbage from this key.`,
-        { id: `redis-gex-sane-${t}`, actual: pos.spot }
+        { id: `redis-gex-sane-${t}`, actual: pos.spot, independentlyConfirmed: sane }
       )
     );
     // TTL / freshness — the matrix `asof` must be within the warm window DURING RTH.
@@ -434,7 +457,7 @@ async function checkRedis(ctx: Ctx): Promise<CheckResult[]> {
           fresh
             ? `gex-heatmap:${t} matrix asof is ${aMin.toFixed(1)}m old during RTH (≤ 15m) — the cache is being refreshed, not served stale-as-live.`
             : `gex-heatmap:${t} matrix asof is ${Number.isFinite(aMin) ? `${aMin.toFixed(0)}m` : "unparseable"} old during RTH — an EXPIRED/stuck cache served as live (heatmap-warm stalled).`,
-          { id: `redis-gex-fresh-${t}`, actual: Number.isFinite(aMin) ? Number(aMin.toFixed(1)) : null, tolerance: 15 }
+          { id: `redis-gex-fresh-${t}`, actual: Number.isFinite(aMin) ? Number(aMin.toFixed(1)) : null, tolerance: 15, independentlyConfirmed: fresh }
         )
       );
     } else {
@@ -462,7 +485,14 @@ async function checkRedis(ctx: Ctx): Promise<CheckResult[]> {
       rawTtl = null;
     }
     const verdict = classifyRedisTtlProbe(rawTtl, ctx.rth);
-    checks.push(mk("freshness", "redis_ttl", verdict.outcome, verdict.detail, { id: "redis-ttl-spx", actual: verdict.actual, tolerance: 600 }));
+    checks.push(
+      mk("freshness", "redis_ttl", verdict.outcome, verdict.detail, {
+        id: "redis-ttl-spx",
+        actual: verdict.actual,
+        tolerance: 600,
+        independentlyConfirmed: verdict.independentlyConfirmed,
+      })
+    );
   }
 
   return checks;
@@ -491,7 +521,7 @@ async function checkRedis(ctx: Ctx): Promise<CheckResult[]> {
 export function classifyRedisTtlProbe(
   rawTtlSec: number | null,
   rth: boolean
-): { outcome: CheckResult["outcome"]; detail: string; actual: number | null } {
+): { outcome: CheckResult["outcome"]; detail: string; actual: number | null; independentlyConfirmed?: boolean } {
   if (rawTtlSec === null) {
     return {
       outcome: "skipped",
@@ -528,6 +558,7 @@ export function classifyRedisTtlProbe(
       ? `gex-heatmap:SPX Redis key present with a bounded TTL (${rawTtlSec}s remaining ≤ 600s) — written to Redis with a real expiry (not a no-expiry stuck key).`
       : `gex-heatmap:SPX Redis TTL is ${rawTtlSec}s (expected 1-600s) — TTL far outside the expected short window.`,
     actual: rawTtlSec,
+    independentlyConfirmed: ok,
   };
 }
 
@@ -774,7 +805,7 @@ async function checkWriters(_ctx: Ctx): Promise<CheckResult[]> {
           metric,
           "pass",
           `Critical writer "${job.name}" is alive (${job.status_label}${job.age_min != null ? `, last run ${job.age_min}m ago` : ""}) — its PG/Redis target is being populated.`,
-          { id: `writer-${job.key}`, actual: job.age_min ?? null }
+          { id: `writer-${job.key}`, actual: job.age_min ?? null, independentlyConfirmed: true }
         )
       );
     }
