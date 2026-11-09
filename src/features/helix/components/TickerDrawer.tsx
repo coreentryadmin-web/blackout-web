@@ -15,6 +15,7 @@ import {
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
 import { HelixTickerAlertToggle } from "@/features/helix/components/HelixTickerAlertToggle";
+import { callPutSplitPct, fmtSplitPct } from "@/features/helix/lib/helix-call-put-split";
 
 // Guarded via the shared relativeAge: a null/unparseable alerted_at previously rendered "NaNh ago".
 function timeAgo(iso: string | null | undefined): string {
@@ -116,7 +117,12 @@ export function TickerDrawer({
   const callPrem = displayFlows.filter((f) => f.option_type === "CALL").reduce((s, f) => s + f.premium, 0);
   const putPrem  = displayFlows.filter((f) => f.option_type === "PUT").reduce((s, f) => s + f.premium, 0);
   const total    = callPrem + putPrem;
-  const callPct  = total > 0 ? Math.round((callPrem / total) * 100) : null;
+  // BUG FIX (round 481): `putPct` used to be rendered inline as `100 - (callPct ?? 0)`, which
+  // reads a NULL callPct (no call/put premium at all — e.g. a drawer whose visible flows are all
+  // typeless, gap-#6) as a fabricated 0, making the Put Premium box claim "100% of flow" beside a
+  // real $0 figure. `callPutSplitPct` keeps the two in lockstep: `putPct` is null exactly when
+  // `callPct` is, never an independent complement — see that module's header for the full repro.
+  const { callPct, putPct } = callPutSplitPct(callPrem, putPrem);
   // The pill is a DIRECTION claim (an arrow, a bull/bear colour) and must not be derived from
   // call-vs-put premium — a sold call is bearish. It reads the aggression-aware rule the rest of
   // /flows uses, and stays neutral when too little of the premium carries a readable side. The
@@ -187,12 +193,12 @@ export function TickerDrawer({
                       <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/15 p-3">
                         <p className="font-mono text-[10px] tracking-widest text-emerald-400 uppercase mb-1.5">Call Premium</p>
                         <p className="font-mono text-lg font-bold text-emerald-400 tabular-nums">{fmtPremium(callPrem)}</p>
-                        <p className="font-mono text-[10px] text-emerald-400 mt-0.5">{callPct ?? 0}% of flow</p>
+                        <p className="font-mono text-[10px] text-emerald-400 mt-0.5">{fmtSplitPct(callPct)} of flow</p>
                       </div>
                       <div className="rounded-lg border border-rose-900/40 bg-rose-950/15 p-3">
                         <p className="font-mono text-[10px] tracking-widest text-rose-400 uppercase mb-1.5">Put Premium</p>
                         <p className="font-mono text-lg font-bold text-rose-400 tabular-nums">{fmtPremium(putPrem)}</p>
-                        <p className="font-mono text-[10px] text-rose-400 mt-0.5">{100 - (callPct ?? 0)}% of flow</p>
+                        <p className="font-mono text-[10px] text-rose-400 mt-0.5">{fmtSplitPct(putPct)} of flow</p>
                       </div>
                     </div>
                   )}
