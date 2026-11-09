@@ -11,6 +11,8 @@ import { BieScenarioCards } from "./BieScenarioCards";
 import { BieFollowupChips } from "./BieFollowupChips";
 import { BieSectionCard } from "./BieSectionCard";
 import { BieStructureLadder } from "./BieStructureLadder";
+import { BieGexShiftsPanel } from "./BieGexShiftsPanel";
+import { BieSystemReadsPanel } from "./BieSystemReadsPanel";
 import { answeredParts, relativeTime } from "./answer-format";
 import { splitHeadline } from "./headline";
 import { filterLevelsCoveredByLadder } from "./level-dedup";
@@ -136,6 +138,13 @@ export function BieAnswer({
       <BieKeyLevelsTable levels={keyLevels} />
       <BieStructureLadder ladder={envelope.structureLadder} />
       <BieScenarioCards scenarios={envelope.scenarios} />
+      {/* BUG FIX (Ask Largo standing mandate, 2026-11-09): see BieGexShiftsPanel/
+          BieSystemReadsPanel's own headers — this is the renderer used whenever an envelope
+          doesn't clear LargoAnswerMessage's `richEnough` bar (a check these two fields never
+          factor into), and it never read `gexShifts`/`systemReads` at all until this fix, even
+          though the sibling `LargoDeskRead` renderer already does. */}
+      <BieGexShiftsPanel shifts={envelope.gexShifts} />
+      <BieSystemReadsPanel systemReads={envelope.systemReads} />
 
       {envelope.invalidation ? (
         <p className="bie-answer-invalidation">
