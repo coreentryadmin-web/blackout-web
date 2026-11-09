@@ -7082,6 +7082,44 @@ html.product-shell .nav-mega {
     min-width: 0;
   }
 
+  /* ── Section table (BieSection.table — e.g. swing archetype/ticker track record) ──
+     A real <table>, not the fixed-3-column ARIA grid above: the column count is
+     caller-defined (6 for the archetype track record, 3 for the ticker one), so a
+     fixed grid-template-columns would mis-align a different shape. Horizontal scroll
+     on overflow rather than wrapping/truncating a cell, so a wide row (e.g. a long
+     "Edge" note) stays readable instead of being cut. */
+  .bie-section-table-wrap {
+    overflow-x: auto;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 0.5rem;
+    margin: 0.3rem 0;
+  }
+  .bie-section-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  .bie-section-table thead th {
+    font-family: var(--font-mono, monospace);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    background: rgba(34, 211, 238, 0.06);
+    text-align: left;
+    padding: 0.45rem 0.7rem;
+    white-space: nowrap;
+  }
+  .bie-section-table tbody td {
+    color: #e2e8f0;
+    padding: 0.4rem 0.7rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.1);
+    white-space: nowrap;
+  }
+  .bie-section-table tbody tr:first-child td {
+    border-top: none;
+  }
+
   /* ── Scenario cards ── */
   .bie-scenarios-grid {
     display: grid;
