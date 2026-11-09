@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { loadSpxDesk, peekSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { buildSpxDeskPulseMinimal, deskShellFromPulse } from "@/features/spx/lib/spx-desk";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { ServerCacheTimeoutError } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -42,6 +44,31 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     console.error("[market/spx/desk]", error);
+    // Mirror /api/market/spx/play: a ServerCacheTimeoutError means the cold cache lane lost its
+    // maxBlockMs race — not proof the desk has no data. Deploy smoke and cron callers were seeing
+    // 502 here (confirmed 2026-11-09) while health/regime stayed green; serve an honest 200 shell
+    // instead of failing the whole deploy.
+    if (error instanceof ServerCacheTimeoutError) {
+      const peeked = await peekSpxDesk().catch(() => null);
+      if (peeked) {
+        return NextResponse.json(
+          roundFloats({ ...peeked, polled_at: peeked.polled_at ?? peeked.as_of }),
+          { headers: NO_STORE_HEADERS }
+        );
+      }
+      const pulse = await buildSpxDeskPulseMinimal().catch(() => null);
+      if (pulse) {
+        const shell = deskShellFromPulse(pulse);
+        return NextResponse.json(
+          roundFloats({ ...shell, polled_at: shell.polled_at ?? shell.as_of }),
+          { headers: NO_STORE_HEADERS }
+        );
+      }
+      return NextResponse.json(
+        { available: false, error: "Desk warming" },
+        { status: 200, headers: NO_STORE_HEADERS }
+      );
+    }
     return NextResponse.json({ available: false, error: "Desk build failed" }, { status: 502 });
   }
 }

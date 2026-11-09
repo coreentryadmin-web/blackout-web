@@ -9729,3 +9729,12 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   structural-stop framing), not just the P&L sign. The chain-composite (multi-leg rolled) mapper is
   NOT covered by this fix (disclosed follow-up) — a rolled position's closed reason still uses the
   old sign-based guess, so don't expect `closing_rung` on those rows yet.
+
+## WATCH LIST — 2026-11-09 (SPX desk route maps ServerCacheTimeoutError to 200, not 502) — post-deploy
+
+- **Broken**: Deploy smoke cron probe on `/api/market/spx/desk` returned **502** on cold
+  `loadSpxDesk()` cache timeout while other probes stayed green (runs `42550161810`,
+  `42550594997`).
+- **Fix**: `route.ts` catch mirrors `/spx/play` — peek → pulse shell → honest `Desk warming` **200**.
+- **RTH check**: Cold-start a fresh ECS task (or force `?force=1` desk rebuild during RTH) and
+  confirm members never see **502** on the desk API; degraded shells may show briefly instead.

@@ -37,3 +37,10 @@ test("spx/desk route: peek fast-path also requires source !== \"none\" (degraded
     "must reject a degraded pulse-only shell (source: \"none\") even when its merged price is nonzero"
   );
 });
+
+test("spx/desk route: ServerCacheTimeoutError returns 200 degraded shell instead of 502 (2026-11-09 deploy-smoke)", () => {
+  const src = readFileSync(join(process.cwd(), "src/app/api/market/spx/desk/route.ts"), "utf8");
+  assert.match(src, /instanceof ServerCacheTimeoutError/);
+  assert.match(src, /peekSpxDesk/);
+  assert.match(src, /deskShellFromPulse/);
+});
