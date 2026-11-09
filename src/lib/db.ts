@@ -5490,7 +5490,7 @@ export async function fetchRecentSpxSignalLogs(limit = 50): Promise<
     target: r.target != null ? Number(r.target) : null,
     headline: String(r.headline),
     factors: r.factors,
-    created_at: new Date(String(r.created_at)).toISOString(),
+    created_at: isoTimestampString(r.created_at)!,
   }));
 }
 
@@ -5543,7 +5543,7 @@ export async function fetchOpenSpxPlay(sessionDate: string): Promise<{
     trim_done: Boolean(r.trim_done),
     mfe_pts: Number(r.mfe_pts ?? 0),
     mae_pts: Number(r.mae_pts ?? 0),
-    opened_at: new Date(String(r.opened_at)).toISOString(),
+    opened_at: isoTimestampString(r.opened_at)!,
     status: "open",
     option_strike: r.option_strike != null ? Number(r.option_strike) : null,
     option_type: r.option_type != null ? String(r.option_type) : null,
@@ -5834,8 +5834,8 @@ function mapPlayOutcomeRow(r: QueryResultRow): import("@/features/spx/lib/spx-pl
     exit_action:
       r.exit_action != null ? (String(r.exit_action) as import("@/features/spx/lib/spx-play-outcomes").PlayExitAction) : null,
     headline: String(r.headline),
-    opened_at: new Date(String(r.opened_at)).toISOString(),
-    closed_at: r.closed_at != null ? new Date(String(r.closed_at)).toISOString() : null,
+    opened_at: isoTimestampString(r.opened_at)!,
+    closed_at: isoTimestampString(r.closed_at),
   };
 }
 
@@ -5980,7 +5980,7 @@ function mapUserJournalRow(r: QueryResultRow): UserJournalRow {
     open_play_id: Number(r.open_play_id),
     note: typeof r.note === "string" ? r.note : "",
     tags: Array.isArray(r.tags) ? (r.tags as unknown[]).map(String) : [],
-    updated_at: new Date(String(r.updated_at)).toISOString(),
+    updated_at: isoTimestampString(r.updated_at)!,
   };
 }
 
@@ -6339,9 +6339,9 @@ export async function fetchLottoPlaysForDate(sessionDate: string): Promise<
     catalyst_summary: r.catalyst_summary != null ? String(r.catalyst_summary) : null,
     outcome: r.outcome != null ? String(r.outcome) : null,
     headline: r.headline != null ? String(r.headline) : null,
-    picked_at: r.picked_at != null ? new Date(String(r.picked_at)).toISOString() : null,
-    buy_at: r.buy_at != null ? new Date(String(r.buy_at)).toISOString() : null,
-    closed_at: r.closed_at != null ? new Date(String(r.closed_at)).toISOString() : null,
+    picked_at: isoTimestampString(r.picked_at),
+    buy_at: isoTimestampString(r.buy_at),
+    closed_at: isoTimestampString(r.closed_at),
   }));
 }
 
@@ -6417,7 +6417,7 @@ export async function fetchNighthawkEditionByDate(
   return {
     edition_for: isoDateString(r.edition_for),
     session_date: isoDateString(r.session_date),
-    published_at: new Date(String(r.published_at)).toISOString(),
+    published_at: isoTimestampString(r.published_at)!,
     recap_headline: r.recap_headline != null ? String(r.recap_headline) : null,
     recap_summary: r.recap_summary != null ? String(r.recap_summary) : null,
     market_recap: (r.market_recap as Record<string, unknown>) ?? {},
@@ -6442,7 +6442,7 @@ export async function fetchLatestNighthawkEdition(): Promise<NighthawkEditionRow
   return {
     edition_for: isoDateString(r.edition_for),
     session_date: isoDateString(r.session_date),
-    published_at: new Date(String(r.published_at)).toISOString(),
+    published_at: isoTimestampString(r.published_at)!,
     recap_headline: r.recap_headline != null ? String(r.recap_headline) : null,
     recap_summary: r.recap_summary != null ? String(r.recap_summary) : null,
     market_recap: (r.market_recap as Record<string, unknown>) ?? {},
@@ -7016,7 +7016,7 @@ export function mapAlertAuditTrailRow(r: QueryResultRow): AlertAuditTrailRow {
     alert_type: String(r.alert_type),
     ticker: String(r.ticker),
     direction: r.direction != null ? String(r.direction) : null,
-    fired_at: new Date(String(r.fired_at)).toISOString(),
+    fired_at: isoTimestampString(r.fired_at)!,
     confidence_score: r.confidence_score != null ? Number(r.confidence_score) : null,
     confidence_label: r.confidence_label != null ? String(r.confidence_label) : null,
     trigger_reason: r.trigger_reason != null ? String(r.trigger_reason) : null,
@@ -7215,7 +7215,7 @@ export async function fetchUngradedAlertAuditRows(
     alert_type: String(r.alert_type),
     source_table: String(r.source_table),
     source_key: (r.source_key as Record<string, unknown>) ?? {},
-    fired_at: new Date(String(r.fired_at)).toISOString(),
+    fired_at: isoTimestampString(r.fired_at)!,
     confidence_label: r.confidence_label != null ? String(r.confidence_label) : null,
     direction: r.direction != null ? String(r.direction) : null,
   }));
@@ -7380,12 +7380,12 @@ function mapZeroDteLogRow(r: QueryResultRow): ZeroDteSetupLogRow {
     underlying_at_flag: r.underlying_at_flag != null ? Number(r.underlying_at_flag) : null,
     underlying_latest: r.underlying_latest != null ? Number(r.underlying_latest) : null,
     flags_json: (r.flags_json as Record<string, unknown>) ?? null,
-    first_flagged_at: new Date(String(r.first_flagged_at)).toISOString(),
-    last_seen_at: new Date(String(r.last_seen_at)).toISOString(),
+    first_flagged_at: isoTimestampString(r.first_flagged_at)!,
+    last_seen_at: isoTimestampString(r.last_seen_at)!,
     close_price: r.close_price != null ? Number(r.close_price) : null,
     move_pct: r.move_pct != null ? Number(r.move_pct) : null,
     direction_hit: r.direction_hit == null ? null : r.direction_hit === true,
-    graded_at: r.graded_at != null ? new Date(String(r.graded_at)).toISOString() : null,
+    graded_at: isoTimestampString(r.graded_at),
     entry_premium: r.entry_premium != null ? Number(r.entry_premium) : null,
     flow_avg_fill: r.flow_avg_fill != null ? Number(r.flow_avg_fill) : null,
     plan_json: (r.plan_json as Record<string, unknown>) ?? null,
@@ -7911,11 +7911,11 @@ export function mapSwingPositionRow(r: QueryResultRow): SwingPositionRow {
     grade_methodology: r.grade_methodology != null ? String(r.grade_methodology) : null,
     legacy_grade: jsonbColumnToObject(r.legacy_grade),
     status: String(r.status),
-    first_seen_at: new Date(String(r.first_seen_at)).toISOString(),
-    committed_at: r.committed_at != null ? new Date(String(r.committed_at)).toISOString() : null,
-    closed_at: r.closed_at != null ? new Date(String(r.closed_at)).toISOString() : null,
-    graded_at: r.graded_at != null ? new Date(String(r.graded_at)).toISOString() : null,
-    updated_at: new Date(String(r.updated_at)).toISOString(),
+    first_seen_at: isoTimestampString(r.first_seen_at)!,
+    committed_at: isoTimestampString(r.committed_at),
+    closed_at: isoTimestampString(r.closed_at),
+    graded_at: isoTimestampString(r.graded_at),
+    updated_at: isoTimestampString(r.updated_at)!,
   };
 }
 
@@ -7947,7 +7947,7 @@ export function mapSwingSnapshotRow(r: QueryResultRow): SwingSnapshotRow {
     thesis_state: r.thesis_state != null ? String(r.thesis_state) : null,
     feature_vector: jsonbColumnToObject(r.feature_vector),
     event_json: jsonbColumnToObject(r.event_json),
-    created_at: new Date(String(r.created_at)).toISOString(),
+    created_at: isoTimestampString(r.created_at)!,
   };
 }
 
@@ -7987,8 +7987,8 @@ export function mapSwingAccumRow(r: QueryResultRow): SwingAccumRow {
     signal_kinds: jsonbColumnToStringArray(r.signal_kinds),
     last_session_signal_kinds: jsonbColumnToStringArray(r.last_session_signal_kinds),
     promoted_position_id: r.promoted_position_id != null ? Number(r.promoted_position_id) : null,
-    first_seen_at: new Date(String(r.first_seen_at)).toISOString(),
-    last_seen_at: new Date(String(r.last_seen_at)).toISOString(),
+    first_seen_at: isoTimestampString(r.first_seen_at)!,
+    last_seen_at: isoTimestampString(r.last_seen_at)!,
   };
 }
 
@@ -9040,7 +9040,7 @@ export async function fetchBieKnowledge(opts?: { kind?: string; limit?: number }
     source: String(r.source),
     chunk: String(r.chunk),
     embedding: Array.isArray(r.embedding) ? (r.embedding as number[]).map(Number) : null,
-    created_at: new Date(String(r.created_at)).toISOString(),
+    created_at: isoTimestampString(r.created_at)!,
   }));
 }
 
@@ -9063,7 +9063,7 @@ export async function fetchBieKnowledgeStats(): Promise<{
     embedded: Number(r.embedded) || 0,
   }));
   const newest = res.rows
-    .map((r) => (r.newest_at ? new Date(String(r.newest_at)).toISOString() : null))
+    .map((r) => isoTimestampString(r.newest_at))
     .filter((s): s is string => s != null)
     .sort()
     .at(-1);
@@ -9560,7 +9560,7 @@ export async function fetchLatestPlayableNighthawkEdition(): Promise<NighthawkEd
   return {
     edition_for: isoDateString(r.edition_for),
     session_date: isoDateString(r.session_date),
-    published_at: new Date(String(r.published_at)).toISOString(),
+    published_at: isoTimestampString(r.published_at)!,
     recap_headline: r.recap_headline != null ? String(r.recap_headline) : null,
     recap_summary: r.recap_summary != null ? String(r.recap_summary) : null,
     market_recap: (r.market_recap as Record<string, unknown>) ?? {},
@@ -9785,7 +9785,7 @@ function mapNighthawkPlayOutcomeRow(r: QueryResultRow): NighthawkPlayOutcomeRow 
     hit_target: Boolean(r.hit_target),
     hit_stop: Boolean(r.hit_stop),
     outcome: String(r.outcome) as NighthawkPlayOutcomeRow["outcome"],
-    created_at: new Date(String(r.created_at)).toISOString(),
+    created_at: isoTimestampString(r.created_at)!,
     pulled: Boolean(r.pulled),
     pulled_reason: r.pulled_reason != null ? String(r.pulled_reason) : null,
     publish_context: (r.publish_context as Record<string, unknown>) ?? null,
@@ -10504,7 +10504,7 @@ export async function fetchNighthawkPulledPlays(editionFor: string): Promise<Nig
   return res.rows.map((r) => ({
     ticker: String(r.ticker).toUpperCase(),
     pulled_reason: r.pulled_reason != null ? String(r.pulled_reason) : null,
-    pulled_at: r.pulled_at != null ? new Date(String(r.pulled_at)).toISOString() : null,
+    pulled_at: isoTimestampString(r.pulled_at),
   }));
 }
 
@@ -10616,7 +10616,7 @@ export async function fetchNighthawkPublishGateRejections(
     ticker: String(r.ticker).toUpperCase(),
     edition_for: String(r.edition_for ?? "").slice(0, 10),
     direction: String(r.direction) === "SHORT" ? "SHORT" : "LONG",
-    fired_at: new Date(String(r.fired_at)).toISOString(),
+    fired_at: isoTimestampString(r.fired_at)!,
     input_snapshot: (r.input_snapshot as Record<string, unknown>) ?? null,
     counterfactual_json: (r.counterfactual_json as Record<string, unknown>) ?? null,
   }));
@@ -10767,9 +10767,9 @@ function mapNighthawkJobRow(r: QueryResultRow): NighthawkJobRow {
     scored_json: Array.isArray(r.scored_json) ? r.scored_json : null,
     synthesis_json: (r.synthesis_json as Record<string, unknown>) ?? null,
     error: r.error != null ? String(r.error) : null,
-    started_at: new Date(String(r.started_at)).toISOString(),
-    updated_at: new Date(String(r.updated_at)).toISOString(),
-    published_at: r.published_at != null ? new Date(String(r.published_at)).toISOString() : null,
+    started_at: isoTimestampString(r.started_at)!,
+    updated_at: isoTimestampString(r.updated_at)!,
+    published_at: isoTimestampString(r.published_at),
   };
 }
 
