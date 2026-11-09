@@ -2437,9 +2437,26 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
 
   const spxSnap = snaps[SPX];
   const vixSnap = snaps[VIX];
-  if (!spxSnap?.price) return empty;
-
-  const price = spxSnap.price;
+  // BUG FIX (2026-11-09, live repro — Ask Largo/5-engine standing mandate): this branch used to
+  // `return empty` the instant `spxSnap?.price` was falsy, discarding `prior.pdc` — fetched one
+  // line up in the SAME `Promise.all` — without ever trying it. That is the third branch of the
+  // same root cause already fixed today in the two siblings above: the off-hours early-return in
+  // this function (#7721/#7728) and buildSpxDeskPulseMinimal()'s cold-replica race branch (same
+  // PR). During the 7:00-9:30 ET premarket-planning window `rthOpen || premarketPlan` is true, so
+  // this is the branch that actually runs — and `fetchPulseLaneSnapshots()` has no fresh WS tick
+  // for I:SPX pre-open while its REST fallback hits the documented real-time-snapshot entitlement
+  // 403 (CLAUDE.md's "Polygon snapshot entitlement lost" note), so `spxSnap?.price` is reliably
+  // null/0 for that whole window. Confirmed live: GET /api/market/spx/desk served
+  // available:false/price:0 on 3+ consecutive premarket polls with `as_of` genuinely advancing
+  // each time — not a frozen cache — because loadSpxDesk()'s own cache-build fallback
+  // (`deskShellFromPulse(await loadSpxDeskPulse())`, spx-desk-loader.ts) routes straight through
+  // THIS function, not buildSpxDesk()'s already-fixed `price` chain. Same fallback order as
+  // buildSpxDesk()'s own `price` (line ~1637) and buildSpxDeskPulseMinimal()'s (line ~2626): live
+  // snapshot -> last-good in-process pulse -> prior-day close (already in hand here) -> SPY-proxy
+  // estimate -> only then give up and return the empty shell.
+  const price =
+    spxSnap?.price ?? lastPulseForSignals?.price ?? prior.pdc ?? (await spxPriceFromSpyProxy()) ?? 0;
+  if (!(price > 0)) return empty;
   // Gap #11: liveness of the SPX index tick on the FAST lane (the price the desk shows as live).
   const spxFeed = getIndexFeedFreshness(SPX);
   const feedStalled = await resolvePulseFeedStalled();
