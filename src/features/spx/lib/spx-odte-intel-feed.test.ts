@@ -7,6 +7,7 @@ import {
   diffNighthawkIntelEvents,
   diffOdteIntelEvents,
   heatmapToIntelSlice,
+  moneyShort,
   odteIntelEventsToTerminalLines,
   type IntelHeatmapSlice,
   type OdteIntelEvent,
@@ -432,4 +433,23 @@ test("heatmapToIntelSlice: drops unavailable payloads", () => {
   assert.ok(slice);
   assert.equal(slice!.asof, "2026-07-10T14:00:00.000Z");
   assert.equal(slice!.vex?.flip, 7500);
+});
+
+test("moneyShort promotes a K-quotient that rounds to 1000 into the M tier, never an overflowed K label", () => {
+  // A 0DTE flow print's premium routinely sits in this exact range (INTEL_FLOW_PREMIUM_MIN =
+  // $500K), so this is live-reachable from real flow prints, not just an edge case.
+  assert.equal(moneyShort(999_600), "$1.0M");
+  assert.equal(moneyShort(999_999), "$1.0M");
+  assert.equal(moneyShort(-999_600), "$-1.0M");
+  // Below the rounding boundary, the K label is still correct.
+  assert.equal(moneyShort(999_400), "$999K");
+  assert.equal(moneyShort(500_000), "$500K");
+});
+
+test("moneyShort promotes an M-quotient that rounds to 1000 into the B tier, never an overflowed 4-digit M label", () => {
+  // net_gex / gex_net / flow_0dte_net values routinely approach the $1B boundary.
+  assert.equal(moneyShort(999_950_000), "$1.0B");
+  assert.equal(moneyShort(-999_950_000), "$-1.0B");
+  // Below the rounding boundary, the M label is still correct.
+  assert.equal(moneyShort(999_000_000), "$999.0M");
 });

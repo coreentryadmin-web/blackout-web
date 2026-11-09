@@ -86,11 +86,31 @@ export type IntelHeatmapSlice = {
   charm?: { zero_level?: number | null; total?: number; regime?: { posture?: string | null } };
 };
 
-function moneyShort(n: number): string {
+// Exported for direct unit testing of the round-first-then-promote boundary fix below —
+// not used outside this module.
+export function moneyShort(n: number): string {
   const abs = Math.abs(n);
   if (abs >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
-  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  if (abs >= 1_000_000) {
+    const mVal = n / 1_000_000;
+    const mStr = mVal.toFixed(1);
+    // BUG FIX (round-first-then-promote, same vein as helix-discord-format.ts's moneyShort):
+    // the unit was picked by comparing the RAW abs value against the B threshold, then the
+    // value was rounded to one decimal INSIDE the M branch. A net_gex/flow-net value whose
+    // M-quotient rounds to >=1000 (e.g. 999_950_000 -> 999.95 -> toFixed(1) "1000.0") used to
+    // render as the overflowed "$1000.0M" instead of promoting to "$1.0B". Re-check the
+    // ROUNDED quotient before committing to the M label.
+    if (Math.abs(Number(mStr)) >= 1000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+    return `$${mStr}M`;
+  }
+  if (abs >= 1_000) {
+    const kVal = Math.round(n / 1_000);
+    // Same guard one tier down: a flow-print premium (routinely $500K-$2M here, per
+    // INTEL_FLOW_PREMIUM_MIN) whose K-quotient rounds to >=1000 (e.g. 999_600 -> round(999.6)
+    // = 1000) used to render as "$1000K" instead of promoting to "$1.0M".
+    if (Math.abs(kVal) >= 1000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    return `$${kVal}K`;
+  }
   return `$${Math.round(n)}`;
 }
 
