@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
-import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
+import {
+  evaluateSpxDeskSmoke,
+  isTransientDeskProbeStatus,
+} from "./lib/gha-desk-smoke-eval.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
@@ -72,10 +75,24 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
-    Authorization: `Bearer ${CRON}`,
-  });
-  const verdict = evaluateSpxDeskSmoke({ status, body });
+  const deskHeaders = { Authorization: `Bearer ${CRON}` };
+  const deskAttempts = Math.max(1, Number(process.env.SPX_DESK_SMOKE_ATTEMPTS ?? 5));
+  const deskIntervalMs = Number(process.env.SPX_DESK_SMOKE_INTERVAL_MS ?? 8_000);
+  let status = 0;
+  let body;
+  let verdict = { outcome: "fail", message: "no probe" };
+
+  for (let attempt = 1; attempt <= deskAttempts; attempt++) {
+    ({ status, body } = await fetchJson("/api/market/spx/desk", deskHeaders));
+    verdict = evaluateSpxDeskSmoke({ status, body });
+    const retryable = verdict.outcome === "fail" && isTransientDeskProbeStatus(status);
+    if (!retryable || attempt === deskAttempts) break;
+    console.log(
+      `  … /api/market/spx/desk → HTTP ${status} (transient; retry ${attempt}/${deskAttempts - 1} in ${deskIntervalMs / 1000}s)`
+    );
+    await new Promise((r) => setTimeout(r, deskIntervalMs));
+  }
+
   if (verdict.outcome === "ok") {
     console.log(`  ✓ /api/market/spx/desk → ${verdict.message}`);
   } else if (verdict.outcome === "warn") {
