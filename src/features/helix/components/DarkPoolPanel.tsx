@@ -33,19 +33,49 @@ function timeAgo(iso: string | null | undefined): string {
   return relativeAge(iso);
 }
 
-function fmtDate(iso: string | null | undefined): string {
+/**
+ * Absolute print date/time for the ticker-filtered view's date column — `"MM/DD HH:MM"` in **US
+ * Eastern**, 24-hour, zero-padded. A dark-pool block prints during a US market session, so an
+ * absolute stamp on this desk means ET, the same convention `fmtFullTimestamp`
+ * (helix-flow-format.ts) already documents and uses for the sibling Options Flow tape's own
+ * absolute-time column in this same feature directory.
+ *
+ * BUG THIS FIXES: this used `d.getMonth()`/`d.getDate()`/`d.getHours()`/`d.getMinutes()` — the
+ * Date object's LOCAL getters, i.e. the viewer's BROWSER timezone, not ET. Every member outside
+ * America/New_York saw a date/time that disagreed with the ET timestamps shown everywhere else on
+ * this exact desk, and — because ET trails UTC by 4-5h while most non-US timezones run AHEAD of
+ * UTC — a late-session print (e.g. a block executed near the 16:00 ET close, ~20:00-21:00 UTC)
+ * would frequently render under the WRONG CALENDAR DATE for a member in Europe/Asia/Australia,
+ * not merely a different clock hour. Fixed by anchoring to `America/New_York` via
+ * `Intl.DateTimeFormat`, the same approach and hourCycle-"24" normalization `fmtFullTimestamp`
+ * already uses, regardless of the runtime's own zone.
+ */
+export function fmtDate(iso: string | null | undefined): string {
   // An undated print renders as the dash `relativeAge` already uses, NOT as today's date. The two
   // branches of the caller must agree about absence, or the same row reads "just now" in one column
   // width and "08/23 14:02" in another.
   if (iso == null || iso === "") return timeAgo(iso);
   try {
     const d = new Date(iso);
-    // new Date(bad) is Invalid Date (does NOT throw), so getMonth() etc. would render "NaN/NaN".
+    // new Date(bad) is Invalid Date (does NOT throw), so formatToParts would render "NaN/NaN".
     if (Number.isNaN(d.getTime())) return timeAgo(iso);
-    const mo = String(d.getMonth() + 1).padStart(2, "0");
-    const dy = String(d.getDate()).padStart(2, "0");
-    const hr = String(d.getHours()).padStart(2, "0");
-    const mn = String(d.getMinutes()).padStart(2, "0");
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+    const mo = get("month");
+    const dy = get("day");
+    // Some engines emit hourCycle "24" (a literal "24" at midnight) under hour12:false — normalize,
+    // same guard fmtFullTimestamp already carries.
+    let hr = get("hour");
+    if (hr === "24") hr = "00";
+    const mn = get("minute");
+    if (!mo || !dy || !hr || !mn) return timeAgo(iso);
     return `${mo}/${dy} ${hr}:${mn}`;
   } catch {
     return timeAgo(iso);
