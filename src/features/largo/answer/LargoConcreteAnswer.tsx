@@ -8,6 +8,7 @@ import { LargoAnswerCaveats } from "@/features/largo/answer/LargoAnswerCaveats";
 import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { splitHeadline } from "@/features/largo/answer/headline";
 import { parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
+import { UnavailableChip } from "@/features/largo/answer/BieChips";
 
 // Accepts an ISO instant OR a Largo C1 ET stamp ("YYYY-MM-DD HH:mm ET" — e.g. swing play-briefs'
 // `envelope.asOf`). `new Date(iso)` returns Invalid Date on the ET-stamp shape, which silently
@@ -74,6 +75,17 @@ export function LargoConcreteAnswer({
   if (trade?.boardPlay) integrityNotes.push(`Board: ${trade.boardPlay.contract} (${trade.boardPlay.status})`);
   if (trade?.existingPlay) integrityNotes.push(`Edition: ${trade.existingPlay.contract}`);
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.unavailableSources` is documented
+  // in `answer-envelope.ts` itself as "Sources requested but unavailable this turn — always
+  // surfaced" and both sibling renderers honor that (`BieAnswer.tsx` via `UnavailableChip`,
+  // `LargoDeskRead.tsx` via its own "Could not read" section) — but Concrete, the DEFAULT
+  // `answerMode` in `LargoAnswerMessage.tsx`, never read this field at all. A failed/missing
+  // upstream source (e.g. a GEX-walls timeout, a Benzinga 403) silently vanished from the
+  // overwhelming majority of real answers instead of being surfaced per the Largo product
+  // contract's "absence" principle (docs/audit/LARGO-PRODUCT-CONTRACT.md) — the member saw a
+  // confident-looking read with no indication part of the evidence never arrived.
+  const unavailableSources = envelope?.unavailableSources ?? [];
+
   return (
     <article className={clsx("largo-concrete-answer", className)}>
       {envelope?.asOf ? (
@@ -94,6 +106,14 @@ export function LargoConcreteAnswer({
           ))}
           {trade?.existingPlay?.note && <p className="largo-read-integrity-note">{trade.existingPlay.note}</p>}
           {trade?.boardPlay?.note && <p className="largo-read-integrity-note">{trade.boardPlay.note}</p>}
+        </div>
+      ) : null}
+
+      {unavailableSources.length > 0 ? (
+        <div className="largo-concrete-unavailable">
+          {unavailableSources.map((u, i) => (
+            <UnavailableChip key={`${u.source}-${i}`} reason={`${u.source}: ${u.reason}`} />
+          ))}
         </div>
       ) : null}
 
