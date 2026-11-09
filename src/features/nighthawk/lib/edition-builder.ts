@@ -566,6 +566,13 @@ async function publishRecapOnlyEdition(params: {
       hot_chains: ctx.hot_chains.slice(0, 10),
       sector_tides: ctx.sector_tides,
       index_flows: ctx.index_flows,
+      // Audit finding (2026-11-09): named here, not silent — same absence-disclosure discipline as
+      // the recap_only_reason/funnel fields above. When true, `index_flows` (and therefore
+      // `index_dossiers` below) may read as a flat tape while the real cause is a UW outage on one
+      // or more of the 10 tracked index ETFs' own flow-alerts pull — see `fetchIndexFlowsPooled`
+      // (market-wide.ts) for the full account. Passes through `compactNightHawkEditionForModel`'s
+      // existing market_recap pass-through unchanged, so Largo sees it too.
+      index_flows_fetch_failed: ctx.index_flows_fetch_failed ?? false,
       top_net_impact: ctx.top_net_impact.slice(0, 10),
       vix_iv_rank: ctx.vix_iv_rank,
       vix_term: ctx.vix_term,
@@ -1741,6 +1748,9 @@ export async function buildEveningEdition(opts?: {
         hot_chains: ctx.hot_chains.slice(0, 10),
         sector_tides: ctx.sector_tides,
         index_flows: ctx.index_flows,
+        // See the sibling recap-only path above for the full account — same field, same
+        // absence-disclosure rationale (audit finding, 2026-11-09).
+        index_flows_fetch_failed: ctx.index_flows_fetch_failed ?? false,
         top_net_impact: ctx.top_net_impact.slice(0, 10),
         vix_iv_rank: ctx.vix_iv_rank,
         vix_term: ctx.vix_term,

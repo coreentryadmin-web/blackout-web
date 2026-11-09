@@ -16,7 +16,7 @@ import {
   fetchUwMarketTotalOptionsVolume,
   fetchUwPredictionsConsensus,
   fetchUwSectorTide,
-  fetchUwTickerFlowAlerts,
+  fetchUwTickerFlowAlertsResult,
   fetchUwUnusualTrades,
   type PredictionConsensusSignal,
 } from "@/lib/providers/unusual-whales";
@@ -65,6 +65,11 @@ export type MarketWideContext = {
   flow_fetch_failed?: boolean;
   hot_chains: Record<string, unknown>[];
   index_flows: Record<string, unknown>;
+  /** True when at least one of the 10 `INDEX_TICKERS`' own per-ticker UW flow-alerts pull
+   *  genuinely failed (vs legitimately returning zero alerts) — see `fetchIndexFlowsPooled`'s own
+   *  doc for the absence-vs-failure conflation this closes and its live-measured downstream cost
+   *  (a silently emptied `index_dossiers` on the published edition). Audit finding (2026-11-09). */
+  index_flows_fetch_failed?: boolean;
   spx_bars: Array<{ o: number; h: number; l: number; c: number; t?: number }>;
   spx_intraday_5m: Array<{ o: number; h: number; l: number; c: number; t?: number }>;
   spx_gap: SpxGapContext | null;
@@ -226,11 +231,35 @@ async function fetchEtfTidesSequential(): Promise<Record<string, Record<string, 
   };
 }
 
-async function fetchIndexFlowsPooled(): Promise<Record<string, unknown>> {
-  if (!uwConfigured()) return {};
+/**
+ * Audit finding (2026-11-09): the per-ticker UW flow-alerts pull for all 10 `INDEX_TICKERS` used
+ * to end in `fetchUwTickerFlowAlerts(t, 30).catch(() => [])` — but `fetchUwTickerFlowAlerts` never
+ * throws (it inherits `uwGetSafe`'s "never throw" contract, see that function's own doc), so that
+ * `.catch()` could structurally never fire. A genuine UW outage on this lane and a genuinely flat
+ * tape across every tracked index ETF therefore collapsed to the identical shape
+ * (`{alerts:0, call_premium:0, put_premium:0, total_premium:0}` for all 10), exactly the kind of
+ * absence-vs-failure conflation `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s absence principle exists
+ * to prevent — and the concrete downstream cost is real: `fetchIndexDossiers` (index-dossier.ts)
+ * drops any ETF whose `total_premium` reads under its `minPremium` floor, so a shared-upstream
+ * outage here silently empties `index_dossiers` in the published Night Hawk Legacy edition, exactly
+ * as if the tape were genuinely quiet. Live-confirmed 2026-11-09: a real edition pull returned all
+ * 10 tracked ETFs simultaneously at `alerts:0, total_premium:0` and `index_dossiers: []` (a healthy
+ * edition normally carries ~6).
+ *
+ * Fixed by switching to `fetchUwTickerFlowAlertsResult`, which surfaces `uwGetSafe`'s real
+ * success/failure distinction (`data == null`) instead of discarding it at `extractRows`. `failed`
+ * here is true when ANY of the 10 per-ticker pulls genuinely failed — consistent with the other 7
+ * discovery-lane fetch-failure flags on `MarketWideContext` (each one flag per lane, not per
+ * sub-call), and matching the live symptom above, where an upstream outage hit every tracked ETF
+ * at once (they all share one upstream, UW's per-ticker flow-alerts endpoint).
+ */
+export async function fetchIndexFlowsPooled(): Promise<{ flows: Record<string, unknown>; failed: boolean }> {
+  if (!uwConfigured()) return { flows: {}, failed: false };
+  let anyFailed = false;
   const indexResults = await runUwPool(
     INDEX_TICKERS.map((t) => async () => {
-      const alerts = await fetchUwTickerFlowAlerts(t, 30).catch(() => []);
+      const { alerts, failed } = await fetchUwTickerFlowAlertsResult(t, 30);
+      if (failed) anyFailed = true;
       const callPrem = alerts
         .filter((a) => a.option_type === "CALL")
         .reduce((s, a) => s + a.premium, 0);
@@ -249,7 +278,7 @@ async function fetchIndexFlowsPooled(): Promise<Record<string, unknown>> {
   );
   const indexFlows: Record<string, unknown> = {};
   for (const row of indexResults) indexFlows[row.ticker] = row;
-  return indexFlows;
+  return { flows: indexFlows, failed: anyFailed };
 }
 
 export async function fetchMarketWideContext(opts?: {
@@ -392,7 +421,10 @@ export async function fetchMarketWideContext(opts?: {
   // empty default, never throw. If any of these throws BEFORE the function returns, the builder's
   // outer catch fires and we get a failed/no-row edition (the #77 dark-fail relocated one stage
   // earlier). With these guards fetchMarketWideContext can only return a (possibly thin) ctx.
-  const indexFlows = await fetchIndexFlowsPooled().catch(() => ({} as Record<string, unknown>));
+  const indexFlowsResult = await fetchIndexFlowsPooled().catch(
+    () => ({ flows: {} as Record<string, unknown>, failed: true })
+  );
+  const indexFlows = indexFlowsResult.flows;
 
   const macroEvents = (await macroEventsOnDateLive(tomorrow).catch(() => []))
     .filter((e) => e.impact === "high")
@@ -433,6 +465,7 @@ export async function fetchMarketWideContext(opts?: {
     flow_fetch_failed: flowFetchFailed,
     hot_chains: hotChains,
     index_flows: indexFlows,
+    index_flows_fetch_failed: indexFlowsResult.failed,
     spx_bars: spxBars,
     spx_intraday_5m: spxIntraday5m,
     spx_gap: spxGap,
