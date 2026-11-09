@@ -28,7 +28,15 @@ function isCompact(env: BieAnswerEnvelope): boolean {
     (env.levels?.length ?? 0) === 0 &&
     (env.scenarios?.length ?? 0) === 0 &&
     !env.sections[0]?.evidence?.length &&
-    !env.sections[0]?.levels?.length
+    !env.sections[0]?.levels?.length &&
+    // BUG FIX (Ask Largo standing mandate, 2026-11-09): a section whose only cross-cutting
+    // structure is a `table` (e.g. swing's archetype/ticker track-record sections) still
+    // qualified as "compact" by every check above, which routes it through the plain-prose
+    // branch below (`envelope.sections[0].body` via LargoMessageBody) and skips
+    // `BieSectionCard` — the only renderer that reads `section.table` — entirely. A compact
+    // read is for "one section, no structure to show"; a section carrying a table has
+    // structure to show, so it must not be compact.
+    !env.sections[0]?.table
   );
 }
 
