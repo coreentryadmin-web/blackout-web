@@ -11,6 +11,7 @@ import { auditLargoAnswerGrounding, collectContextNumbers } from "@/lib/bie/veri
 import { applyVerificationCaveat } from "@/lib/largo/turn-outcome";
 import { fetchRecentLargoAnswersWithResults } from "@/lib/largo/largo-store";
 import { dbConfigured, dbQuery } from "@/lib/db";
+import { largoGroundingSweepOutcome } from "@/lib/correctness/largo-verifier-support";
 
 // ---------------------------------------------------------------------------
 // LARGO (AI terminal) data-correctness verifier — priority surface #7.
@@ -183,7 +184,7 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
         mk(
           "shadow-recompute",
           "answer_grounding",
-          "flag",
+          largoGroundingSweepOutcome(flagged.length, skippedNoContext, answers.length),
           `${flagged.length}/${answers.length - skippedNoContext} recent Largo answers had undisclosed low numeric grounding ` +
             `(coverage < 50% with 4+ claims, no runtime caution footer). Examples: ${examples}.`,
           { id: "largo-ungrounded-answers", expected: "0 undisclosed low-coverage", actual: String(flagged.length) }
@@ -194,7 +195,7 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
         mk(
           "shadow-recompute",
           "answer_grounding",
-          skippedNoContext > 0 && answers.length === skippedNoContext ? "consistency-only" : "pass",
+          largoGroundingSweepOutcome(flagged.length, skippedNoContext, answers.length),
           skippedNoContext > 0
             ? `${answers.length} recent Largo answers checked — ${skippedNoContext} lacked numeric tool context (pre-router persistence) and ${answers.length - skippedNoContext} passed grounding.`
             : `${answers.length} recent Largo answers checked — none had undisclosed low numeric grounding ` +
