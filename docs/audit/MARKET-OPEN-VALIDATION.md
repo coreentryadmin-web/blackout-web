@@ -10324,6 +10324,36 @@ and `/play` are actually serving a real price again
   is genuinely empty (pre-launch state) — it should now show up only under `totals.skipped`, not
   `totals.consistencyOnly`, and should NOT be listed as a coverage gap at all.
 
+## WATCH LIST — 2026-11-09 (Meridian OpEx cross-market grouped-daily fetch swallowed its own failure inside the `serverCache` loader, `fix/servercache-swallow-failure`) — re-check on the next Meridian OpEx panel open, ideally during/after a real Polygon hiccup
+
+- **What was broken**: `meridian-opex-cross-market.ts`'s `groupedDailyForDate` caught
+  `fetchDailyMarketSummary`'s own failure INSIDE the function passed to `serverCache`
+  (`.then(...).catch(() => [])`), so a genuine Polygon grouped-daily outage for a given prior-
+  OpEx date got written into the cache as a successful "no movers" result for the full 30-minute
+  TTL — the exact "swallow-failure-before-the-combinator" bug class already fixed twice
+  elsewhere this session (`meridian-peer-reactions.ts`, `dossier.ts`). Since this fetch runs once
+  per prior-OpEx date (6 by default) via `Promise.all`, a correlated outage could silently zero
+  out movers across the entire 6-session comparison, each date frozen independently for its own
+  30-minute window.
+- **Fix**: extracted the cache-wrapping logic into a new, pure, side-effect-free sibling module
+  (`src/lib/meridian/meridian-opex-grouped-daily.ts`, `loadOpexGroupedDailyOrEmpty`) that moves
+  the `.catch` OUTSIDE the cached call, so a real rejection propagates through untouched and is
+  never written into the cache — `server-cache.ts`'s own degraded-key retry machinery now
+  actually sees the failure. New regression test (`meridian-opex-grouped-daily.test.ts`, 3/3
+  pass) pins both the fix and the original bug shape (a dedicated regression test re-creates the
+  buggy pattern inline and asserts it exhibits the defect). RED→GREEN confirmed by temporarily
+  reverting the fix and watching the "failure is NOT cached" test fail, then restoring it.
+  `tsc --noEmit` clean.
+- **Specific thing to check once live**: open the Meridian OpEx cross-market panel for a recent
+  monthly OpEx date and confirm top-gainer/top-loser rows are populated for every one of the 6
+  prior sessions shown. This bug is only VISIBLE during/shortly after a genuine Polygon
+  grouped-daily hiccup (the pre-fix failure mode produced an indistinguishable-looking "no
+  movers" result the rest of the time too, just for the honest reason of a quiet session) — so
+  the real confirmation is structural: if a live outage is ever observed in CloudWatch logs for
+  `fetchDailyMarketSummary`/grouped-daily around the time this panel is viewed, the panel should
+  now show stale/retrying behavior (or recover on the next 30-minute window) rather than a
+  frozen empty-movers result for the full TTL.
+
 ## WATCH LIST — 2026-11-09 (Vector 4H chart route cached a partial per-day fetch failure as complete, `fix/servercache-swallow-helix-vector-thermal`) — re-check during the next RTH session
 
 - **What was broken**: `GET /api/market/vector/4h-bars` walks back 12 trading days and fetches
