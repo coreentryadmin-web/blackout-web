@@ -727,6 +727,44 @@ test("fetchPolygonIvTermStructure's page-pagination loop shares HEATMAP_PAGE_GUA
   assert.doesNotMatch(fnBody, /while \(page && guard < \d+\)/, "must not regress to a bespoke numeric cap");
 });
 
+// ── fetchPolygonIvTermStructure must not cache a mid-pagination fetch FAILURE as a complete
+// term structure. `polygonFetchUrl` collapses any non-2xx/thrown error on a LATER page into the
+// same `null` the loop uses to mean "no more pages" — `page?.next_url` on a null `page` is always
+// falsy, so `warnChainTruncated` never fires either. Whatever partial byExpiry map was built from
+// the pages that DID succeed then got written into `ivTermCache` for the full 5-minute TTL as if
+// it were the whole, confirmed term structure, with zero signal (not even a console.warn) that
+// far expiries are missing because a page genuinely failed, not because the chain ended there.
+// Same bug class as this file's GEX-heatmap chain-less negative cache fix (fetchFailed threaded
+// through fetchHeatmapBandLoHi/Unfiltered/Band) — a failed fetch must never be indistinguishable
+// from a confirmed result. Not practically unit-testable without heavy network mocking (same
+// precedent as the page-guard test above), so this asserts the actual source shape. ─────────────
+
+test("fetchPolygonIvTermStructure tracks a mid-pagination fetch failure and withholds the cache write", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  const fnStart = src.indexOf("export async function fetchPolygonIvTermStructure");
+  assert.ok(fnStart >= 0, "fetchPolygonIvTermStructure not found");
+  const fnBody = src.slice(fnStart, fnStart + 4000);
+
+  // The re-fetch of a later page must be captured as a distinct `next` value before being
+  // assigned to `page`, so a null result can be flagged BEFORE it collapses into the same
+  // "no more pages" state the loop's own exit condition relies on.
+  assert.match(
+    fnBody,
+    /const next = await polygonFetchUrl\(page\.next_url\)[\s\S]{0,40};\s*\n\s*if \(next == null\) midPaginationFetchFailed = true;/,
+    "a failed later-page fetch must be recorded before `page` is overwritten with it"
+  );
+  // The cache write at the end of the function must be gated on that flag, not merely on
+  // `data.length` — a non-empty but TRUNCATED-BY-FAILURE result must not be cached as complete.
+  assert.match(
+    fnBody,
+    /if \(data\.length && !midPaginationFetchFailed\) \{/,
+    "ivTermCache.set must be withheld when pagination failed partway through"
+  );
+});
+
 // ── resolveExpiryAxis: near-term/far-dated boundary must never blend across the merge ─────
 // buildGexHeatmapUncached must pass the near-term expiries captured BEFORE any far-dated
 // contract is merged into the shared expiry set. These tests prove that passing the WRONG
