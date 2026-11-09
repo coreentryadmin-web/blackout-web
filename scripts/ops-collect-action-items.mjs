@@ -27,9 +27,11 @@ import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 import {
   shouldRetryWatchdogFetch,
   watchdogHttpPriority,
+  shouldEmitWatchdogHttpActionItem,
   shouldPageNighthawkZeroPlays,
   originHealthFailurePriority,
 } from "./audit/lib/ops-collect-scope.mjs";
+import { isAuthFailureStatus } from "./audit/lib/auth-status.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -234,8 +236,14 @@ async function httpItems() {
     }
     const wj = w.json ?? {};
     if (w.status !== 200) {
-      const pri = watchdogHttpPriority(w.status);
-      add(pri, "watchdog", "watchdog:http", "Cron watchdog HTTP error", `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`);
+      if (isAuthFailureStatus(w.status)) {
+        console.error(
+          `[ops-collect] watchdog HTTP ${w.status} — collector CRON bearer rejected (reconcile CRON_SECRET / AWS SM); not paging`
+        );
+      } else if (shouldEmitWatchdogHttpActionItem(w.status)) {
+        const pri = watchdogHttpPriority(w.status);
+        add(pri, "watchdog", "watchdog:http", "Cron watchdog HTTP error", `HTTP ${w.status}${w.err ? ` (${w.err})` : ""}`);
+      }
     } else {
       for (const key of wj.rth_stale_keys ?? []) {
         add("P0", "watchdog", `watchdog:rth-stale:${key}`, `RTH stale cron: ${key}`, "market_hours_stale during RTH — live data warmer may be down.");

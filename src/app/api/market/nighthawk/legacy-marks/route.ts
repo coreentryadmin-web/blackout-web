@@ -39,5 +39,12 @@ export async function GET(req: NextRequest) {
   const result = await fetchLegacyOptionMarksServer(occs, { includeStale: true });
   const marks: LegacyOptionMarkRow[] = [...result.values()];
 
-  return NextResponse.json(roundFloats({ available: true, marks }), { headers: NO_STORE_HEADERS });
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09): `available` used to be hardcoded `true`
+  // whenever occs.length > 0, independent of whether any OCC actually resolved a mark — so a
+  // total WS+REST+cache miss (every mark absent) still reported `available:true` with an empty
+  // array. The only live HTTP consumer (use-legacy-option-marks.ts) never reads this field, so
+  // today this was a latent footgun rather than an active bug — but `available` should mean "a
+  // live mark was found," not "a well-formed query was supplied" (that half is already covered
+  // by the `occs.length === 0` branch above).
+  return NextResponse.json(roundFloats({ available: marks.length > 0, marks }), { headers: NO_STORE_HEADERS });
 }

@@ -1769,6 +1769,17 @@ export function catalystsSection(
     );
   } else if (arsenal.news?.count === 0) {
     lines.push("No recent ticker news in feed.");
+  } else if (arsenal.unavailable_sources?.some((u) => u.source === "news")) {
+    // BUG FIX (2026-11-08, Ask Largo standing mandate): `arsenal.news` is also `null` when the
+    // news fetch itself FAILED (ecosystem-context.ts sets it null and pushes a `source: "news"`
+    // entry to `unavailable_sources`), not only when it's genuinely irrelevant for this ticker
+    // class (which leaves it null with no `unavailable_sources` entry). This section only ever
+    // distinguished "has headlines" from "count === 0" — a failed fetch fell through both branches
+    // and rendered nothing, silently conflating "fetch failed" with "no news exists" even though
+    // `envelope.unavailableSources` correctly carried the real reason elsewhere in the same
+    // response. `meridianCatalystSection`'s sibling `slice?.unavailable` branch already disclosed
+    // the identical failure mode for its own catalyst-calendar read — this mirrors that wording.
+    lines.push("Ticker news fetch failed on this read — not evidence of no news.");
   }
 
   if (arsenal.related?.length) {

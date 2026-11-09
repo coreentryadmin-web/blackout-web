@@ -25,8 +25,34 @@ test("buildSpxDesk: falls back to lastPulseForSignals when index snap is empty",
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   assert.match(
     src,
-    /const price =[\s\S]*spxSnap\?\.price \?\? lastPulseForSignals\?\.price \?\? priorFromBars\.pdc \?\? 0;/,
-    "full desk build must reuse last RTH print or prior session close off-hours"
+    /const price =\s*\n\s*spxSnap\?\.price \?\?\s*\n\s*lastPulseForSignals\?\.price \?\?\s*\n\s*priorFromBars\.pdc \?\?\s*\n\s*\(await spxPriceFromSpyProxy\(\)\) \?\?\s*\n\s*0;/,
+    "full desk build must reuse last RTH print, prior session close, or the SPY-proxy fallback off-hours"
+  );
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-09, live repro): confirmed live 2026-11-09 that
+// GET /v2/aggs/ticker/I:SPX/... returns 403 NOT_AUTHORIZED (the I:SPX-specific historical-aggs
+// entitlement, distinct from the already-known /v3/snapshot real-time outage) while the
+// equivalent SPY aggs stay healthy — so when spxSnap/lastPulseForSignals/priorFromBars.pdc are
+// ALL unavailable (the live symptom: GET /api/market/spx/desk returning price:0,
+// available:false, source:"none"), buildSpxDesk used to fall straight through to the empty
+// shell with no way to recover a real number, even though gex-heatmap's sibling spot-resolution
+// (polygon-options-gex.ts's resolveSpotSnapshotLastResort) already proves the exact same
+// SPY-proxy pattern works for this exact condition.
+test("buildSpxDesk: price chain has a SPY-proxy last resort before falling to 0 (2026-11-09 fix, I:SPX aggs entitlement gap)", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /async function spxPriceFromSpyProxy\(\): Promise<number \| null> \{\s*\n\s*try \{\s*\n\s*const \{ fetchPreviousDayBar \} = await import\("@\/lib\/providers\/polygon-largo"\);\s*\n\s*const bar = await fetchPreviousDayBar\("SPY", \{ next: \{ revalidate: 3600 \} \}\);\s*\n\s*if \(!bar \|\| !\(bar\.c > 0\)\) return null;\s*\n\s*return bar\.c \* 10;/,
+    "spxPriceFromSpyProxy must fetch SPY's previous-day close and scale it ×10, mirroring polygon-options-gex.ts's proven resolveSpotSnapshotLastResort pattern for the identical I:SPX condition"
+  );
+  const buildIdx = src.indexOf("export async function buildSpxDesk(");
+  const nextFnIdx = src.indexOf("\nexport async function buildSpxDeskPulse(");
+  const body = src.slice(buildIdx, nextFnIdx);
+  assert.match(
+    body,
+    /\(await spxPriceFromSpyProxy\(\)\) \?\?\s*\n\s*0;/,
+    "buildSpxDesk's own price chain must call the SPY-proxy fallback as the last resort before 0"
   );
 });
 

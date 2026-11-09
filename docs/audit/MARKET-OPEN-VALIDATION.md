@@ -9679,3 +9679,53 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   by a different code path, so this check is specifically about the WATCH lane. If a PUT is still
   positive after a confirmed post-deploy discovery tick, the fix did not actually take effect in
   production and needs a fresh look (not just a stale-snapshot read).
+
+## WATCH LIST — 2026-11-08 (Swing Ask Largo "Catalysts & news" conflated a failed news fetch with genuine zero-news, PR #7630) — ALREADY LIVE-CONFIRMED
+
+- **`catalystsSection()` (`src/lib/swing/play-brief-intel.ts`) silently rendered nothing on a
+  FAILED news fetch**, indistinguishable from a genuine "no news" result, even though
+  `envelope.unavailableSources` carried the real failure reason for the same ticker in the same
+  response (Largo C3 absence-honesty violation) — opened by a sibling swing-lane session, merged by
+  this session after an independent diff review (small, 3 files, RED→GREEN test proof, 2282/2282
+  swing regression, tsc clean). See PR #7630 and
+  `docs/audit/findings-staging/2026-11-08-swing-catalysts-news-fetch-failure-disclosure.md` for the
+  full root-cause/evidence write-up — this entry was missing from that PR and is added here per the
+  standing policy that every fix gets a market-open-validation entry.
+- **Deployed and already LIVE-CONFIRMED this session, not just pending for Monday**:
+  `ecr-push-production.yml` run 42523128123 completed `success` at 2026-11-08T21:26:47Z (merge sha
+  `a88f1ea`). A live play-brief pull ~50 minutes later (`GET
+  /api/market/swing/play-brief?playId=SWING:MGNI&ticker=MGNI&status=WATCH`, 22:16 UTC) shows the new
+  disclosure text live in production: `"Catalysts & news"` section reads `"Ticker news fetch failed
+  on this read — not evidence of no news."` instead of rendering nothing, for a ticker whose real
+  news fetch is currently failing under the known, ongoing Benzinga/Polygon entitlement outage
+  documented elsewhere in this repo's CLAUDE.md.
+- **Nothing further to re-check Monday specifically for this fix** — unlike the WATCH-lane delta
+  fix above (blocked on the weekend discovery-cron gap), this fix's code path runs live on every
+  play-brief request regardless of cron cadence, and is already proven working end-to-end. Listed
+  here for the audit record, not as an open Monday checklist item.
+
+## WATCH LIST — 2026-11-09 (Swing `closedReason` now persists the real gating rung instead of guessing from P&L sign, PR #7639) — merged, re-check on the next real close
+
+- **`closedReasonFromRow` (`src/lib/swing/closed-plays.ts`) used to derive `closedReason` purely
+  from the sign of `realized_pnl_pct`** — collapsing four genuinely distinct gating mechanisms
+  (`structural_stop`/`thesis_stop`/`premium_stop`/`expiry_risk`, computed by
+  `evaluateSwingManagement`) into just `"stopped"` (negative) or `"target"` (positive), which can
+  be wrong in both directions since a gating rung can fire regardless of P&L sign at the moment it
+  fires. Live repro: MRNA positionId 65 closed `-34.47%` (nowhere near the `-60%` `premium_stop`
+  threshold) but read `closedReason="stopped"`, asserting structural-invalidation framing
+  regardless of the real trigger. Opened by a sibling swing-lane session, reviewed and found
+  already merged (`merged_by: coreentryadmin-web`) by the time this session checked back — CI was
+  green (`verify`/CodeQL success) before the merge landed, per git log (`11542c0`).
+- **Fix**: `gradeParentFromMark` (`roll-plan.ts`) now stamps the real rung into
+  `grade_json.closing_rung` at grade time; `closedReasonFromRow` reads it first (`thesis_stop` →
+  `"thesis"`, `structural_stop` → `"stopped"`, `premium_stop`/`expiry_risk` → an honest generic
+  label), falling back to the old sign-based guess only for rows graded before this field existed —
+  additive, zero regression on historical data (confirmed by the PR's own regression tests).
+- **Re-check once the market opens and a real swing position closes (CLOSE or ROLL) post-deploy**:
+  pull `GET /api/market/swing/record` for that position and confirm `grade_json.closing_rung` is
+  present and that the play-brief's "Lessons"/closed-coaching text matches the REAL mechanism (e.g.
+  a thesis-pillar-break close should now render the dedicated `"thesis"` coaching line —
+  `"Thesis break exit — pillar degradation was the signal..."` — rather than generic
+  structural-stop framing), not just the P&L sign. The chain-composite (multi-leg rolled) mapper is
+  NOT covered by this fix (disclosed follow-up) — a rolled position's closed reason still uses the
+  old sign-based guess, so don't expect `closing_rung` on those rows yet.

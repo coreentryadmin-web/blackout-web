@@ -2728,6 +2728,81 @@ test("catalystsSection: headlines from a fresh news read carry NO staleness disc
   assert.match(section!.body, /CrowdStrike stock moves higher/);
 });
 
+test("catalystsSection: a FAILED news fetch discloses the failure, not silence (Largo C3, 2026-11-08)", () => {
+  // `arsenal.news` is null both when the leg is genuinely IRRELEVANT for this ticker class (no
+  // unavailable_sources entry pushed) and when the fetch itself FAILED (ecosystem-context.ts sets
+  // news null AND pushes a `source: "news"` unavailable_sources entry). This section used to read
+  // only `headlines?.length` vs `count === 0`, so a failure fell through both and rendered nothing
+  // — silently conflating "fetch failed" with "no news exists" even though envelope.unavailableSources
+  // carried the real reason elsewhere in the same response.
+  const section = catalystsSection({
+    ticker: "PLTR",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "single_name",
+      earnings: null,
+      fundamentals: null,
+      related: null,
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [
+        {
+          source: "news",
+          reason: "ticker news PLTR unavailable: Polygon /benzinga/v2/news → 403",
+          what_is_missing: "a successful news/headlines fetch for this ticker",
+          retryable: true,
+        },
+      ],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section, "a failed news fetch must still produce a section, not silently nothing");
+  assert.match(section!.body, /fetch failed/i);
+  assert.match(section!.body, /not evidence of no news/i);
+});
+
+test("catalystsSection: news === null with NO unavailable_sources entry (irrelevant leg) stays silent on news (regression guard)", () => {
+  // Companion to the failure-disclosure test above — proves that fix didn't start claiming a
+  // failure for a ticker class where the news leg is simply not fetched at all (no entry pushed).
+  const section = catalystsSection({
+    ticker: "SPX",
+    zerodte_today: null,
+    nighthawk_recent: null,
+    recent_audit_entries: [],
+    recent_flow: null,
+    recent_anomalies: [],
+    flow_full_state: null,
+    spx_play: null,
+    spx_full_state: null,
+    vector_full_state: null,
+    gex_positioning: null,
+    flow_feed_fresh: true,
+    arsenal: {
+      scope: "index",
+      earnings: null,
+      fundamentals: null,
+      related: ["SPY", "QQQ"],
+      news: null,
+      macro: null,
+      breadth: null,
+      unavailable_sources: [],
+    },
+  } as import("@/lib/bie/ecosystem-context").EcosystemContext);
+  assert.ok(section, "the related-peers line should still render");
+  assert.doesNotMatch(section!.body, /fetch failed/i);
+  assert.doesNotMatch(section!.body, /No recent ticker news/);
+});
+
 // ENHANCEMENT (Ask Largo standing mandate, AGGRESSIVE MODE, 2026-10-18, #4076 comment
 // 6243951905, live TSLA repro): earnings imminent + headlines present used to render as two
 // unrelated blocks with a blank line between them — no sentence ever connected an earnings

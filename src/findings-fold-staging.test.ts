@@ -157,16 +157,77 @@ test("a malformed file is skipped without blocking OTHER valid staged files in t
   assert.match(out, /2026-08-23-malformed\.md/, "the malformed file must be named in the output");
 });
 
-test("a body using '## ' for its own sub-sections is skipped, not fragmented into fake entries", () => {
-  // MEASURED 2026-08-28: 10 of 109 real staged files write a PR-style body with `## Root cause` /
-  // `## Fix` / `## Evidence` sub-sections at the SAME heading level FINDINGS.md reserves for
-  // entry boundaries. entries()/splitEntries() split on every '## ' line, so folding one of these
-  // in raw fragments a single finding into several headless sub-"entries" that fail "every entry
-  // declares a kind" (the real kind tag only follows the file's own first heading).
+test("a body using '## ' for its own sub-sections is folded with those sub-sections demoted to '### '", () => {
+  // CORRECTED 2026-11-08 (5-engine live monitor sweep): this used to assert the OPPOSITE — that a
+  // PR-style body with `## Root cause` / `## Fix` / `## Evidence` sub-sections at the SAME heading
+  // level FINDINGS.md reserves for entry boundaries was rejected and left stuck in staging. Live
+  // measurement the day this was corrected: 98 of 115 real staged files hit exactly this guard and
+  // had been accumulating unfolded since 2026-09-07 — "left for a human pass" had become a silent
+  // one-way trap. A staged file documents exactly one finding (the staging convention's own "one
+  // file per finding" rule), so a second '## ' line is never a separate finding to split out; it's
+  // always a structural sub-section, and FINDINGS.md's own 7000+ already-folded entries already use
+  // '### ' for these same section names. Demoting instead of rejecting matches that existing
+  // convention and actually unblocks the fold.
   const { dir, findings, staging } = setup();
   writeFileSync(
     join(staging, "2026-08-23-multi-heading.md"),
     "> **kind:** `FINDING`\n\n## The real finding title\n\nSummary.\n\n## Root cause\n\nSomething broke.\n\n## Fix\n\nFixed it.\n"
+  );
+  run(staging, findings);
+  const foundText = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.match(foundText, /## The real finding title/, "the real heading must fold in");
+  assert.match(foundText, /### Root cause/, "the sub-section must be demoted to '### ', not dropped");
+  assert.match(foundText, /### Fix/, "the second sub-section must also be demoted to '### '");
+  assert.doesNotMatch(foundText, /\n## Root cause/, "the demoted sub-section must not still be a '## '-level line");
+  assert.deepEqual(remaining, [], "a well-formed multi-section finding must not be left stuck in staging");
+});
+
+test("a file titled with a bare '# ' (one hash) folds under its REAL title, not a sub-section", () => {
+  // CORRECTED AGAIN, SAME DAY (2026-11-08): the first version of the demote-not-reject fix above
+  // only recognized '## Title' as the real heading. Live measurement showed the actual majority
+  // convention titles the entry with a bare '# Title' (one hash) — for those files the old fix's
+  // `headingIdx` landed on the file's first STRUCTURAL SUB-SECTION instead (the first line
+  // starting with literally '## '), silently folding the entry in under a useless title like
+  // '## Root cause' while the real descriptive title (the '# ' line) was left as untagged prose
+  // glued onto whichever entry preceded it — corruption, not just a missed fold. A dry run caught
+  // 17 real entries doing exactly this before it reached `main`. This test pins the fix: the
+  // file's first real heading, '#' OR '##', is always the title (normalized to '## '), and every
+  // real heading after it is demoted to '### ', regardless of which hash count it started with.
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-08-23-h1-title.md"),
+    "# The real, descriptive finding title\n\n> **kind:** `FINDING`\n\n## Root cause\n\nSomething broke.\n\n## Fix\n\nFixed it.\n"
+  );
+  run(staging, findings);
+  const foundText = readFileSync(findings, "utf8");
+  const remaining = readdirSync(staging);
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.match(foundText, /## The real, descriptive finding title/, "the REAL title must become the '## ' entry heading");
+  assert.doesNotMatch(foundText, /\n## Root cause/, "the sub-section must not usurp the title slot");
+  assert.match(foundText, /### Root cause/, "the first sub-section must be demoted to '### '");
+  assert.match(foundText, /### Fix/, "the second sub-section must also be demoted to '### '");
+  // The kind line must land in the SAME entry as the real title, not glued onto the one before it.
+  const titleIdx = foundText.indexOf("## The real, descriptive finding title");
+  const kindIdx = foundText.indexOf("> **kind:** `FINDING`", titleIdx);
+  assert.ok(titleIdx > 0 && kindIdx > titleIdx, "kind line must follow the real title, in the same entry");
+  assert.deepEqual(remaining, [], "a well-formed '# '-titled finding must not be left stuck in staging");
+});
+
+test("a kind-first file whose real title lives in a table cell, not a heading, is left in staging", () => {
+  // Live repro 2026-11-08, found right after the '# '-vs-'## ' fix: a kind line followed by a
+  // `| Field | Value |` table whose own `**Title**` row carries the real title as a cell value —
+  // the file's first real heading-shaped line is actually its first structural sub-section
+  // (`## What broke`). Guessing that sub-section is the title would silently glue the real title
+  // (the table) onto whichever entry precedes it once merged — the same corruption class the
+  // '# '-vs-'## ' fix just corrected, via a different shape. This must stay unfolded, not guessed.
+  const { dir, findings, staging } = setup();
+  writeFileSync(
+    join(staging, "2026-08-23-title-in-table.md"),
+    "> **kind:** `FINDING`\n\n| Field | Value |\n| --- | --- |\n| **Title** | The real title lives here |\n\n## What broke\n\nSomething broke.\n"
   );
   let out = "";
   try {
@@ -179,9 +240,9 @@ test("a body using '## ' for its own sub-sections is skipped, not fragmented int
   const remaining = readdirSync(staging);
   rmSync(dir, { recursive: true, force: true });
 
-  assert.doesNotMatch(foundText, /## The real finding title/, "a multi-heading file must not be folded in raw");
-  assert.deepEqual(remaining, ["2026-08-23-multi-heading.md"], "the multi-heading file must survive, unfolded");
-  assert.match(out, /2026-08-23-multi-heading\.md/, "the offending file must be named in the output");
+  assert.doesNotMatch(foundText, /## What broke/, "a sub-section must not be guessed as the title");
+  assert.deepEqual(remaining, ["2026-08-23-title-in-table.md"], "the file must survive, unfolded");
+  assert.match(out, /2026-08-23-title-in-table\.md/, "the offending file must be named in the output");
 });
 
 test("a '## ' heading inside a fenced code block does not count as a real sub-heading", () => {
@@ -210,28 +271,23 @@ test("a '## ' heading inside a fenced code block does not count as a real sub-he
   assert.deepEqual(remaining, [], "a well-formed finding must not be left stuck in staging");
 });
 
-test("a real '## ' sub-heading OUTSIDE any fence still trips the multi-heading guard", () => {
-  // Companion to the fence test above — proves the fence-awareness fix didn't also blind the
-  // guard to the genuine defect it exists to catch (a body using unfenced '## ' sub-sections).
+test("a real '## ' sub-heading OUTSIDE any fence is demoted, same as a fenced-quote false-positive is spared", () => {
+  // Companion to the fence test above — proves the fence-awareness check still only exempts
+  // FENCED '## ' lines from demotion/counting; an unfenced second heading still goes through the
+  // (now corrected, 2026-11-08) demote-not-reject path rather than being silently left unfolded.
   const { dir, findings, staging } = setup();
   writeFileSync(
     join(staging, "2026-08-23-real-multi-heading.md"),
     "> **kind:** `FINDING`\n\n## The real finding title\n\n## Root cause\n\nSomething broke.\n"
   );
-  let out = "";
-  try {
-    run(staging, findings);
-  } catch (e) {
-    const err = e as { stdout?: string; stderr?: string };
-    out = `${err.stdout ?? ""}${err.stderr ?? ""}`;
-  }
+  run(staging, findings);
   const foundText = readFileSync(findings, "utf8");
   const remaining = readdirSync(staging);
   rmSync(dir, { recursive: true, force: true });
 
-  assert.doesNotMatch(foundText, /## The real finding title/, "an unfenced multi-heading file must still be skipped");
-  assert.deepEqual(remaining, ["2026-08-23-real-multi-heading.md"], "the offending file must survive, unfolded");
-  assert.match(out, /2026-08-23-real-multi-heading\.md/, "the offending file must be named in the output");
+  assert.match(foundText, /## The real finding title/, "the real heading must fold in");
+  assert.match(foundText, /### Root cause/, "the unfenced second heading must be demoted, not dropped");
+  assert.deepEqual(remaining, [], "the file must not be left stuck in staging");
 });
 
 test("a clean staging directory is a no-op", () => {

@@ -82,6 +82,45 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(src?.scoreWithheld, false, "a genuinely-scored row must not be flagged withheld");
   });
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09, live repro MRNA#65): closedReason used to be
+  // derived ONLY from the sign of realized_pnl_pct, collapsing structural_stop/thesis_stop/
+  // premium_stop/expiry_risk into "stopped" (or even "target", if a gating rung fired while the
+  // position was still slightly green). When the real rung was persisted at grade time
+  // (grade_json.closing_rung — roll-plan.ts's gradeParentFromMark), closedReasonFromRow must report
+  // it instead of guessing from the sign, even when the sign alone would have said something else.
+  it("closedReason reports the real persisted thesis_stop rung as 'thesis', not a sign-based guess (even though pnl here is positive)", () => {
+    const src = closedDeckSourceFromRow(
+      row({ realized_pnl_pct: 5, grade_json: { closing_rung: "thesis_stop" } }),
+    );
+    assert.equal(src?.closedReason, "thesis");
+  });
+
+  it("closedReason reports the real persisted structural_stop rung as 'stopped'", () => {
+    const src = closedDeckSourceFromRow(
+      row({ realized_pnl_pct: -12, grade_json: { closing_rung: "structural_stop" } }),
+    );
+    assert.equal(src?.closedReason, "stopped");
+  });
+
+  it("closedReason reports premium_stop/expiry_risk honestly (no dedicated narrative branch yet, but never mislabeled as 'stopped')", () => {
+    assert.equal(
+      closedDeckSourceFromRow(row({ realized_pnl_pct: -65, grade_json: { closing_rung: "premium_stop" } }))
+        ?.closedReason,
+      "premium_stop",
+    );
+    assert.equal(
+      closedDeckSourceFromRow(row({ realized_pnl_pct: 3, grade_json: { closing_rung: "expiry_risk" } }))
+        ?.closedReason,
+      "expiry_risk",
+    );
+  });
+
+  it("closedReason falls back to the sign-based guess for a row graded before closing_rung existed (backward compatible, no regression)", () => {
+    assert.equal(closedDeckSourceFromRow(row({ realized_pnl_pct: 30, grade_json: {} }))?.closedReason, "target");
+    assert.equal(closedDeckSourceFromRow(row({ realized_pnl_pct: -5, grade_json: {} }))?.closedReason, "stopped");
+    assert.equal(closedDeckSourceFromRow(row({ realized_pnl_pct: 30, grade_json: null }))?.closedReason, "target");
+  });
+
   // BUG FIX (2026-11-02, Ask Largo standing mandate, follow-on gap from #7316's leg-identity fix —
   // caught by audit before it could manifest live, since deploy hadn't caught up to #7316 yet).
   // The gate here used to be a literal `row.status !== "CLOSED"`, which refused to build a card for

@@ -136,4 +136,31 @@ describe("expandingWindowFolds", () => {
     const folds = expandingWindowFolds([] as Row[], dateOf, { minTrainDates: 1, holdoutDatesPerFold: 1 });
     assert.deepEqual(folds, []);
   });
+
+  // BUG FIX (round 438): `minTrainDates: 0` (a legitimate "start folding from an empty train
+  // window" request — nothing in the type or the doc comment forbids it) made fold 1's
+  // `trainEndDate` compute as `distinctDates[trainDateCount - 1]` with `trainDateCount === 0`,
+  // i.e. `distinctDates[-1]` — `undefined`, not the empty-train sentinel `""` its sibling
+  // `chronologicalSplit` already uses for exactly this case. `undefined` then poisoned BOTH
+  // filters: `dateOf(r) <= undefined` is always false (train correctly empty, but for the wrong
+  // reason) and `dateOf(r) > undefined` is ALSO always false (every string comparison against
+  // `undefined` goes through `ToNumber` → `NaN`, and every relational comparison against `NaN` is
+  // false) — so `holdout` silently came back EMPTY too, even though real rows existed for the
+  // holdout window. The fold reported `degenerate: true` with BOTH sides empty, which reads as "no
+  // data" when the true state is "holdout had data, it was just dropped by the `undefined` compare".
+  test("minTrainDates: 0 does not poison trainEndDate to undefined (sibling-function parity)", () => {
+    const data = rows(["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]);
+    const folds = expandingWindowFolds(data, dateOf, { minTrainDates: 0, holdoutDatesPerFold: 1 });
+    const fold1 = folds[0]!;
+    assert.equal(fold1.fold, 1);
+    // trainEndDate is typed `string` — must never be the literal `undefined` the pre-fix
+    // `distinctDates[-1]` produced.
+    assert.equal(typeof fold1.trainEndDate, "string");
+    assert.deepEqual(fold1.train, []);
+    // The real bug: holdout must contain the first date's row, not be silently emptied by an
+    // `undefined` comparison.
+    assert.equal(fold1.holdout.length, 1);
+    assert.equal(fold1.holdout[0]!.date, "2026-09-01");
+    assert.equal(fold1.degenerate, true); // train is still genuinely empty — that part was correct
+  });
 });

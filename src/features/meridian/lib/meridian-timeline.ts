@@ -1,5 +1,10 @@
 import type { MacroEvent } from "@/lib/providers/macro-events";
-import type { MeridianEventKind, MeridianImpact, MeridianTimelineItem } from "./meridian-types";
+import type {
+  MeridianEventKind,
+  MeridianImpact,
+  MeridianTimelineItem,
+  MeridianTimelineStats,
+} from "./meridian-types";
 import { impactFromEarningsImportance } from "@/lib/meridian/meridian-benzinga-earnings-core";
 import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 
@@ -346,4 +351,38 @@ export function parseMeridianEventId(id: string): {
     return ymd(parts[2]) ? { kind, date: parts[2]!, ticker: parts[1]!.toUpperCase() } : null;
   }
   return null;
+}
+
+/**
+ * Timeline stat-card counts. Moved here (from `meridian-snapshot.ts`, which carries
+ * `server-only` and so cannot be unit-tested directly) so this pure derivation gets a real test —
+ * same split as `vector-daily-regime-server.ts` / `vector-daily-regime.ts`.
+ *
+ * BUG FIX (found auditing the stat row, previously untested): `next_24h` is rendered on the
+ * Meridian desk as the "Next 24h" stat card (`MeridianDesk.tsx`) and described platform-wide as
+ * "Meridian prints in the next 24 hours" (`view-catalog.ts`'s `meridian.next_24h`) — but it was
+ * computed as `days_until <= 1`, i.e. "today OR tomorrow" by ET CALENDAR DAY. `daysUntilEt` only
+ * has day granularity (no time-of-day), so an item dated "tomorrow" can be up to just under 48
+ * hours away from now (e.g. it is 00:05 ET today and the item is dated tomorrow at 23:55 ET) —
+ * nowhere near "the next 24 hours". The card was silently showing up to roughly double the real
+ * count of truly-imminent prints, worst right after midnight ET when "tomorrow" is a full day out.
+ *
+ * `days_until === 0` ("today", by ET calendar date) is the correct subset at this data model's
+ * day-level granularity: every "today" item is, by construction, no more than one remaining
+ * calendar day away, which is the closest honest reading of "within the next 24 hours" available
+ * without threading per-item release TIME through this count (`time` is known for some items but
+ * null for others, e.g. FDA decisions) — narrowing to `=== 0` only REMOVES the clearly-wrong
+ * "tomorrow can be ~48h out and still count" cases, it never adds a new one.
+ */
+export function buildTimelineStats(items: readonly MeridianTimelineItem[]): MeridianTimelineStats {
+  return {
+    total: items.length,
+    macro: items.filter((i) => i.kind === "macro").length,
+    earnings: items.filter((i) => i.kind === "earnings").length,
+    fda: items.filter((i) => i.kind === "fda").length,
+    opex: items.filter((i) => i.kind === "opex").length,
+    high_impact: items.filter((i) => i.impact === "high").length,
+    next_24h: items.filter((i) => i.days_until === 0).length,
+    earnings_mega_cap: items.filter((i) => i.kind === "earnings" && (i.importance ?? 0) >= 4).length,
+  };
 }

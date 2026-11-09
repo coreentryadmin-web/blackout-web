@@ -257,6 +257,54 @@ describe("computeWeightedConflicts", () => {
     assert.equal(weighted_conflicts, 2);
   });
 
+  it("still counts the news-opposing conflict when an AGREEING News risk factor is present (same bug class as GEX/VIX, 2026-11-09 audit)", () => {
+    // Root cause (live-reachable): scoreNewsRisk (spx-signals.ts, NEWS_BEAR_WORDS/NEWS_BULL_WORDS
+    // over the first 10 headlines) and newsSentiment() above (BEAR_NEWS/BULL_NEWS, first 5
+    // headlines) are independent classifiers with genuinely different word lists. Here the first
+    // 5 headlines are unanimously bearish per newsSentiment's list (recession/hawkish/lawsuit/
+    // probe/plunge — none of which appear in NEWS_BEAR_WORDS), while a "News risk" factor with a
+    // POSITIVE weight (agreeing with the long, as scoreNewsRisk would produce from unrelated
+    // stimulus-deal headlines matching its own, different word list) is also present. Pre-fix,
+    // newsAlreadyScored() suppressed the bonus on the mere presence of any News-labeled factor,
+    // regardless of side -> weighted_conflicts wrongly dropped from 2 to 0. Post-fix, the guard
+    // requires the existing factor to actually oppose direction (factorOpposes) before treating
+    // the conflict as already counted — an agreeing factor does not satisfy that, so the real,
+    // independent news-opposing conflict still fires.
+    const desk: SpxDeskPayload = {
+      ...baseDesk(),
+      tide_bias: "neutral",
+      gex_walls: [],
+      vix: 20,
+      news_headlines: [
+        { title: "Economists warn of recession risk ahead" },
+        { title: "Policymakers turn hawkish in latest remarks" },
+        { title: "Tech giant faces new antitrust lawsuit" },
+        { title: "Regulators open probe into bank practices" },
+        { title: "Oil prices see sharp plunge overnight" },
+      ],
+    } as SpxDeskPayload;
+    const factors: SpxSignalFactor[] = [
+      { label: "Live tape", weight: 12, detail: "calls" },
+      { label: "News risk", weight: 3, detail: "2 positive headlines (rate cut/deal/beat)" },
+    ];
+    const { weighted_conflicts } = computeWeightedConflicts(desk, 40, factors);
+    assert.equal(weighted_conflicts, 2);
+  });
+
+  it("does not double-count the news conflict when the News risk factor genuinely opposes direction (no regression)", () => {
+    // The case newsAlreadyScored() was originally designed for: a News risk factor that OPPOSES
+    // the long (weight -6, same fixture as the first test in this file) is already counted by
+    // newsOpposed's own +2 bonus — it must not ALSO double-count via some other path. This is the
+    // existing "does not double-count news" test's exact assertion, re-confirmed after the fix.
+    const factors: SpxSignalFactor[] = [
+      { label: "Live tape", weight: 12, detail: "calls" },
+      { label: "News risk", weight: -6, detail: "bearish headline" },
+      { label: "TRIN", weight: -6, detail: "selling" },
+    ];
+    const { weighted_conflicts } = computeWeightedConflicts(baseDesk(), 50, factors);
+    assert.equal(weighted_conflicts, 2);
+  });
+
   it("IV rank presence is unaffected by the fix — still suppresses the VIX-extreme bonus (no regression)", () => {
     // "IV rank" is only ever pushed as an OPPOSING factor by spx-signals.ts (high IV rank fades
     // a long, low IV rank squeezes a short), so "exists" and "exists and opposes" are equivalent

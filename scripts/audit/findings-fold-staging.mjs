@@ -36,16 +36,26 @@ const KIND_LINE_RE = /^> \*\*kind:\*\* `?([A-Z-]+)`?\s*$/;
  * moment it lands — a second, silent failure mode layered under the first. And a bare (unwrapped)
  * kind word fails that same hygiene check even when the order is already correct.
  *
- * Returns null (never guesses) when the file has no `## ` heading, no kind line, or MORE THAN ONE
- * `## `-level line — that last case is a real, separate defect measured in the same sweep (10 of
- * 109 files): a staged writeup using `## Root cause` / `## Fix` / `## Evidence` sub-sections at
- * the SAME heading level FINDINGS.md reserves for entry boundaries. `entries()`/`splitEntries()`
- * split on every `## ` line, so folding one of these in raw fragments a single finding into
- * several headless sub-"entries," none of which carry the real kind tag (it only follows the
- * file's own first heading). Demoting those sub-headings automatically would mean guessing which
- * line is the "real" entry title when a body legitimately needs its own `## ` for other reasons —
- * left for a human pass instead, same as the other two defects.
- * Left in staging for a human pass, not silently mishandled.
+ * Returns null (never guesses) when the file has no real heading line (`# ` or `## `) or no kind
+ * line.
+ *
+ * CORRECTED 2026-11-08 (5-engine live monitor sweep): a staged writeup using `## Root cause` /
+ * `## Fix` / `## Evidence` sub-sections at the SAME heading level FINDINGS.md reserves for entry
+ * boundaries used to be rejected outright and left stuck in staging "for a human pass" — the
+ * stated worry was that demoting those sub-headings would mean guessing which line is the "real"
+ * entry title. That worry doesn't survive contact with this repo's own staging convention: a
+ * staged file documents exactly ONE finding (issue-handling policy, "one file per finding"), so
+ * there is never a legitimate case where a SECOND `## ` line in a staged file is a separate
+ * finding that needs splitting out — it is always a PR-write-up-policy structural sub-section
+ * (Root cause / Fix rationale / Evidence / Blast radius / Verify / Summary / ...), and the FIRST
+ * real `## ` line is always the entry title. Measured live the day this was fixed: 98 of 115
+ * staged files hit exactly this guard and had been accumulating unfolded since 2026-09-07 — the
+ * "left for a human pass" fallback had, in practice, become a silent one-way trap, not a
+ * safety valve. FINDINGS.md's own already-folded entries agree with the correction: it carries
+ * 7000+ real `### ` sub-section lines using these exact titles, so demoting a staged file's
+ * second-and-later `## ` lines to `### ` doesn't invent a new convention, it just applies the one
+ * FINDINGS.md already has. `entries()`/`splitEntries()` only split on `## `, never `### `, so a
+ * demoted sub-section can no longer fragment into a headless sub-"entry."
  *
  * BUG FIX (2026-09-17, Ask Largo standing mandate): the heading scan below used to count every
  * line starting with `## ` regardless of fenced-code-block state, so a finding whose EVIDENCE
@@ -61,6 +71,22 @@ const KIND_LINE_RE = /^> \*\*kind:\*\* `?([A-Z-]+)`?\s*$/;
  * genuine 10-of-109 multi-heading defect without reading each skipped file by hand. `realLineMask`
  * marks every line NOT inside a ``` ... ``` fence (the fence delimiter line itself never counts as
  * heading/kind content either way); heading/kind detection below only looks at those.
+ *
+ * CORRECTED AGAIN, SAME DAY (2026-11-08): the first version of the "demote sub-sections" fix above
+ * only recognized a `## ` line as the real title — but the actual majority convention in real
+ * staged files (73 of 115 checked this run) titles the entry with a bare `# Title` (ONE hash), not
+ * `## Title`. For those files `headingIdx` landed on the file's FIRST STRUCTURAL SUB-SECTION
+ * instead (e.g. `## Root cause`), because that was the first line starting with literally `"## "` —
+ * the real `# Title` line never matched at all. Caught before landing on `main`: a dry run folded
+ * 17 real entries titled `## Summary` / `## Root cause` / `## What broke` / `## Symptom`, each with
+ * its REAL descriptive title orphaned as untagged prose glued onto whichever entry preceded it
+ * (entries()/splitEntries() split only on `## `, so a bare `# ` line starts nothing). That is
+ * silent corruption, strictly worse than the original "leave it stuck in staging" failure mode this
+ * whole function exists to improve on. Fixed by recognizing EITHER a `# ` or `## ` real line as the
+ * title (whichever comes first), normalizing it to `## ` (FINDINGS.md's entry-boundary level), and
+ * demoting every subsequent real `# `/`## ` line to `### ` — one rule now covers both conventions
+ * actually in use instead of silently assuming the file always used the one the first attempt
+ * checked by hand.
  */
 function realLineMask(lines) {
   let inFence = false;
@@ -73,31 +99,54 @@ function realLineMask(lines) {
   });
 }
 
+const HEADING_RE = /^#{1,2} /;
+
 function findRealHeadingIdx(lines) {
   const mask = realLineMask(lines);
-  return lines.findIndex((l, i) => mask[i] && l.startsWith("## "));
+  return lines.findIndex((l, i) => mask[i] && HEADING_RE.test(l));
 }
 
 function normalizeEntry(content) {
   const lines = content.split("\n");
   const mask = realLineMask(lines);
-  const headingIdx = lines.findIndex((l, i) => mask[i] && l.startsWith("## "));
+  const headingIdx = lines.findIndex((l, i) => mask[i] && HEADING_RE.test(l));
   const kindIdx = lines.findIndex((l, i) => mask[i] && KIND_LINE_RE.test(l));
-  const headingCount = lines.filter((l, i) => mask[i] && l.startsWith("## ")).length;
-  if (headingIdx === -1 || kindIdx === -1 || headingCount > 1) return null;
+  if (headingIdx === -1 || kindIdx === -1) return null;
 
-  const kindWord = lines[kindIdx].match(KIND_LINE_RE)[1];
+  // A kind-first file where everything between the kind line and the first real heading is NOT
+  // blank (e.g. a table whose own `**Title**` row carries the real title as a cell value, never
+  // as a heading line) means the "first real heading" found above is NOT the title — it's the
+  // first thing that happens to look like one, typically the first structural sub-section. Caught
+  // live 2026-11-08 right after the '# '-vs-'## ' fix above: `2026-11-08-cron-audit-weekend-eod-
+  // suppress.md` opens with a kind line, then a `| Field | Value |` table carrying `**Title**` as
+  // a row, then its first real heading is `## What broke` — a genuine sub-section, not the title.
+  // Guessing "## What broke" is the title would have repeated the exact silent-corruption failure
+  // the '# '-vs-'## ' fix just corrected, just via a different shape. Returning null here keeps
+  // this one file (observed once in 115) in staging for a human pass rather than inventing a new
+  // title-from-table-cell heuristic to cover a single sample.
+  if (kindIdx < headingIdx && lines.slice(kindIdx + 1, headingIdx).some((l) => l.trim() !== "")) return null;
+
+  // The file's own first real heading (whether written `# ` or `## `) becomes the entry-boundary
+  // `## ` line; every real heading after it — same ambiguity, `# ` or `## ` — is a structural
+  // sub-section and is demoted to `### `. Fenced-quoted heading-shaped lines are excluded by
+  // `mask`, same as before.
+  const demoted = lines.map((l, i) => {
+    if (!mask[i] || !HEADING_RE.test(l)) return l;
+    return l.replace(HEADING_RE, i === headingIdx ? "## " : "### ");
+  });
+
+  const kindWord = demoted[kindIdx].match(KIND_LINE_RE)[1];
   const canonicalKindLine = `> **kind:** \`${kindWord}\``;
 
   if (kindIdx > headingIdx) {
     // Already heading-first — only the kind word itself might still need backtick-wrapping.
-    const out = [...lines];
+    const out = [...demoted];
     out[kindIdx] = canonicalKindLine;
     return out.join("\n");
   }
 
-  const dropBlankAfterKind = lines[kindIdx + 1] === "";
-  const rest = lines.filter((_, i) => i !== kindIdx && !(dropBlankAfterKind && i === kindIdx + 1));
+  const dropBlankAfterKind = demoted[kindIdx + 1] === "";
+  const rest = demoted.filter((_, i) => i !== kindIdx && !(dropBlankAfterKind && i === kindIdx + 1));
   const newHeadingIdx = findRealHeadingIdx(rest);
   return [...rest.slice(0, newHeadingIdx + 1), "", canonicalKindLine, ...rest.slice(newHeadingIdx + 1)].join("\n");
 }
@@ -123,8 +172,8 @@ const parsed = files.map((f) => {
 const invalid = parsed.filter((p) => p.content === null);
 if (invalid.length) {
   console.error(
-    "Skipping — these staged files have no '## ' heading, no '> **kind:** `...`' line, and/or " +
-      "more than one '## ' line (a body using '## ' for its own sub-sections):"
+    "Skipping — these staged files have no real heading line ('# ' or '## ') and/or no " +
+      "'> **kind:** `...`' line:"
   );
   for (const v of invalid) console.error(`  ${v.file}`);
 }

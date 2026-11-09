@@ -4,6 +4,23 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-11-09 (00:17 UTC / Sun 20:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, fleet clean
+
+Resynced to `origin/main` (`6e0eb2a32`, other-lane nighthawk fix). **Step 1:** purged Cloudflare
+edge HTML, re-measured live homepage CLS — **0.0002, GOOD** (69/69 routed, 0 fail, empty shifts).
+Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, valid 1200x630 PNG —
+crawlable, confirmed on production. **Step 2 — PR sweep:** 0 open agent PRs fleet-wide — fully
+clean. **Step 3:** no new SEO-lane work. No PR opened.
+
+## 2026-11-08 (18:16 UTC / Sun 14:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Resynced to `origin/main` (`29bfd5e1d`, other-lane cron-health fix). **Step 1:** purged
+Cloudflare edge HTML, re-measured live homepage CLS — **0, GOOD** (69/69 routed, 0 fail, empty
+shifts). Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, valid 1200x630
+PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 6 open agent PRs fleet-wide (2
+OTHER, 2 MERGE-STATE-UNKNOWN, 1 CI-RUNNING, 1 CI-FAILED), all other-lane (ci/zerodte). Nothing for
+this lane to chase. **Step 3:** no new SEO-lane work. No PR opened.
+
 ## 2026-11-08 (14:04 UTC / Sun 09:04 ET) — [SEO] Daily growth cycle: quiet day, no new opportunity, no PR action
 
 Opportunity scan still `SKIP` (no AWS creds). Live surface already re-verified clean this

@@ -15,6 +15,15 @@ export function watchdogHttpPriority(status) {
   return "P0";
 }
 
+/**
+ * 401/403 on the watchdog probe means this collector's CRON bearer does not match prod ECS —
+ * not a cron outage. Emitting an action item spawns useless agents (measured: fingerprint
+ * 65a19bff24d2 on every cloud-agent tick when GitHub/env CRON drifts from Secrets Manager).
+ */
+export function shouldEmitWatchdogHttpActionItem(status) {
+  return !isAuthFailureStatus(status);
+}
+
 /** Public liveness — when this fails, every deploy smoke and most crons fail together. */
 export function isOriginHealthOk(status, json) {
   return status === 200 && json?.ok === true;

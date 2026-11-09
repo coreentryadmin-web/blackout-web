@@ -182,6 +182,30 @@ test("shapeMeridianDarkPool: billion-scale premium promotes to the B unit, not '
   assert.notEqual(shaped.total_premium_label, "$1500.0M");
 });
 
+test("shapeMeridianDarkPool: trillion-scale premium promotes to the T unit, not '$1500.0B'", () => {
+  // BUG FIX (round 439): round 419 (test above) added a B tier but nothing past it — the
+  // `abs >= 1_000_000_000` branch unconditionally returns `$${(n/1e9).toFixed(1)}B` with no
+  // overflow check, so a round-up-past-1000B value has nowhere to promote to, exactly the same
+  // defect shape round 419 fixed one tier down (M->B) and round 399 fixed one tier below that
+  // (K->M). `fmtCompactMoney` in meridian-earnings-analytics-core.ts — the sibling this file's
+  // own header comment says this helper "mirrors ... exactly" — already carries the T tier;
+  // this one never got it, so any value at/above ~$1T (or that rounds up to it) renders a
+  // nonsensical 4+ digit "$1500.0B" instead of "$1.50T".
+  const shaped = shapeMeridianDarkPool({
+    prints: [{ strike: 450, premium: 1_500_000_000_000, side: "buy", executed_at: "2026-11-08T14:30:00" }],
+    total_premium: 1_500_000_000_000,
+    call_premium: 1_500_000_000_000,
+    put_premium: 0,
+    bias: "bullish",
+    pcr: null,
+    detail: "1 print(s) | $1.50T",
+  });
+  assert.equal(shaped.total_premium_label, "$1.50T");
+  assert.equal(shaped.call_premium_label, "$1.50T");
+  assert.equal(shaped.top_prints[0].premium_label, "$1.50T");
+  assert.notEqual(shaped.total_premium_label, "$1500.0B");
+});
+
 test("coerceMeridianWallLevels preserves gamma truth and orders display band when inverted", () => {
   const tgt = coerceMeridianWallLevels({ call_wall: 150, put_wall: 152.5, spot: 151.01 });
   assert.equal(tgt.gamma_call_wall, 150);

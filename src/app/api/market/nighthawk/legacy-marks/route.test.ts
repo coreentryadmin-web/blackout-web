@@ -9,7 +9,27 @@ test("legacy-marks/route.ts rounds member-visible floats at the API boundary", (
     "utf8"
   );
   assert.match(src, /import \{ roundFloats \} from "@\/lib\/round-floats"/);
-  assert.match(src, /roundFloats\(\{ available: true, marks \}\)/);
+  assert.match(src, /roundFloats\(\{ available: marks\.length > 0, marks \}\)/);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-09, live repro 2026-11-08): `available` used to be
+// hardcoded `true` whenever a non-empty `occs` query was supplied, independent of whether
+// fetchLegacyOptionMarksServer resolved ANY mark — so a total WS+REST+cache miss (confirmed live:
+// 9/9 real open Legacy positions, `{"available":true,"marks":[]}`) still reported `available:true`
+// with an empty array. `available` must mean "a live mark was found," not "a well-formed query was
+// supplied" — that half is already covered by the separate `occs.length === 0` branch. Source-level
+// regression (same convention as the sibling tests above — a Next.js route handler isn't easily
+// invoked in this harness without mocking auth/WS internals).
+test("legacy-marks/route.ts: available reflects whether any mark actually resolved, not just a well-formed query", () => {
+  const src = readFileSync(
+    join(process.cwd(), "src/app/api/market/nighthawk/legacy-marks/route.ts"),
+    "utf8"
+  );
+  // The hardcoded shape must never reappear.
+  assert.doesNotMatch(src, /\{\s*available:\s*true,\s*marks\s*\}/);
+  assert.match(src, /available:\s*marks\.length > 0/);
+  // The empty-occs branch still reports available:false explicitly (unchanged).
+  assert.match(src, /NextResponse\.json\(\{ available: false, marks: \[\] \}/);
 });
 
 // Bug (found 2026-09-16, live audit, fixed that day): the WS-tick freshness check used to gate

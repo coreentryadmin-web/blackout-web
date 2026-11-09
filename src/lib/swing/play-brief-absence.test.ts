@@ -911,6 +911,40 @@ test("collectBriefUnavailableSources: a CLOSED play with a fresh, flip-absent GE
   assert.equal(chip!.retryable, true);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-08, live repro MSTR#72/GOOG#71 CLOSED): the
+// 2026-10-26 fix above only covers "gex present, flip null" — this locks in the sibling case,
+// "gex entirely absent" (cold matrix), which the "Since it closed" prose fallback
+// (play-brief-intel.ts) renders the IDENTICAL "No gamma flip / GEX wall read available..."
+// sentence for, with no distinguishing fact between the two sub-cases on the prose side.
+test("collectBriefUnavailableSources: a CLOSED play with an entirely-absent GEX matrix also surfaces a cold-matrix chip (companion to the flip-absence CLOSED fix)", () => {
+  const ctx = {
+    play: { status: "CLOSED" },
+    ecosystem: {
+      gex_positioning: null,
+    },
+  } as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "GEX positioning" && s.reason === "cold matrix / no positioning read"),
+    "expected a cold-matrix GEX absence chip on a CLOSED play too",
+  );
+});
+
+test("collectBriefUnavailableSources: a dead-WATCH play with an entirely-absent GEX matrix also surfaces the cold-matrix chip (isNotLive covers dead WATCH, not just CLOSED)", () => {
+  const ctx = {
+    play: { status: "WATCH", setupState: "INVALIDATED" },
+    ecosystem: {
+      gex_positioning: null,
+    },
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some((s) => s.source === "GEX positioning" && s.reason === "cold matrix / no positioning read"),
+  );
+});
+
 // Sibling of the test above: a CLOSED play's own pure-staleness chip must still be suppressed —
 // this fix narrows ONLY `collectGexFlipAbsence`'s gate, not `collectGexStalenessAbsence`'s.
 test("collectBriefUnavailableSources: a CLOSED play's STALE GEX matrix still does not surface the generic staleness chip", () => {
@@ -1562,7 +1596,14 @@ test("collectBriefUnavailableSources: CLOSED play suppresses live-desk-freshness
 
   const sources = collectBriefUnavailableSources(ctx);
   assert.ok(!sources.some((s) => s.source === "HELIX flow"));
-  assert.ok(!sources.some((s) => s.source === "GEX positioning"));
+  // BUG FIX (2026-11-08): this fixture's `gex_positioning: null` is the exact cold-matrix shape
+  // the 2026-11-08 fix (see the "entirely-absent GEX matrix" tests above) now intentionally
+  // surfaces for a CLOSED play, per Largo C3 — the "Since it closed" prose renders an absence
+  // sentence for this exact case, so the chip must agree with it. This line used to assert the
+  // chip's ABSENCE, which this test's OWN purpose (suppress noise that is irrelevant once closed)
+  // never actually required for GEX specifically — unlike HELIX/Vector/discovery/0DTE/Legacy
+  // below, a cold GEX matrix on a CLOSED play is disclosed by the brief's own prose, not silent.
+  assert.ok(sources.some((s) => s.source === "GEX positioning" && s.reason === "cold matrix / no positioning read"));
   assert.ok(!sources.some((s) => s.source === "Vector desk state"));
   assert.ok(!sources.some((s) => s.source === "Vector heatmap"));
   assert.ok(!sources.some((s) => s.source === "Vector dark pool"));
