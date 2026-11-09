@@ -43,11 +43,32 @@ export async function GET(req: NextRequest) {
       }
     );
   } catch (error) {
-    console.error("[market/spx/desk]", error);
-    // Cold replica / post-deploy: loadSpxDesk()'s withServerCache lane can throw
-    // ServerCacheTimeoutError when the full build and pulse fallback both exceed maxBlockMs.
-    // A 502 here is a false outage — /spx/play already degrades to 200 on the same error.
-    if (error instanceof ServerCacheTimeoutError) {
+    console.error(
+      "[market/spx/desk]",
+      error instanceof ServerCacheTimeoutError ? "(cache/fallback chain timeout)" : "(desk build threw)",
+      error
+    );
+    // BUG FIX (2026-11-09, Ask Largo/5-engine standing mandate): this used to gate the honest
+    // stale-peek -> pulse-minimal-shell degrade on `error instanceof ServerCacheTimeoutError`
+    // specifically — the exact same gap already fixed at the sibling /api/market/spx/play route
+    // (PR #7791) the same day. ServerCacheTimeoutError is thrown ONLY when withServerCache's own
+    // maxBlockMs/fallback race (server-cache.ts) is fully exhausted with nothing usable to serve
+    // — a TIMING fact. It is NOT what reaches this catch block when buildSpxDesk() throws a REAL
+    // error FAST (most plausibly a provider fetch rejecting on a 403 "not entitled" response well
+    // under withServerCache's own timeout budget — see CLAUDE.md's 2026-11-07/08 notes on the
+    // live Polygon/Massive real-time-snapshot entitlement outage): that raw error wins
+    // withServerCache's internal Promise.race before its ServerCacheTimeoutError timeout path
+    // ever engages, so `instanceof ServerCacheTimeoutError` is false and this route used to fall
+    // straight through to the hard 502 below — a false outage, since /spx/play already degrades
+    // to 200 on the exact same underlying failure. Apply the same stale-peek -> pulse-minimal-
+    // shell fallback chain unconditionally, for ANY caught error (the instanceof check above is
+    // now diagnostic-only, matching /play's pattern) — reaching this catch block always means
+    // "the full desk build didn't finish," never anything that depends on WHY. The inner
+    // try/catch below is new: previously nothing guarded buildSpxDeskPulseMinimal()'s own real
+    // network reads, so a failure there (now reachable far more often, since it's no longer
+    // gated behind the rare ServerCacheTimeoutError path) would have escaped this catch block
+    // entirely as an uncaught 500 instead of the intended, controlled 502 last resort.
+    try {
       const stalePeek = await peekSpxDesk().catch(() => null);
       if (stalePeek && stalePeek.price > 0 && stalePeek.source !== "none") {
         return NextResponse.json(
@@ -60,7 +81,9 @@ export async function GET(req: NextRequest) {
         roundFloats({ ...shell, polled_at: shell.polled_at ?? shell.as_of }),
         { headers: NO_STORE_HEADERS }
       );
+    } catch (fallbackError) {
+      console.error("[market/spx/desk] fallback chain also failed", fallbackError);
+      return NextResponse.json({ available: false, error: "Desk build failed" }, { status: 502 });
     }
-    return NextResponse.json({ available: false, error: "Desk build failed" }, { status: 502 });
   }
 }
