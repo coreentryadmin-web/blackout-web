@@ -90,6 +90,78 @@ export function recapReasonAtPublishExit(
   return publishGateBlockedRecapReason(blocked);
 }
 
+/** Minimal shape this module needs from `MarketWideContext`'s per-discovery-lane fetch-failure
+ *  flags (kept structural, not importing market-wide.ts directly, so this file stays pure/
+ *  dependency-free and unit-testable with plain object literals — same reasoning as
+ *  `ZeroDteScanHeartbeatLike` above). Each flag is true ONLY when that lane's own upstream fetch
+ *  threw, never on a legitimate empty/thin result. */
+export type DiscoveryLaneFetchFailures = {
+  flow_fetch_failed?: boolean;
+  oi_change_fetch_failed?: boolean;
+  unusual_trades_fetch_failed?: boolean;
+  catalyst_fetch_failed?: boolean;
+  predictions_fetch_failed?: boolean;
+  movers_fetch_failed?: boolean;
+  breakout_fetch_failed?: boolean;
+};
+
+/** Ordered [lane name, flag] pairs — the single place that enumerates the 7 discovery lanes'
+ *  fetch-failure flags, so `anyDiscoveryLaneFetchFailed`/`failedDiscoveryLaneNames` can never
+ *  drift out of sync with each other. Lane names match `extractMultiSourceCandidates`'s own
+ *  `lanes` array (candidates.ts) exactly. */
+function discoveryLaneFailurePairs(
+  flags: DiscoveryLaneFetchFailures | undefined | null
+): Array<[string, boolean | undefined]> {
+  if (!flags) return [];
+  return [
+    ["flow", flags.flow_fetch_failed],
+    ["oi_change", flags.oi_change_fetch_failed],
+    ["unusual_trades", flags.unusual_trades_fetch_failed],
+    ["catalyst", flags.catalyst_fetch_failed],
+    ["predictions", flags.predictions_fetch_failed],
+    ["movers", flags.movers_fetch_failed],
+    ["breakout", flags.breakout_fetch_failed],
+  ];
+}
+
+/** True when ANY of the 7 discovery lanes' own upstream fetch threw (vs legitimately returning
+ *  zero/few rows). Audit finding (2026-11-09): previously only `flow_fetch_failed` was checked
+ *  (`alertRecapOnlyIfAnomalous`'s old `benign` test), so a genuine provider outage on any of the
+ *  other 6 lanes (OI change, unusual trades, catalyst/Benzinga, predictions, movers, breakout) —
+ *  flow itself still succeeding — was silently classified as an honestly quiet market and never
+ *  paged ops. */
+export function anyDiscoveryLaneFetchFailed(flags: DiscoveryLaneFetchFailures | undefined | null): boolean {
+  return discoveryLaneFailurePairs(flags).some(([, failed]) => Boolean(failed));
+}
+
+/** Names of the lanes whose fetch failed (e.g. `["catalyst", "movers"]`), for an ops alert body —
+ *  so a page says WHICH lane broke, not just that something did. Empty when none failed. */
+export function failedDiscoveryLaneNames(flags: DiscoveryLaneFetchFailures | undefined | null): string[] {
+  return discoveryLaneFailurePairs(flags)
+    .filter(([, failed]) => failed)
+    .map(([name]) => name);
+}
+
+/** The zero-candidates recap-only reason, naming all 7 discovery lanes' real counts. Audit
+ *  finding (2026-11-09): the previous reason string named only 4 of the 7 lanes (flows, OI,
+ *  unusual, movers) — catalyst/predictions/breakout counts never appeared, so even a human
+ *  reading the stored `recap_only_reason` could not tell whether those three lanes ran at all. */
+export function zeroCandidatesRecapReason(counts: {
+  flows: number;
+  oi: number;
+  unusual: number;
+  catalyst: number;
+  predictions: number;
+  movers: number;
+  breakout: number;
+}): string {
+  return (
+    `No candidates from any source (flows ${counts.flows}, OI ${counts.oi}, ` +
+    `unusual ${counts.unusual}, catalyst ${counts.catalyst}, predictions ${counts.predictions}, ` +
+    `movers ${counts.movers}, breakout ${counts.breakout}).`
+  );
+}
+
 export function funnelFromMeta(meta: Record<string, unknown> | null | undefined): EditionFunnelCounts | null {
   const raw = meta?.funnel;
   if (!raw || typeof raw !== "object") return null;
