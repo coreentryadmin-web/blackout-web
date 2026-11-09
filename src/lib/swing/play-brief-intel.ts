@@ -328,12 +328,31 @@ export function whyThisSetupSection(
       // operand independently rounds to 1.3/1.6, which subtract to 0.3). Fix: round the two operands
       // ONCE (the same rounding `fmtPct` applies) and derive the displayed delta from THOSE rounded
       // values, never from the raw delta — guarantees "by X%" always equals the subtraction a reader
-      // does from the two numbers right next to it. The second `Math.round(... * 10) / 10` after
-      // subtracting is not a second independent rounding, just float-noise cleanup (1.6 − 1.3 ===
-      // 0.2999999999999998 in IEEE 754) before `.toFixed(1)` would otherwise need to re-round it.
-      const roundedName = Math.round(f.nameReturnPct * 10) / 10;
-      const roundedGroup = Math.round(f.groupReturnPct * 10) / 10;
-      const roundedDelta = Math.round((roundedName - roundedGroup) * 10) / 10;
+      // does from the two numbers right next to it.
+      //
+      // BUG FIX #2 (Ask Largo standing mandate, 2026-11-09): this call site's own rounding
+      // (`Math.round(x * 10) / 10`) silently re-diverged from `fmtPct()` when `fmtPct` was fixed on
+      // 2026-10-26 to round by MAGNITUDE then reapply sign (`fmtPct`'s own header: plain
+      // `Math.round(n*factor)/factor` ties toward +Infinity, so `Math.round(-82.5)` is `-82`, not
+      // `-83` — a negative value sitting exactly on a display-precision tie rounds to a SMALLER
+      // magnitude than the identical positive case). This line's local `roundedName`/`roundedGroup`
+      // were never switched to the same algorithm, so for any operand landing exactly on a .x5 tie
+      // (e.g. nameReturnPct=−8.25) the LOCAL rounding (−8.2) disagreed with what `fmtPct()` displays
+      // right beside it in the SAME sentence (fmtPct(−8.25) === "-8.3%") — reopening the exact
+      // "headline % must equal the subtraction a reader does from the two displayed operands"
+      // property the 2026-10-09 fix above was built to guarantee, just at tie boundaries instead of
+      // at ordinary values. Fix: round `roundedName`/`roundedGroup` with the SAME sign-safe,
+      // round-by-magnitude algorithm `fmtPct` uses internally (`Math.sign(n) * Math.round(Math.abs(n)
+      // * factor)) / factor`) rather than plain `Math.round`, so the two operands feeding the
+      // headline delta are byte-identical to what `fmtPct()` would round them to. The subsequent
+      // `Math.round(... * 10) / 10` after subtracting is not a second independent rounding, just
+      // float-noise cleanup (1.6 − 1.3 === 0.2999999999999998 in IEEE 754) before `.toFixed(1)` would
+      // otherwise need to re-round it — applying the same sign-safe formula there too keeps that
+      // cleanup step consistent rather than mixing rounding algorithms within one expression.
+      const roundedName = (Math.sign(f.nameReturnPct) * Math.round(Math.abs(f.nameReturnPct) * 10)) / 10;
+      const roundedGroup = (Math.sign(f.groupReturnPct) * Math.round(Math.abs(f.groupReturnPct) * 10)) / 10;
+      const rawDelta = roundedName - roundedGroup;
+      const roundedDelta = (Math.sign(rawDelta) * Math.round(Math.abs(rawDelta) * 10)) / 10;
       lines.push(
         `**Industry read:** ${verb} **${f.benchmarkLabel}** (${f.benchmarkEtf}) by ${Math.abs(roundedDelta).toFixed(1)}% ` +
           `over 10 sessions (${fmtPct(f.nameReturnPct)} vs ${fmtPct(f.groupReturnPct)}).`,
