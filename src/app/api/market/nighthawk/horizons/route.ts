@@ -44,9 +44,24 @@ export async function GET(req: NextRequest) {
 
   ensureDataSockets();
   try {
-    // Toggle scoping: ?view=0dte|swings|leaps|legacy (or ?horizon=) narrows the payload to one lane so the
-    // whole desk shows the selected horizon. Absent → the full board (all lanes). LEGACY has no horizon
-    // lane here (it's served by the separate evening-edition route), so it scopes to an all-empty board.
+    // Toggle scoping: ?view=0dte|swings|leaps narrows the payload to one lane so the whole desk shows
+    // the selected horizon. Absent → the full board (all lanes).
+    //
+    // LEGACY (and its aliases playbook/tonight) is a KNOWN, validator-accepted token here but has no
+    // horizon lane of its own — the Legacy desk tab's real data comes from the separate evening-edition
+    // route (`/api/market/nighthawk/edition`; `LegacyDeck` in containers.tsx fetches it, never this
+    // route) and Largo's `get_nighthawk_horizons` tool takes no view argument at all
+    // (`run-tool.ts`/`product-reads.ts`). So `horizonForView` returns `null` for LEGACY, exactly as it
+    // does for the "no ?view= given" case below, and `scopeBoardToHorizon(board, null)` is a deliberate,
+    // documented no-op shared by BOTH (see horizon-board.ts's own header + horizon-board.test.ts) — so
+    // `?view=legacy` on THIS route returns the SAME full, unscoped board as omitting `?view=` entirely,
+    // never an empty one. (A prior version of this comment claimed the opposite — "scopes to an
+    // all-empty board" — but nothing ever implemented that; it was always the shared null no-op. See
+    // docs/audit/findings-staging/2026-11-09-nighthawk-horizons-legacy-view-scoping-contract-mismatch.md.)
+    // This is harmless, not a leak: every lane here already requires the same premium `authorizeCronOrTierApi`
+    // gate regardless of `?view=`, so a caller asking for "legacy" sees a superset of what it asked for,
+    // not LEGACY-specific data it should not have. Do not "fix" this into an empty board without first
+    // checking whether anything has come to depend on the full-board behavior in the meantime.
     const viewParam = req.nextUrl.searchParams.get("view") ?? req.nextUrl.searchParams.get("horizon");
     // Reject an unrecognised view instead of silently serving the default lane. parseNightHawkView
     // falls back for the UI's benefit (a stale shared link should still render), but on an API that
