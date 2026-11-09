@@ -10,7 +10,7 @@ import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { requireToolApi } from "@/lib/tool-access-server";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
-import { roundFloats, reconcileTrancheFractions } from "@/lib/round-floats";
+import { roundFloats, reconcileTrancheFractions, blendTrancheHeadlinePnlPct } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { CORTEX_WIRE_KEY_DP } from "@/lib/nighthawk/cortex/compose";
 
@@ -63,17 +63,40 @@ export async function GET(req: NextRequest) {
     // A WS-11 reconstructed TRIM-SCALE play's `entry_context.executable.tranches[]` audit
     // trail just had each leg's `fraction` rounded INDEPENDENTLY by roundFloats() above — a
     // fully-fired ⅓/⅓/⅓ play now displays 0.33/0.33/0.33, which sums to 0.99, not 1.00
-    // (live-caught 2026-10-25). The official `managed_pnl_pct` headline is unaffected (it
-    // blends the exact, unrounded fractions before this rounding pass ever runs) — only this
-    // served audit trail drifts. reconcileTrancheFractions (round-floats.ts) adjusts the
-    // runner leg to absorb the residual, same rounding-composition fix as
+    // (live-caught 2026-10-25, PR #6744). reconcileTrancheFractions (round-floats.ts) adjusts
+    // the runner leg to absorb the residual, same rounding-composition fix as
     // reconcileStrikeTotal/reconcileCellStrikeTotals one level deeper.
+    //
+    // FOLLOW-UP (live-caught 2026-11-09, on rows committed AFTER #6744 already shipped):
+    // fixing `fraction` alone was not enough to make the array self-consistent with the
+    // headline sitting right beside it. `exit_pnl_pct` is ALSO rounded independently by
+    // roundFloats() above, and the served `entry_context.executable.plan_pnl_pct` is still the
+    // UNROUNDED, pre-reconciliation blend stamped at grading time (plan.ts) — so a member or
+    // API consumer who recomputes `Σ fraction_i × exit_pnl_pct_i` from the EXACT array served
+    // here disagrees with the served headline by up to 0.56pp (see
+    // blendTrancheHeadlinePnlPct's doc comment in round-floats.ts for the live repro). Once the
+    // tranches are fully reconciled (the line above), recompute the headline FROM them — a
+    // served value that is, by construction, always reproducible from the served array it sits
+    // beside. This rewrites ONLY this one nested field, on this one HTTP response: the
+    // persisted DB row stays the full-precision truth (every non-HTTP reader of it —
+    // feature-store.ts, calibration.ts, the WS-11 grade_vs_asmanaged_delta reconciliation guard
+    // in scan.ts — reads that raw value directly, never this rounded wire copy, so none of them
+    // are affected). The TOP-LEVEL `plays[].plan_pnl_pct`/`managed_pnl_pct` fields on this SAME
+    // response are also untouched here — `record.ts`'s `toPlay()` already computed and rounded
+    // those, from the identical raw DB value, before this route's roundFloats() call above ever
+    // ran — see this PR's write-up for why those two are a disclosed, deliberately out-of-scope
+    // follow-on rather than fixed here too.
     for (const play of rounded.plays) {
       const ex = play.entry_context?.executable;
       if (ex && typeof ex === "object" && Array.isArray((ex as Record<string, unknown>).tranches)) {
-        (ex as Record<string, unknown>).tranches = reconcileTrancheFractions(
-          (ex as Record<string, unknown>).tranches as { fraction: number }[]
+        const reconciled = reconcileTrancheFractions(
+          (ex as Record<string, unknown>).tranches as { fraction: number; exit_pnl_pct: number }[]
         );
+        (ex as Record<string, unknown>).tranches = reconciled;
+        const recomputed = blendTrancheHeadlinePnlPct(reconciled);
+        if (recomputed != null) {
+          (ex as Record<string, unknown>).plan_pnl_pct = recomputed;
+        }
       }
     }
     return NextResponse.json(rounded, { headers: NO_STORE_HEADERS });

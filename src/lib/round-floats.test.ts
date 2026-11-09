@@ -5,6 +5,7 @@ import {
   reconcileStrikeTotal,
   reconcileCellStrikeTotals,
   reconcileTrancheFractions,
+  blendTrancheHeadlinePnlPct,
   reconcileSectorLeadershipDelta,
 } from "./round-floats";
 
@@ -261,6 +262,82 @@ test("reconcileTrancheFractions: a 4-way even split (0.25 each) already sums to 
   ];
   const fixed = reconcileTrancheFractions(tranches);
   assert.strictEqual(fixed, tranches);
+});
+
+// ── blendTrancheHeadlinePnlPct — live-caught (2026-11-09): recompute-from-served-tranches
+// still disagrees with the served plan_pnl_pct headline, even AFTER reconcileTrancheFractions
+// (#6744) made the fraction array itself sum to exactly 1.00 ────────────────────────────────
+
+test("blendTrancheHeadlinePnlPct: reproduces the live META 2026-11-05 repro — recompute from the served (reconciled) tranches disagreed with served plan_pnl_pct by +0.42pp, and now matches it", () => {
+  // Real production shape: 3 legs, exact 1/3 raw fractions. roundFloats() independently rounds
+  // each fraction to 0.33/0.33/0.33 (sums to 0.99); reconcileTrancheFractions (#6744) absorbs
+  // the residual onto the runner leg -> 0.33/0.33/0.34 (sums to exactly 1.00) — this is the
+  // array actually served on the wire, reproduced here verbatim.
+  const servedTranches = [
+    { tranche: 1, fraction: 0.33, exit_pnl_pct: 16.8, exit_reason: "trim_scale_first", at_et: "10:00" },
+    { tranche: 2, fraction: 0.33, exit_pnl_pct: 46, exit_reason: "trim_scale_second", at_et: "11:30" },
+    { tranche: 3, fraction: 0.34, exit_pnl_pct: 94.67, exit_reason: "doubled", at_et: "14:15" },
+  ];
+  // The live finding: recomputing Σ(fraction_i × exit_pnl_pct_i) from this EXACT served array
+  // gives 52.9118 (-> 52.91), not the live-served plan_pnl_pct of 52.49 — a +0.42pp disagreement.
+  const recomputed = blendTrancheHeadlinePnlPct(servedTranches);
+  assert.equal(recomputed, 52.91);
+  assert.notEqual(recomputed, 52.49, "the pre-fix served headline a member could no longer reproduce");
+});
+
+test("blendTrancheHeadlinePnlPct: reproduces the live QQQ 2026-10-28 repro (a losing runner leg, -0.56pp drift)", () => {
+  const servedTranches = [
+    { tranche: 1, fraction: 0.33, exit_pnl_pct: 19.65, exit_reason: "trim_scale_first", at_et: "09:45" },
+    { tranche: 2, fraction: 0.33, exit_pnl_pct: 49.56, exit_reason: "trim_scale_second", at_et: "10:20" },
+    { tranche: 3, fraction: 0.34, exit_pnl_pct: -50.15, exit_reason: "stopped", at_et: "15:05" },
+  ];
+  // Live finding: recompute gave 5.7883 (-> 5.79), served plan_pnl_pct was 6.35 (-0.56pp).
+  const recomputed = blendTrancheHeadlinePnlPct(servedTranches);
+  assert.equal(recomputed, 5.79);
+  assert.notEqual(recomputed, 6.35);
+});
+
+test("blendTrancheHeadlinePnlPct: a single-tranche array (immediate stop/time-stop, fraction=1) blends to exactly its own exit_pnl_pct — a provable no-op vs. the pre-fix served value", () => {
+  const tranches = [{ tranche: 1, fraction: 1, exit_pnl_pct: -50, exit_reason: "stopped", at_et: "09:35" }];
+  assert.equal(blendTrancheHeadlinePnlPct(tranches), -50);
+});
+
+test("blendTrancheHeadlinePnlPct: a 2-leg split that already sums to 1.00 (0.33/0.67) blends consistently", () => {
+  const tranches = [
+    { fraction: 0.33, exit_pnl_pct: 20 },
+    { fraction: 0.67, exit_pnl_pct: 60 },
+  ];
+  // 0.33*20 + 0.67*60 = 6.6 + 40.2 = 46.8
+  assert.equal(blendTrancheHeadlinePnlPct(tranches), 46.8);
+});
+
+test("blendTrancheHeadlinePnlPct: null/undefined/empty arrays all return null rather than fabricating a number", () => {
+  assert.equal(blendTrancheHeadlinePnlPct(null), null);
+  assert.equal(blendTrancheHeadlinePnlPct(undefined), null);
+  assert.equal(blendTrancheHeadlinePnlPct([]), null);
+});
+
+test("blendTrancheHeadlinePnlPct: a malformed (non-finite) leaf on either field returns null rather than guessing", () => {
+  assert.equal(
+    blendTrancheHeadlinePnlPct([{ fraction: 0.5, exit_pnl_pct: 10 }, { fraction: NaN, exit_pnl_pct: 20 }]),
+    null
+  );
+  assert.equal(
+    blendTrancheHeadlinePnlPct([{ fraction: 0.5, exit_pnl_pct: 10 }, { fraction: 0.5, exit_pnl_pct: Infinity }]),
+    null
+  );
+});
+
+test("blendTrancheHeadlinePnlPct: matches the magnitude-then-sign tie-break roundFloats()/round2() already use (a negative value exactly on a 2dp tie)", () => {
+  // -0.125 blended exactly: fraction 0.5 * exit_pnl_pct -0.25 = -0.125, a genuine 2dp tie.
+  // Rounds AWAY from zero (-0.13), same convention as round-floats.ts's own documented fix —
+  // never the naive Math.round(-0.125*100)/100 === -0.12 (JS ties-toward-+Infinity) a
+  // reimplementation could have silently reintroduced.
+  const tranches = [
+    { fraction: 0.5, exit_pnl_pct: -0.25 },
+    { fraction: 0.5, exit_pnl_pct: 0 },
+  ];
+  assert.equal(blendTrancheHeadlinePnlPct(tranches), -0.13);
 });
 
 // ── reconcileSectorLeadershipDelta — live-caught (2026-11-09): Night Hawk Swings'

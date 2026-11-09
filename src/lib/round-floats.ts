@@ -230,6 +230,59 @@ export function reconcileTrancheFractions<T extends { fraction: number }>(
 }
 
 /**
+ * Recompute the WS-11 TRIM-SCALE blended headline FROM an already-rounded-and-RECONCILED
+ * `tranches[]` array — i.e. `Σ fraction_i × exit_pnl_pct_i`, at the same display precision.
+ * Call this AFTER `roundFloats()` AND `reconcileTrancheFractions()` have produced the FINAL
+ * served array, and write the result back over the served `plan_pnl_pct` leaf that sits beside
+ * it — never the persisted DB value.
+ *
+ * WHY THIS EXISTS (follow-up to `reconcileTrancheFractions` above, live-caught 2026-11-09, on
+ * rows committed AFTER that 2026-10-25 fix (#6744) already shipped). #6744 closed "the rounded
+ * `fraction` leaves sum to 0.99, not 1.00" — a real fix, confirmed still holding (every served
+ * `fraction` array does sum to exactly 1.00). But its own doc comment (and the `FINDINGS.md`
+ * entry for #6744) claimed a BROADER invariant that fix never actually delivered: "a member who
+ * recomputes the blend from these DISPLAYED fractions gets a result ~0.5pp below the real one"
+ * — implying recompute-from-served now agrees with the served headline. It does not, because
+ * `reconcileTrancheFractions` only touches `fraction`; `exit_pnl_pct` is still rounded
+ * INDEPENDENTLY by the generic `roundFloats()` walk, and the served `plan_pnl_pct` headline is
+ * still the UNROUNDED, pre-reconciliation blend (`plan.ts`'s `reconstructTrimScaleExecutableFromBars`,
+ * `round2(tranches.reduce((acc,t) => acc + t.fraction*t.exit_pnl_pct, 0))` over the EXACT,
+ * unrounded fractions). Dumping the ENTIRE fraction-rounding residual onto the runner leg's
+ * DISPLAYED weight (by construction, the leg most likely to carry an outlier `exit_pnl_pct` —
+ * it rode furthest to target/stop) multiplies that distortion by the outlier P&L, which is why
+ * the drift now runs 0.1–0.6pp rather than the sub-0.01pp a flat 2dp rounding alone would cause.
+ * Live-confirmed on rows committed 2026-11-02…11-05 (i.e. this is still reproducing TODAY, not a
+ * stale pre-#6744 symptom): META 2026-11-05 served `tranches=[{0.33,16.8},{0.33,46},{0.34,94.67}]`
+ * recomputes to `52.9118` (→ 52.91) vs served `plan_pnl_pct=52.49` (+0.42pp); QQQ 2026-10-28
+ * served `tranches=[{0.33,19.65},{0.33,49.56},{0.34,-50.15}]` recomputes to `5.7883` (→ 5.79) vs
+ * served `6.35` (−0.56pp).
+ *
+ * Returns `null` on anything that cannot be blended (no array, empty array, or a non-finite
+ * `fraction`/`exit_pnl_pct` leaf) rather than guessing — mirrors `reconcileTrancheFractions`'s
+ * own "leave it alone rather than fabricate" posture for a malformed leaf. A single-tranche array
+ * (immediate stop/time-stop, `fraction: 1`) blends to exactly its own `exit_pnl_pct`, so this is
+ * provably a no-op (byte-identical to the pre-fix served value) on every row #6744's own tests
+ * already cover as "untouched" — the drift this closes only exists once 2+ legs each carry their
+ * OWN independently-rounded weight AND P&L.
+ */
+export function blendTrancheHeadlinePnlPct<T extends { fraction: number; exit_pnl_pct: number }>(
+  tranches: T[] | null | undefined,
+  dp = 2
+): number | null {
+  if (!Array.isArray(tranches) || tranches.length === 0) return null;
+  let sum = 0;
+  for (const t of tranches) {
+    if (!Number.isFinite(t.fraction) || !Number.isFinite(t.exit_pnl_pct)) return null;
+    sum += t.fraction * t.exit_pnl_pct;
+  }
+  // Same magnitude-then-sign rounding roundFloats()/round2() already use elsewhere in this
+  // codebase (2026-10-26 tie-break fix) — reused via roundFloats() itself rather than
+  // reimplemented, so this can never silently drift from the rounding the rest of the served
+  // payload already uses.
+  return roundFloats(sum, dp);
+}
+
+/**
  * Reconcile a `{ nameReturnPct, groupReturnPct, deltaPct }` triple — Night Hawk Swings'
  * `sectorLeadershipFacts` (`industryGroupRsFacts()`, `src/lib/swing/industry-group-rs.ts`) —
  * AFTER roundFloats rounds each of the three fields INDEPENDENTLY from its own unrounded
