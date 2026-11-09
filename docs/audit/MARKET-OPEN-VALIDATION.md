@@ -10511,3 +10511,35 @@ and `/play` are actually serving a real price again
   reusing a truncated one for up to 5 more minutes. No live state captured pre-fix to diff
   against — there is no way to force a mid-pagination failure safely against production from this
   sandbox.
+
+## WATCH LIST — 2026-11-09 (AdminApiDashboard's `load()` depended on its own fetched `data`, re-arming the 8s/120s poll intervals and forcing the expensive live-provider probe on effectively every tick, `fix/admin-api-dashboard-load-identity-restart-loop`) — re-check `/admin` → API Command Center during the next live session
+
+- **What was broken**: `src/components/admin/AdminApiDashboard.tsx`'s `load()` read `data` state
+  directly (`else if (!data) setLoading(true)`) and listed `data` in its own `useCallback`
+  dependency array. `setData` runs on every successful poll and always hands back a freshly
+  parsed object, so `data`'s reference changed on every call — meaning `load` itself got a new
+  identity after every load, not just the first. The polling-setup effect depends on `[load]`,
+  so a `load` identity change tore down and immediately re-armed both the 8s telemetry interval
+  AND the 120s probe interval, synchronously calling `load(true)` again inside the effect body
+  every time. `load(true)` sends `?probe=1`, which makes real round-trip calls to Polygon/UW/the
+  engine/Postgres and writes an admin-audit-log row each time — so instead of the intended "cheap
+  8s telemetry, expensive 120s probe" cadence, the expensive probe effectively fired on every
+  successful poll, a tight self-sustaining loop bounded only by round-trip latency.
+- **Fix**: added `hasDataRef` (a ref, not state) that flips to `true` once any load has ever
+  succeeded; `load()` now reads `hasDataRef.current` for the first-load spinner decision and its
+  `useCallback` dependency array is `[]` — referentially stable for the component's lifetime, so
+  the polling effect only (re)runs on mount, as its own comments already claimed. New regression
+  test `AdminApiDashboard.test.ts` (source-pattern assertion — this repo has no DOM/React-renderer
+  test infra to drive the real timing behavior, so it asserts the exact dependency-array/body
+  shape instead, same style as other hook-wiring-invariant tests in this repo). RED confirmed via
+  `git stash` isolating `AdminApiDashboard.tsx` (both new assertions fail against the pre-fix
+  source), GREEN post-fix (both pass); `tsc --noEmit` clean.
+- **Specific thing to check once live**: open `/admin`, API Command Center tab, and watch the
+  Network tab (or CloudWatch Logs for `api_probe_providers` admin-audit-log rows / the live
+  provider-probe round trips themselves) for a few minutes. Pre-fix, `?probe=1` requests should
+  have been firing roughly as often as the plain 8s telemetry poll (every successful load, not
+  once every 120s); post-fix, `?probe=1` should fire once on mount and then only once every two
+  minutes thereafter, with the plain (non-probe) telemetry request firing every ~8s in between.
+  No live state captured pre-fix to diff against — this needed an admin session actually watching
+  the tab's network traffic over multiple poll cycles, not something safely reproducible from
+  this sandbox.

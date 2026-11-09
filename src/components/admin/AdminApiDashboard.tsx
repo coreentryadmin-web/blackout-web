@@ -162,6 +162,10 @@ export function AdminApiDashboard() {
   // AdminApiEventDetail.tsx (#6926) / UserManagement.tsx (#6927) for the same bug shape
   // elsewhere in this admin surface.
   const loadRequestIdRef = useRef(0);
+  // Tracks whether ANY successful load has ever landed, independent of React state, so
+  // `load()` below never needs `data` itself as a dependency (see hasDataRef note there for
+  // the restart-loop bug this closes).
+  const hasDataRef = useRef(false);
 
   useEffect(() => {
     const tick = () => setClock(fmtClock());
@@ -171,8 +175,25 @@ export function AdminApiDashboard() {
   }, []);
 
   const load = useCallback(async (withProbe = false) => {
+    // BUG FIX (round 503): this read `data` state directly (`else if (!data) ...`), which
+    // forced `data` into this callback's own dependency array below. `setData` runs on EVERY
+    // successful poll (telemetry every 8s, probe every 120s) and always hands back a freshly
+    // parsed JSON object, so `data`'s reference changes on every single successful load — which
+    // meant `load` itself got a NEW identity after every load, not just the first one.
+    // The effect below that wires up the 8s/120s polling intervals depends on `[load]`, so a
+    // `load` identity change tore down and immediately re-armed both intervals AND re-invoked
+    // `load(true)` synchronously on every single successful poll — turning the intended
+    // "cheap 8s telemetry poll / expensive 120s live-provider probe" cadence into the EXPENSIVE
+    // probe path (`?probe=1`, which makes real round-trip calls to Polygon/UW/the engine/Postgres
+    // and writes an admin-audit-log row every time, per admin-api-dashboard route.ts) firing on
+    // effectively every network round trip instead of once every two minutes — a live instance of
+    // the standing performance-mandate "hammering an upstream on every tick" failure shape, not
+    // just a cosmetic timing glitch. `hasDataRef` tracks the one thing this check actually needs
+    // (has ANY load ever landed) without taking on `data`'s own unstable identity, so `load` stays
+    // referentially stable across every poll and the effect below only re-arms when it legitimately
+    // should (mount / rescan wiring), not on every tick.
     if (withProbe) setProbing(true);
-    else if (!data) setLoading(true);
+    else if (!hasDataRef.current) setLoading(true);
     setError(null);
     const requestId = ++loadRequestIdRef.current;
     try {
@@ -185,7 +206,10 @@ export function AdminApiDashboard() {
           if (!res.ok) throw new Error(res.status === 403 ? "Not authorized" : `HTTP ${res.status}`);
           return (await res.json()) as ApiDashboardPayload;
         },
-        (payload) => setData(payload)
+        (payload) => {
+          hasDataRef.current = true;
+          setData(payload);
+        }
       );
     } catch (e) {
       // A superseded request's own failure must not clobber a newer, already-applied
@@ -199,7 +223,7 @@ export function AdminApiDashboard() {
         setProbing(false);
       }
     }
-  }, [data]);
+  }, []);
 
   const rescan = useCallback(async () => {
     setRescanning(true);
