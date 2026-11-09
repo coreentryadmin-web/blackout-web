@@ -1032,6 +1032,34 @@ export type SpxDeskPayload = {
   available: boolean;
   as_of: string;
   source: string;
+  /**
+   * True when this payload is a pulse-only "bootstrap shell" (`source === "none"`) rather than
+   * a completed `buildSpxDesk()` build — i.e. VWAP/GEX/flow/tide/dark-pool/internals can be
+   * null/empty even though `available`/`price` can still read true/real (price can come from
+   * the pulse lane alone, which runs independently of — and faster than — the full desk build).
+   *
+   * BUG FIX (found live 2026-11-09, Ask Largo/5-engine standing mandate): `mergePulseIntoDesk`
+   * (spx-desk-merge.ts) spreads `...base` and reassigns `available: pulse.available ||
+   * base.available` (the 2026-10-25 fix) but never reassigns `source` — so a cold-cache /
+   * outage fallback shell (`deskShellFromPulse`, below) could legitimately read
+   * `available:true, source:"none"` with almost every scoring field null, and NOTHING on the
+   * payload disclosed that combination as degraded. Live repro, RTH, 2026-11-09 ~12:01-12:03 ET:
+   * `GET /api/market/spx/desk` served `available:true, source:"none", price:7352.9` with
+   * vwap/gamma_flip/gex_walls/max_pain/flow_0dte_net/tide_bias/dark_pool/tick/trin/add all
+   * null/empty — a fully-populated-LOOKING response that was actually a near-empty shell. The
+   * route's own peek fast-path already distrusts this exact shape (`instant.source !== "none"`,
+   * matching spx-play-engine.ts's closed-market guard) but the route's main `loadSpxDesk()`
+   * branch had no equivalent check and served the shell unguarded. Rather than flip `available`
+   * (which real off-hours pulse-only shells legitimately need to keep true — see the 2026-10-25
+   * fix above — and which would also erase a genuinely-correct price), this field makes the
+   * degraded state an explicit, additive disclosure signal any consumer can check, consistent
+   * with `docs/audit/LARGO-PRODUCT-CONTRACT.md`'s "absence must be disclosed, never silent"
+   * principle. Set by `emptyPayload()` (always true there — `source` is "none" by definition)
+   * and recomputed honestly by `mergePulseIntoDesk` from `base.source` on every merge, the same
+   * "derive, don't blindly inherit" treatment already applied to `available`/`vix_term`/
+   * `prior_close` in that function. Undefined/false on a real `buildSpxDesk()` build.
+   */
+  degraded?: boolean;
   price: number;
   spx_change_pct: number | null;
   vix: number | null;
@@ -1450,6 +1478,10 @@ function emptyPayload(asOf: string): SpxDeskPayload {
     available: false,
     as_of: asOf,
     source: "none",
+    // Always true here — this IS the degraded-shell sentinel (source:"none"). Set directly so
+    // the invariant holds even for a caller that returns this object without ever routing it
+    // through mergePulseIntoDesk (e.g. buildSpxDesk()'s own `!polygonConfigured()` early return).
+    degraded: true,
     price: 0,
     spx_change_pct: null,
     vix: null,
