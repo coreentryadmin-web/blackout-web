@@ -94,6 +94,35 @@ export async function fetchVectorClientSeed(ticker: string): Promise<VectorClien
   };
 }
 
+/**
+ * Should the phase-2 "full" client seed (from {@link fetchVectorClientSeed}) replace the phase-1
+ * "fast" seed (from {@link fetchVectorEmbedFastSeed}) already on screen?
+ *
+ * THE BUG THIS FIXES (SpxVectorEmbed, the SPX Slayer chart embed). `fetchJson` above swallows every
+ * network/parse failure and resolves `null` rather than throwing, so `fetchVectorClientSeed` never
+ * rejects on a transient fetch hiccup — it resolves SUCCESSFULLY with `initialBars: []` (every field
+ * null-coalesced to its empty default per line 70 above). The embed's two-phase load calls
+ * `setSeed(fast)` first (chart renders real candles), then unconditionally calls `setSeed(full)`
+ * once the phase-2 fetch resolves — so a transient failure on JUST the enrichment fetch (the fast
+ * seed already succeeded and is rendering) replaced a chart showing real bars with an empty one,
+ * even though nothing was wrong with what was already on screen.
+ *
+ * The rule: only adopt the full seed when it actually carries bars, or the fast seed never had any
+ * to begin with (both legitimately empty, e.g. a pre-open session — adopting then is a no-op for
+ * bars but still lets other fields like walls/history refresh). An empty full seed while the fast
+ * seed has real bars is a degraded/failed phase-2 fetch, never a genuine "SPX has no bars" answer —
+ * SPX always has bars once a session exists — so keeping the fast seed on screen is strictly safer
+ * than regressing to nothing. Same "a failed refresh must not wipe a good prior read" discipline as
+ * `warmVectorDarkPool` (vector-dark-pool-cache.ts: "a transient UW outage must not actively WIPE
+ * good levels a previous run fetched — skip the write").
+ */
+export function shouldAdoptFullVectorSeed(
+  fastSeedBarsLength: number,
+  fullSeedBarsLength: number
+): boolean {
+  return fullSeedBarsLength > 0 || fastSeedBarsLength === 0;
+}
+
 type VectorEmbedFastSeed = Pick<
   VectorClientSeed,
   | "initialBars"
