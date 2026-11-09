@@ -92,6 +92,60 @@ test("fetchHeatmapBandUnfiltered's page guard shares HEATMAP_PAGE_GUARD, not a f
   assert.notEqual(__test_heatmapUnfilteredPageGuard, 12);
 });
 
+// ── fetchHeatmapBandLoHi / fetchHeatmapBandUnfiltered / fetchPolygonOiByExpiry: a FAILED
+// mid-pagination re-fetch must not be read as "chain complete" — a live sibling of the
+// mid-pagination cache-poisoning bug already fixed for fetchPolygonIvTermStructure in this same
+// file. polygonFetchUrl/polygonRefFetch both deliberately return `null` on ANY failure (non-2xx,
+// a thrown network error, or not configured) rather than throwing — but these three loops only
+// ever re-fetch a page once a PRIOR page's own `next_url` has already proven more data exists, so
+// a null result from that re-fetch can ONLY mean the known-good next page failed to load, never a
+// legitimate end of chain (the real end is caught by `!page.next_url`, which breaks BEFORE any
+// re-fetch is attempted). Before this fix, `truncated`/the truncation warning were derived solely
+// from the FINAL `page` value (`!!page?.next_url` / `page?.next_url`) — once that final `page`
+// itself goes null from a failed re-fetch, `page?.next_url` is `undefined` either way, so a
+// genuine mid-chain failure and a clean, complete fetch produced the identical falsy signal. The
+// function then silently returned whatever PARTIAL data the earlier, successful pages had already
+// accumulated, with `chain_truncated` never set on the GexHeatmap this feeds (cached for the full
+// matrix TTL) and no truncation warning logged anywhere. Pagination over a live network fetch
+// isn't practically unit-testable without heavy mocking in this file's existing style (see the
+// HEATMAP_PAGE_GUARD / fetchPolygonIvTermStructure tests above/below), so, same convention, this
+// asserts the actual source: fails against the pre-fix shape (truncation derived only from the
+// final `page`) and passes once each loop threads an explicit "did a re-fetch of a known next
+// page come back null" flag into its truncation decision.
+test("fetchHeatmapBandLoHi/Unfiltered/fetchPolygonOiByExpiry: a failed re-fetch of a KNOWN next page is tracked separately from a clean end-of-chain, not inferred solely from the final page", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+
+  const sites: Array<{ name: string; marker: string; sliceLen: number }> = [
+    { name: "fetchHeatmapBandLoHi", marker: "async function fetchHeatmapBandLoHi(", sliceLen: 2600 },
+    { name: "fetchHeatmapBandUnfiltered", marker: "async function fetchHeatmapBandUnfiltered(", sliceLen: 1700 },
+    { name: "fetchPolygonOiByExpiry", marker: "export async function fetchPolygonOiByExpiry(", sliceLen: 3200 },
+  ];
+
+  for (const { name, marker, sliceLen } of sites) {
+    const fnStart = src.indexOf(marker);
+    assert.ok(fnStart >= 0, `${name} not found`);
+    const fnBody = src.slice(fnStart, fnStart + sliceLen);
+    assert.match(
+      fnBody,
+      /midPaginationFetchFailed/,
+      `${name} must track a failed re-fetch of a known next page separately from a clean end`
+    );
+    assert.match(
+      fnBody,
+      /if \(next == null\) midPaginationFetchFailed = true;/,
+      `${name} must flag midPaginationFetchFailed the moment a re-fetch comes back null`
+    );
+    assert.match(
+      fnBody,
+      /midPaginationFetchFailed \|\|/,
+      `${name}'s truncation decision must OR in midPaginationFetchFailed, not derive solely from the final page's own next_url`
+    );
+  }
+});
+
 // fetchChainBand / fetchPolygonAtmChainAllExpiries: a FAILED mid-pagination re-fetch must not be
 // read as "chain complete" — the same bug class already fixed for fetchHeatmapBandLoHi/
 // fetchHeatmapBandUnfiltered/fetchPolygonOiByExpiry/fetchPolygonIvTermStructure in this file.

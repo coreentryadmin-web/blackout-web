@@ -2337,13 +2337,26 @@ async function fetchHeatmapBandLoHi(
   // stops pagination early; the contracts already collected on earlier pages are still real.
   const fetchFailed = page == null;
   let guard = 0;
+  // Same null-collapse bug class as fetchPolygonIvTermStructure's mid-pagination cache-poisoning
+  // fix in this file: polygonFetchUrl returns null on BOTH a failed re-fetch (non-2xx/thrown
+  // network error) AND would otherwise be read as "no more pages" — but a re-fetch only ever
+  // happens below when a next_url is already known to exist (the natural end breaks BEFORE
+  // re-fetching), so a null result here can ONLY mean that known-good next page failed to load,
+  // never a legitimate end of chain. The bare `!!page?.next_url` check this used to rely on alone
+  // collapses that failure into the exact same falsy signal a clean, complete fetch produces —
+  // `page` itself is null, so `page?.next_url` is undefined either way — which let a transient
+  // Polygon hiccup mid-chain silently return a PARTIAL ladder with `chain_truncated` never set on
+  // the GexHeatmap this feeds (buildGexHeatmapUncached caches that object for its full matrix TTL).
+  let midPaginationFetchFailed = false;
   while (page && guard < HEATMAP_PAGE_GUARD) {
     out.push(...(page.results ?? []));
     if (!page.next_url) break;
-    page = await polygonFetchUrl(page.next_url);
+    const next = await polygonFetchUrl(page.next_url);
+    if (next == null) midPaginationFetchFailed = true;
+    page = next;
     guard += 1;
   }
-  const truncated = !!page?.next_url;
+  const truncated = midPaginationFetchFailed || !!page?.next_url;
   if (truncated) warnChainTruncated("fetchHeatmapBand", underlying, guard);
   return { contracts: out, truncated, fetchFailed };
 }
@@ -2366,13 +2379,18 @@ async function fetchHeatmapBandUnfiltered(underlying: string): Promise<{ contrac
   // never actually answered this request".
   const fetchFailed = page == null;
   let guard = 0;
+  // Same null-collapse fix as fetchHeatmapBandLoHi immediately above — see its comment. A failed
+  // re-fetch of a KNOWN next page must not be allowed to masquerade as "chain complete".
+  let midPaginationFetchFailed = false;
   while (page && guard < HEATMAP_UNFILTERED_PAGE_GUARD) {
     out.push(...(page.results ?? []));
     if (!page.next_url) break;
-    page = await polygonFetchUrl(page.next_url);
+    const next = await polygonFetchUrl(page.next_url);
+    if (next == null) midPaginationFetchFailed = true;
+    page = next;
     guard += 1;
   }
-  const truncated = !!page?.next_url;
+  const truncated = midPaginationFetchFailed || !!page?.next_url;
   if (truncated) warnChainTruncated("fetchHeatmapBandUnfiltered", underlying, guard);
   return { contracts: out, truncated, fetchFailed };
 }
@@ -4979,6 +4997,17 @@ export async function fetchPolygonOiByExpiry(
   const byExpiry = new Map<string, { call_oi: number; put_oi: number }>();
   let page: RefContractsResponse | null = await polygonRefFetch(`/v3/reference/options/contracts?${params}`);
   let guard = 0;
+  // Same null-collapse bug class fixed elsewhere in this file (fetchPolygonIvTermStructure,
+  // fetchHeatmapBandLoHi/Unfiltered): polygonRefFetch returns null on BOTH a failed re-fetch AND
+  // would otherwise be the "no more data" signal — but it's only re-invoked below once a
+  // next_url is already known to exist, so a null result there can only mean that known-good
+  // page failed to fetch, never a legitimate end. Without tracking it separately, the
+  // `page?.next_url` check below (the only thing standing between a transient Polygon failure
+  // and this function's own "N distinct expiries seen ⇒ provably complete" proof in the doc
+  // comment above) goes `undefined` on a null page exactly like a clean completion would, so a
+  // mid-pagination hiccup silently returns a PARTIAL byExpiry map with no truncation warning at
+  // all — understating OI for the nearest expiries this is specifically meant to guarantee.
+  let midPaginationFetchFailed = false;
 
   while (page && guard < PAGE_GUARD && byExpiry.size <= limit) {
     for (const c of page.results ?? []) {
@@ -4997,10 +5026,14 @@ export async function fetchPolygonOiByExpiry(
     }
     if (!page.next_url) break;
     if (byExpiry.size > limit) break;
-    page = await polygonRefFetch(page.next_url);
+    const next = await polygonRefFetch(page.next_url);
+    if (next == null) midPaginationFetchFailed = true;
+    page = next;
     guard += 1;
   }
-  if (page?.next_url && byExpiry.size <= limit) warnChainTruncated("fetchPolygonOiByExpiry", underlying, guard);
+  if ((midPaginationFetchFailed || page?.next_url) && byExpiry.size <= limit) {
+    warnChainTruncated("fetchPolygonOiByExpiry", underlying, guard);
+  }
 
   return Array.from(byExpiry.entries())
     .map(([expiry, oi]) => ({
