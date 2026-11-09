@@ -2,6 +2,7 @@ import {
   fetchNighthawkEditionByDate,
   fetchNighthawkCandidateSnapshots,
   fetchNighthawkScoringHistory,
+  fetchNighthawkJob,
   upsertNighthawkEdition,
   insertNighthawkCandidateSnapshots,
   type NighthawkCandidateSnapshotRow,
@@ -101,6 +102,32 @@ export function reconstructScoredPoolFromRankGovernorRows(
         govPenalty: typeof snap.gov_penalty === "number" ? snap.gov_penalty : numOrUndef(r.gov_penalty),
       };
     });
+}
+
+/**
+ * BUG FIX (2026-11-09, Ask Largo/Night Hawk Swings standing mandate — live TLN repro): this
+ * republish path has no `MarketWideContext` in scope at all (it reconstructs everything from
+ * durably-persisted DB rows, never re-fetches market data) — so it had no way to know which
+ * ranked-pool tickers were whole-market breakout movers for the SAME `editionFor` night, the
+ * signal `selectBackfillPlays` needs to gate its scale-out exit_style/risk_note on. The one
+ * durable record of that signal for a given edition is `nighthawk_jobs.context_json` — the exact
+ * `MarketWideContext` the pipeline fetched at STAGE 1 that night (`edition-builder.ts`'s own
+ * comment: "The recap is deterministic from ctx (already fetched at stage_context), so it is
+ * always available"), which `clearNighthawkStaging` never touches (it only deletes
+ * `nighthawk_dossiers_staging` rows) — so it persists for this edition_for indefinitely, long
+ * after the original build finishes. Fails soft to an empty Set (never a thrown error) when the
+ * job row or its context_json is missing/malformed, which keeps this republish path's existing
+ * "backfill still works, just without the banger treatment" behavior for any edition predating
+ * this fix or whose job row was purged.
+ */
+export function bangerTickersFromContextJson(contextJson: Record<string, unknown> | null | undefined): Set<string> {
+  const movers = (contextJson as { breakout_movers?: Array<{ ticker?: unknown }> } | null | undefined)
+    ?.breakout_movers;
+  if (!Array.isArray(movers)) return new Set();
+  const tickers = movers
+    .map((m) => (m && typeof m.ticker === "string" ? m.ticker.toUpperCase() : null))
+    .filter((t): t is string => t != null);
+  return new Set(tickers);
 }
 
 export type RepublishBackfillResult =
@@ -239,7 +266,12 @@ export async function republishBackfilledEdition(editionFor: string): Promise<Re
   if (!snapshotRows.length) return { ok: false, status: "no_rank_governor_snapshot", editionFor };
   const pool = reconstructScoredPoolFromRankGovernorRows(snapshotRows);
 
-  const result = await backfillThinEditionPlays({ finalPlays, ranked: pool, dossiers, minPlays, editionFor });
+  // See bangerTickersFromContextJson's own doc comment above for why this reads the ORIGINAL
+  // night's nighthawk_jobs row rather than re-fetching live market data.
+  const job = await fetchNighthawkJob(editionFor);
+  const bangerTickers = bangerTickersFromContextJson(job?.context_json ?? null);
+
+  const result = await backfillThinEditionPlays({ finalPlays, ranked: pool, dossiers, minPlays, editionFor, bangerTickers });
   if (!result.notes.length) {
     return { ok: true, status: "noop_no_eligible_pool", editionFor, playsCount: finalPlays.length };
   }

@@ -8,6 +8,7 @@ import type { ChainStrikeRow, EditionChainData } from "./option-chain-prompt";
 import type { ScoredCandidate } from "./scorer";
 import type { TickerDossier } from "./dossier";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { calendarDteBetween } from "@/lib/zerodte/board";
 
 // Relative to "today" (not a hardcoded calendar date) so these fixtures never silently rot into
 // a past expiry as real time passes — exactly the shape of defect this file's own 2026-10-24
@@ -505,6 +506,86 @@ test("selectBackfillPlays: BACKFILL-tier plays carry a structured rr_ratio match
   });
   assert.equal(play.rr_ratio, expected, "must match computeRiskReward exactly — the same function/inputs the thesis prose's own 'R:R X:1' sentence already used");
   assert.match(play.thesis, /R:R [\d.]+:1/, "sanity: the thesis prose does carry its own R:R sentence");
+});
+
+// Regression (2026-11-09, Ask Largo/Night Hawk Swings standing mandate — live TLN repro):
+// selectBackfillPlays never took a bangerTickers parameter at all, so a BACKFILL-tier play could
+// never carry exit_style/risk_note, regardless of whether its own ticker genuinely qualified as a
+// whole-market breakout mover — unlike the organic path's buildPlay (deterministic-edition.ts),
+// which gates its identical scale-out guidance on exactly that signal. Two real downstream
+// consequences this closes: (1) legacy-live-sync.ts's runLegacyLiveSync branches on
+// `exit_style === "scale_out"` to pick the banger scale-out ladder vs the 0DTE-grinder plan model
+// — a genuinely-banger BACKFILL play was silently managed under the wrong exit discipline; (2)
+// play-outcomes.ts's resolveBangerScaleOutGrades resolves "not_banger" when exit_style is absent,
+// permanently excluding every BACKFILL play from banger shadow grading.
+test("selectBackfillPlays: a banger-ticker BACKFILL play gets exit_style scale_out + a non-empty risk_note (+ dte); a non-banger BACKFILL play gets neither exit_style nor risk_note", () => {
+  const pool = [bfScored("WAT", 32), bfScored("KOD", 30)];
+  const dossiers: Record<string, TickerDossier> = {
+    WAT: bfDossier("WAT", 100),
+    KOD: bfDossier("KOD", 50),
+  };
+  const chains: Record<string, EditionChainData> = {
+    WAT: bfChain(100),
+    KOD: bfChain(50),
+  };
+
+  const { plays } = selectBackfillPlays({
+    finalPlays: [],
+    pool,
+    dossiers,
+    chains,
+    minPlays: 2,
+    bangerTickers: new Set(["WAT"]), // only WAT is a whole-market breakout mover tonight
+  });
+
+  assert.equal(plays.length, 2, "both candidates backfilled toward the minimum of 2");
+  const wat = plays.find((p) => p.ticker === "WAT");
+  const kod = plays.find((p) => p.ticker === "KOD");
+  assert.ok(wat, "WAT play built");
+  assert.ok(kod, "KOD play built");
+
+  // Banger ticker: gets the full scale-out treatment, mirroring buildPlay's organic-path banger
+  // block (deterministic-edition.ts, ~line 910) exactly — same bangerScaleOutNote helper, same
+  // structured marker.
+  assert.equal(wat!.exit_style, "scale_out", "banger BACKFILL play carries the queryable exit_style marker");
+  assert.ok(wat!.risk_note && wat!.risk_note.length > 0, "banger BACKFILL play carries a non-empty scale-out risk_note");
+  assert.match(wat!.risk_note ?? "", /scale out|Banger exit/i);
+  assert.equal(
+    wat!.dte,
+    calendarDteBetween(todayEtYmd(), ymdPlus(30)),
+    "banger BACKFILL play carries a real, populated dte matching its own resolved contract's expiry"
+  );
+
+  // Non-banger ticker: correctly gets NEITHER exit_style NOR risk_note — only tickers that
+  // genuinely qualify as bangers get the scale-out treatment, matching the organic path's own
+  // conditional (buildPlay only sets these two fields inside its bangerTickers.has(...) branch).
+  assert.equal(kod!.exit_style, undefined, "non-banger BACKFILL play has no exit_style marker (default grinder exit)");
+  assert.ok(!kod!.risk_note, "non-banger BACKFILL play has no scale-out risk_note");
+  // `dte` is deliberately NOT gated on banger status here, mirroring buildPlay's own real behavior
+  // exactly: in deterministic-edition.ts, `dte` is computed unconditionally for every play that
+  // resolved a real option contract (its own comment there: "observational only, never read by
+  // selection/scoring") — only risk_note/exit_style live inside the bangerTickers-gated block.
+  // Every BACKFILL play reaching this point already has a resolved contract by construction (the
+  // `if (!contract) continue;` guard above), so a non-banger BACKFILL play's dte is correctly
+  // populated too — a faithful mirror of the reference implementation, not a gap this fix left open.
+  assert.equal(
+    kod!.dte,
+    calendarDteBetween(todayEtYmd(), ymdPlus(30)),
+    "dte is populated for every BACKFILL play with a resolved contract, banger or not (matches buildPlay's unconditional dte)"
+  );
+});
+
+test("selectBackfillPlays: without bangerTickers passed, no BACKFILL play gets exit_style/risk_note (backwards compatible — same contract as buildDeterministicEditionPlays' own 'no bangerTickers' test)", () => {
+  const pool = [bfScored("WAT", 32)];
+  const dossiers: Record<string, TickerDossier> = { WAT: bfDossier("WAT", 100) };
+  const chains: Record<string, EditionChainData> = { WAT: bfChain(100) };
+
+  const { plays } = selectBackfillPlays({ finalPlays: [], pool, dossiers, chains, minPlays: 1 });
+
+  assert.equal(plays.length, 1);
+  assert.equal(plays[0]!.exit_style, undefined);
+  assert.ok(!plays[0]!.risk_note);
+  assert.equal(typeof plays[0]!.dte, "number", "dte is still populated — it was never gated on bangerTickers");
 });
 
 test("selectBackfillPlays: respects the cross-edition sector-concentration governor — a raw-higher-scored but governor-demoted candidate ranks BEHIND a lower-raw-scored, undemoted one", () => {

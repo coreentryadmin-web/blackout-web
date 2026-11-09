@@ -219,3 +219,63 @@ test("post-publish-backfill.ts: republishBackfilledEdition calls syncOutcomeRows
   const finalCallIdx = src.indexOf("await syncOutcomeRows(editionFor, result.plays, dossiers);", fnIdx);
   assert.ok(finalCallIdx > minPlaysCheckIdx, "a final syncOutcomeRows(result.plays) call must exist after the minPlays check");
 });
+
+// bangerTickersFromContextJson (2026-11-09, Ask Largo/Night Hawk Swings standing mandate — live
+// TLN repro): republishBackfilledEdition has no MarketWideContext in scope (it reconstructs
+// everything from durably-persisted DB rows), so it reads the original night's own
+// nighthawk_jobs.context_json (never cleared by clearNighthawkStaging, which only deletes
+// nighthawk_dossiers_staging rows) to recover the SAME breakout_movers signal the organic path's
+// generateEditionPlays (claude-edition.ts) derives live from ctx. Pure function, directly testable.
+test("bangerTickersFromContextJson: extracts uppercased tickers from a real MarketWideContext shape", async () => {
+  const { bangerTickersFromContextJson } = await import("./post-publish-backfill");
+  const set = bangerTickersFromContextJson({
+    breakout_movers: [{ ticker: "tln", gain: 0.1 }, { ticker: "AAPL", gain: 0.2 }],
+  });
+  assert.deepEqual([...set].sort(), ["AAPL", "TLN"]);
+});
+
+test("bangerTickersFromContextJson: null/undefined context_json returns an empty Set, never throws", async () => {
+  const { bangerTickersFromContextJson } = await import("./post-publish-backfill");
+  assert.equal(bangerTickersFromContextJson(null).size, 0);
+  assert.equal(bangerTickersFromContextJson(undefined).size, 0);
+});
+
+test("bangerTickersFromContextJson: missing or malformed breakout_movers degrades to an empty Set rather than crashing", async () => {
+  const { bangerTickersFromContextJson } = await import("./post-publish-backfill");
+  assert.equal(bangerTickersFromContextJson({}).size, 0, "no breakout_movers key at all");
+  assert.equal(bangerTickersFromContextJson({ breakout_movers: "not-an-array" }).size, 0, "non-array value");
+  assert.equal(
+    bangerTickersFromContextJson({ breakout_movers: [null, { ticker: 123 }, { notATicker: "X" }] }).size,
+    0,
+    "every entry malformed — filtered out, never fabricated"
+  );
+});
+
+test("bangerTickersFromContextJson: a mix of well-formed and malformed entries keeps only the well-formed ones", async () => {
+  const { bangerTickersFromContextJson } = await import("./post-publish-backfill");
+  const set = bangerTickersFromContextJson({
+    breakout_movers: [{ ticker: "WAT" }, { ticker: 42 }, null, { ticker: "kod" }],
+  });
+  assert.deepEqual([...set].sort(), ["KOD", "WAT"]);
+});
+
+// republishBackfilledEdition wiring (2026-11-09): same source-text-grep discipline as the two
+// syncOutcomeRows tests above, for the same reason (@/lib/db can't be safely mocked here) — fails
+// the instant fetchNighthawkJob stops being called, or bangerTickers stops being threaded into the
+// backfillThinEditionPlays call, without needing a live DB.
+test("post-publish-backfill.ts: republishBackfilledEdition fetches the original night's job context and threads bangerTickers into backfillThinEditionPlays", () => {
+  const src = readSource("./post-publish-backfill.ts");
+  const fnIdx = src.indexOf("export async function republishBackfilledEdition(");
+  assert.ok(fnIdx >= 0, "republishBackfilledEdition must exist");
+
+  const jobCallIdx = src.indexOf("await fetchNighthawkJob(editionFor)", fnIdx);
+  assert.ok(jobCallIdx > fnIdx, "republishBackfilledEdition must fetch the original night's nighthawk_jobs row");
+
+  const bangerAssignIdx = src.indexOf("bangerTickersFromContextJson(", fnIdx);
+  assert.ok(bangerAssignIdx > jobCallIdx, "bangerTickers must be derived from the fetched job's context_json");
+
+  const backfillCallIdx = src.indexOf("await backfillThinEditionPlays({", fnIdx);
+  assert.ok(backfillCallIdx > bangerAssignIdx, "backfillThinEditionPlays must be called after bangerTickers is derived");
+  const call = src.slice(backfillCallIdx, src.indexOf("});", backfillCallIdx) + 3);
+  assert.match(call, /bangerTickers/, "the derived bangerTickers must actually be passed into backfillThinEditionPlays");
+});
