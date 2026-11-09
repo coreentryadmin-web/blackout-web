@@ -9914,3 +9914,25 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   narrative text (1dp `fmtPct` display round) should visibly change; the real effect to confirm is
   on `feature-store.ts`'s trajectory studies (`studyIvKillsGoodSetups`'s `running_mae` vs `-3%`
   threshold) reading the corrected full-precision value on the next real snapshot.
+
+## WATCH LIST — 2026-11-09 (Swing roll-chain record's `record.ts` round2 had the sign-bias rounding tie, `fix/swing-record-round2-sign-bias`, PR #7706) — re-check once a real closed chain re-grades near a 2dp tie
+
+- **`round2` in `src/lib/swing/record.ts`** — the sole rounding primitive behind every bidirectional
+  P&L figure the swing roll-chain record computes (`realizedPnlPct`, `worstLegPnlPct`, `sumPnlPct`,
+  `compoundedReturnPct`), served by `/api/market/swing/record` to members/Largo — used plain
+  `Math.round(n*100)/100`, which ties toward `+Infinity`. A losing leg sitting exactly on a 2dp tie
+  rounded to a SMALLER magnitude than its winning mirror would, and `worstLegPnlPct` (this file's
+  own "explicit preserved-loss witness") inherited the same bias — a tiny real loss exactly at a
+  tie (e.g. raw `-0.005`) could round to `-0` (reads as `0`), misclassifying it as a breakeven in
+  `buildSwingRecordSummary`'s `breakevens` field while the mirror gain correctly rounds nonzero.
+- **Fix**: round by magnitude then reapply sign, matching the now-16 prior sibling fixes of this
+  exact bug class in this codebase (including `underlying-excursion.ts`'s `signedExcursionPct`,
+  PR #7701, earlier the same day). New regression test with a `±0.125` exact-tie fixture —
+  RED→GREEN confirmed via `git stash` (15/16 pass pre-fix asymmetric; 16/16 post-fix symmetric).
+  Full `src/lib/swing/*.test.ts` 2311/2311 pass, `tsc --noEmit` clean. `isSwingWin`'s win/loss
+  classification is unaffected — it checks the raw value, never the rounded one.
+- **Re-check once a real closed roll-chain re-grades near a 2dp tie**: pull a chain's composite via
+  `GET /api/market/swing/record` and confirm `worstLegPnlPct`/`sumPnlPct`/`compoundedReturnPct` for
+  a leg whose raw P&L sits close to a hundredth-of-a-percent boundary now agree in magnitude with
+  the mirror-image case, and that `summary.breakevens` no longer undercounts a real tiny loss that
+  previously would have rounded to `-0` and read as a breakeven.
