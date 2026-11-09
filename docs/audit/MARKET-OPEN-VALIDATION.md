@@ -10275,3 +10275,25 @@ and `/play` are actually serving a real price again
   changes NOTHING about production Redis behavior, only what the correctness scorecard can now
   observe — a `flag` on this metric going forward would be a genuinely new, real finding (a
   no-expiry `gex-heatmap:SPX` key), not a regression from this change.
+
+## WATCH LIST — 2026-11-09 (data-integrity-verifier.ts reported "consistency-only" for an empty `nighthawk_editions` table, `fix/data-integrity-pg-editions-empty-skip`) — re-check the next DATALAYER correctness scorecard/report
+
+- **What was broken**: `src/lib/correctness/data-integrity-verifier.ts`'s `checkPostgres()`
+  labeled an EMPTY `nighthawk_editions` table (pre-launch, or the publish writer never having
+  landed a row) `"consistency-only"` — the status `types.ts`'s own HONESTY PRINCIPLE reserves
+  for "every applicable check held, but no independent oracle exists." Nothing was applicable to
+  check at all (no row existed), which is what `"skipped"` is for — and the structurally
+  identical `nighthawk_play_outcomes`-empty branch a few lines below already used `"skipped"`
+  correctly, proving the mislabel wasn't intentional. `run-correctness.ts`'s
+  `collectCoverageGaps()` treats every `"consistency-only"` metric as a reported coverage gap,
+  so this falsely reported a DATALAYER coverage gap on a metric that ran zero checks.
+- **Fix**: changed the editions-empty branch's outcome to `"skipped"`, matching the sibling
+  `pg_nh_outcomes`-empty branch exactly. New regression test in `data-integrity-verifier.test.ts`
+  (extended the existing `../db` mock to accept a scriptable `dbQuery` handler, since prior tests
+  there only exercised the pure `ageMin()` helper). RED→GREEN confirmed via `git stash`
+  isolation; `tsc --noEmit` clean.
+- **Specific thing to check once live**: pull the next DATALAYER correctness scorecard/report
+  (or the admin correctness-sweep output, whatever renders `coverageGaps`) and confirm
+  `pg_editions` no longer appears in the coverage-gaps list on a run where `nighthawk_editions`
+  is genuinely empty (pre-launch state) — it should now show up only under `totals.skipped`, not
+  `totals.consistencyOnly`, and should NOT be listed as a coverage gap at all.

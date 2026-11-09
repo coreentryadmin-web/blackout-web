@@ -286,8 +286,17 @@ async function checkPostgres(ctx: Ctx): Promise<CheckResult[]> {
       const latestMs = row.latest_ms != null ? Number(row.latest_ms) : NaN;
       if (total === 0) {
         // Empty editions table is the documented "empty editions" failure class (MEMORY: nighthawk).
+        // BUG FIX: this used to report "consistency-only", but an empty table has NOTHING applicable
+        // to check — no row to recompute, no invariant to hold — so there is nothing "internally
+        // consistent" to report. Per types.ts's HONESTY PRINCIPLE, "consistency-only" means every
+        // applicable check held with no independent oracle; it must not also mean "there was no
+        // data to check at all" (that is exactly what "skipped" is for — see the empty-table branch
+        // on pg_nh_outcomes a few lines below, which already gets this right). Mislabeling this
+        // "consistency-only" made collectCoverageGaps() (run-correctness.ts) report a false DATALAYER
+        // coverage gap on every pre-launch / writer-never-landed run, and flattenTotals() double-
+        // counted it under `consistencyOnly` instead of `skipped`.
         checks.push(
-          mk("sanity-bound", "pg_editions", "consistency-only", "nighthawk_editions is empty — no edition has ever published (pre-launch, or the publish writer never landed). Not freshness-flagged (no cadence baseline yet).", {
+          mk("sanity-bound", "pg_editions", "skipped", "nighthawk_editions is empty — no edition has ever published yet (pre-launch, or the publish writer never landed). Not freshness-flagged (no cadence baseline yet to check against).", {
             id: "pg-ed-empty",
           })
         );

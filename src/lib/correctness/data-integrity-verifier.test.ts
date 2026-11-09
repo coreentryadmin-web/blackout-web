@@ -12,10 +12,18 @@ import assert from "node:assert/strict";
 // every mock below is a trivial no-op stub — none of these are called by the assertions here.
 mock.module("server-only", { namedExports: {} });
 
+// Mutable so the verifyDataIntegrity() test below (added for the pg_editions-empty-vs-skipped
+// regression) can flip Postgres "on" and script per-table probe responses, WITHOUT disturbing the
+// ageMin()-only tests above, which never call verifyDataIntegrity and so never read these.
+let dbConfiguredValue = false;
+let dbQueryHandler: (sql: string) => Promise<{ rows: Array<Record<string, unknown>> }> = async () => ({
+  rows: [],
+});
+
 mock.module("../db", {
   namedExports: {
-    dbConfigured: () => false,
-    dbQuery: async () => ({ rows: [] }),
+    dbConfigured: () => dbConfiguredValue,
+    dbQuery: async (sql: string) => dbQueryHandler(sql),
     fetchLatestNighthawkEdition: async () => null,
     fetchNighthawkEditionByDate: async () => null,
   },
@@ -158,4 +166,49 @@ test("classifyRedisTtlProbe: a positive TTL far outside the expected window flag
   const verdict = classifyRedisTtlProbe(3600, true);
   assert.equal(verdict.outcome, "flag");
   assert.match(verdict.detail, /outside the expected/i);
+});
+
+// BUG FIX regression: an EMPTY nighthawk_editions table (pre-launch, or the publish writer never
+// landed — "no edition has ever published") carries NO applicable check at all: there is nothing
+// to recompute, no invariant to hold, nothing "internally consistent". Before the fix, checkPostgres
+// labeled that case "consistency-only" — the SAME status reserved (per types.ts's HONESTY
+// PRINCIPLE) for "every applicable check held but no independent oracle confirmed it". Reporting
+// "nothing applicable" as "consistency-only" is the exact mislabeled-outcome class already fixed
+// twice in this correctness vein (largo-verifier.ts's self-consistency-miscounted-as-independent,
+// nighthawk-verifier.ts's L4 check emitting "pass" when the comparison never ran) — here the sibling
+// check ONE TABLE DOWN in this SAME file (nighthawk_play_outcomes, empty branch, line ~340) already
+// gets this right ("skipped", "no outcomes ledger to sanity-check yet"), proving the correct label
+// was known and simply not applied consistently. Getting this wrong matters beyond cosmetics:
+// run-correctness.ts's collectCoverageGaps() treats every "consistency-only" metric as a reported
+// coverage gap (and flattenTotals() counts it in `consistencyOnly`, not `skipped`) — so a pre-launch
+// or writer-never-landed deploy falsely reports a DATALAYER coverage gap on a metric that never
+// actually ran any check this run, instead of the honest "skipped / not assertable yet".
+test("verifyDataIntegrity: an EMPTY nighthawk_editions table is reported skipped, not consistency-only (nothing was actually checked)", async () => {
+  dbConfiguredValue = true;
+  dbQueryHandler = async (sql: string) => {
+    if (sql.includes("nighthawk_editions")) return { rows: [{ latest_ms: null, total: "0" }] };
+    if (sql.includes("nighthawk_play_outcomes")) return { rows: [{ total: "0", bad_outcome: "0" }] };
+    // flow_alerts / cron_job_runs probes: no rows → dbProbe's catch degrades these to a plain skip,
+    // which is irrelevant to this test (they group under their own, different metric names).
+    throw new Error("no canned response for this probe in this test");
+  };
+  try {
+    const { verifyDataIntegrity } = await mod();
+    const score = await verifyDataIntegrity(true);
+    const editions = score.metrics.find((m) => m.metric === "pg_editions");
+    assert.ok(editions, "expected a pg_editions metric on the DATALAYER scorecard");
+    assert.equal(
+      editions!.status,
+      "skipped",
+      `empty nighthawk_editions has nothing applicable to check — expected "skipped" (matching the ` +
+        `sibling pg_nh_outcomes-empty branch), got "${editions!.status}"`
+    );
+    assert.equal(editions!.independentlyConfirmed, false);
+    const [check] = editions!.checks;
+    assert.equal(check.outcome, "skipped");
+  } finally {
+    // Restore the ageMin-tests' baseline so this test's state can't leak into a re-run / future test.
+    dbConfiguredValue = false;
+    dbQueryHandler = async () => ({ rows: [] });
+  }
 });
