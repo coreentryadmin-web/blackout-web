@@ -11037,3 +11037,29 @@ and `/play` are actually serving a real price again
   in its `last_message` for a sustained window. Also worth a quick cross-check that
   `spx-evaluate`/`spx-issues-sync` (which showed the same breaker-open symptom, sibling lane's
   scope) have recovered too, since they share the identical root-cause breaker.
+
+## WATCH LIST — 2026-11-09 (TradeExcursionGraphic "Current" stat vs the verdict-band badge — follow-up to #7834, same live repro SWING:APP/positionId 2397)
+
+- **What was broken**: PR #7834 fixed `ZeroDteCommandPanel.tsx`'s verdict-band headline P&L badge
+  to show the blended whole-position P&L for an OPEN/TRIM SWING position with an already-banked
+  trim tranche. `TradeExcursionGraphic` (`TerminalPremiumPanels.tsx`) renders in the SAME card for
+  the SAME play but computed its own "Current" stat independently (`legacyPrimaryPnlPct`, never
+  blended) — a direct within-panel contradiction: the verdict band would show the correct blended
+  +282.6% while the excursion graphic's "Current" stat two inches below it showed the raw +465%.
+- **Fix**: mirrored #7834's exact derivation inside `TradeExcursionGraphic`, scoped to
+  `play.horizon === "SWING"` only (same scoping rationale as #7834 — a 0DTE TRIM row's `pnlPct`
+  comes from a different, unaudited server-side path). RED→GREEN via a plain `git checkout` of the
+  source file (keeping the new tests) — the TRIM-blend assertion failed pre-fix
+  (`+465%` vs expected `+283%`) while the sibling no-trim-fired/ZERO_DTE-scope assertions in the
+  same new block both passed pre-fix, proving the fix is additive. GREEN: 8/8 in
+  `TerminalPremiumPanels.ssr.test.ts`; 109/109 across the full sibling-suite run
+  (`ZeroDteCommandPanel.test.ts`, `terminal-ladder.test.ts`, `play-card-lifecycle.test.ts`,
+  `trade-excursion-graphic.test.ts`, `legacy-primary-pnl.test.ts`). `npx tsc --noEmit` clean, Node 20.
+- **Specific thing to check once RTH resumes**: open the Swing Command Deck for a live SWING
+  position currently in `TRIM` status with at least one fired tranche (the live cockpit's "Open"
+  filter, status badge `TRIM`) and confirm the verdict-band P&L badge and the `TradeExcursionGraphic`
+  "Current" stat directly below it now agree — both should show the same blended figure, never two
+  different numbers in the same card. Also flagged but NOT fixed in this PR: `SwingCockpitStrip.tsx`'s
+  "Session P&L" cockpit stat still averages the raw, unblended `pnlPct` across all OPEN/HOLD/TRIM
+  SWING plays — worth checking whether that headline number looks inflated relative to the
+  individual blended badges once several TRIM positions are open simultaneously.
