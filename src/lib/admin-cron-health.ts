@@ -354,7 +354,19 @@ export function evaluateJob(
   let status: CronJobHealthStatus = "healthy";
   let statusLabel = "OK";
 
-  if (last.status === "failed") {
+  // Daily post-close jobs (nighthawk-outcomes, gex-eod-snapshot, banger-discovery): between ticks
+  // a prior session's failed row is not actionable — cron-audit-query at :54 UTC was P0 on all
+  // three every Monday morning while still inside the off-schedule idle gap (measured 2026-11-09).
+  if (
+    last.status === "failed" &&
+    (offScheduleGap || awaitingDualBand) &&
+    isTradingDayEt(formatEtDate(now))
+  ) {
+    status = "healthy";
+    statusLabel = awaitingDualBand
+      ? "Idle (awaiting in-window UTC band)"
+      : "Idle (outside cron schedule window)";
+  } else if (last.status === "failed") {
     status = "failed";
     statusLabel = "Last run failed";
   } else if (suppressStaleOffWindow) {
