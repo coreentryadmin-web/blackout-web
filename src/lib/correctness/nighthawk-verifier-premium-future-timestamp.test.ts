@@ -8,6 +8,21 @@ import assert from "node:assert/strict";
 // banner sites. A falsely-"fresh" edition lets the premium-vs-chain check run on a comparison
 // it should have skipped, producing a false "flag" (premiumMismatch) verdict off garbage
 // clock-skewed data instead of the honest "premium check skipped, edition freshness unproven".
+//
+// CORRECTED (this round): this test previously asserted the resulting "premium" metric comes
+// back as "pass" — i.e. it locked in a SECOND bug riding on top of the first. The freshness gate
+// correctly prevented the comparison from running, but the verifier still emitted the
+// premium-vs-chain CHECK itself (`premium-vs-chain-ask`) as outcome "pass" with
+// independentlyConfirmed:true, keyed off `confirmed` (strike-only) rather than whether a premium
+// comparison actually executed. That is a direct violation of this verifier family's own HONESTY
+// PRINCIPLE (types.ts): "pass" requires a second independent source to have actually confirmed
+// the value — here, none did. The verifier now tracks `premiumChecked` separately from
+// `confirmed` and emits that check as "skipped" (never independentlyConfirmed) when no premium
+// comparison ran. (The metric-level `score.metrics` roll-up for "premium" still reads
+// "consistency-only" overall, because the SEPARATE L2 premium_cap_ok invariant check — unrelated
+// to chain-confirm, and which legitimately held on this fixture — shares the same metric name and
+// is merged in by `rollUpMetricStatus`; this test asserts the specific chain-confirm CHECK by id,
+// which is the thing the bug actually touched.)
 
 mock.module("server-only", { namedExports: {} });
 
@@ -76,14 +91,24 @@ test("chain-confirm: a future-dated published_at (clock skew) does NOT count as 
   const score = await verifyNightHawk(false);
   const premiumMetric = score.metrics.find((m) => m.metric === "premium");
   assert.ok(premiumMetric, "premium metric present (a strike still confirmed against the chain)");
+  const chainConfirmCheck = premiumMetric!.checks.find((c) => c.id.includes("premium-vs-chain-ask"));
+  assert.ok(chainConfirmCheck, "premium-vs-chain-ask check must be present");
   // The chain quote ($999 ref) is wildly outside the play's $10.03 entry premium, and
   // `playPremiumWithinChainBand` is mocked to always return false — so if the premium-vs-chain
-  // comparison actually ran (the bug), it flags a mismatch. The freshness gate must skip that
-  // comparison entirely for a clock-skewed future publish stamp, leaving premiumMismatch at 0.
+  // comparison actually ran (the first bug), it flags a mismatch ("flag"). If the comparison is
+  // correctly skipped but still falsely reported as confirmed (the second bug this round fixes),
+  // it reads "pass". The honest outcome is neither: "skipped", because no independent source
+  // ever confirmed anything this run.
   assert.equal(
-    premiumMetric!.status,
-    "pass",
-    "future-dated published_at must not be treated as fresh — the premium-vs-chain comparison must be skipped, not run and falsely flagged"
+    chainConfirmCheck!.outcome,
+    "skipped",
+    "future-dated published_at must not be treated as fresh — the premium-vs-chain comparison must be skipped AND reported as skipped, not run-and-flagged nor falsely reported as confirmed"
   );
-  assert.doesNotMatch(premiumMetric!.checks[0]!.detail, /OUTSIDE the chain bid\/ask band/);
+  assert.equal(
+    chainConfirmCheck!.independentlyConfirmed,
+    false,
+    "a skipped comparison must never be marked independentlyConfirmed"
+  );
+  assert.doesNotMatch(chainConfirmCheck!.detail, /OUTSIDE the chain bid\/ask band/);
+  assert.doesNotMatch(chainConfirmCheck!.detail, /sit within the live chain bid\/ask band/);
 });

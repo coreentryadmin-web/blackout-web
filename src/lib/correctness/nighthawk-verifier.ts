@@ -436,6 +436,12 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
       let confirmed = 0;
       let contradicted = 0;
       let premiumMismatch = 0;
+      // Distinct from `confirmed` (strike-only) — counts plays where a premium-vs-chain
+      // COMPARISON actually executed (freshness gate held, entry premium present, parsed
+      // contract, AND a chain quote was resolved). `confirmed` can be >0 while this stays 0
+      // (every sampled play's strike confirms but every premium comparison was gated out),
+      // and the emitted "premium" check below must not claim confirmation it never ran.
+      let premiumChecked = 0;
       let unmatched = 0;
       const contraDetail: string[] = [];
       const premDetail: string[] = [];
@@ -483,12 +489,15 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
             editionPremiumCheckApplicable(editionFor)
           ) {
             const quote = chainQuoteForParsedPlay(parsed, chain.rows);
-            if (quote && !playPremiumWithinChainBand(play.entry_premium, quote)) {
-              premiumMismatch++;
-              if (premDetail.length < 5) {
-                premDetail.push(
-                  `${play.ticker} entry $${play.entry_premium} vs chain ref $${quote.ref.toFixed(2)} (bid/ask ${quote.bid}/${quote.ask})`
-                );
+            if (quote) {
+              premiumChecked++;
+              if (!playPremiumWithinChainBand(play.entry_premium, quote)) {
+                premiumMismatch++;
+                if (premDetail.length < 5) {
+                  premDetail.push(
+                    `${play.ticker} entry $${play.entry_premium} vs chain ref $${quote.ref.toFixed(2)} (bid/ask ${quote.bid}/${quote.ask})`
+                  );
+                }
               }
             }
           }
@@ -516,16 +525,32 @@ export async function verifyNightHawk(_marketOpen: boolean): Promise<TickerScore
         )
       );
 
-      if (premiumMismatch > 0 || confirmed > 0) {
+      if (confirmed > 0) {
+        // BUG THIS FIXES: the old condition/outcome here was keyed off `confirmed` (strike-only)
+        // and defaulted to "pass" whenever premiumMismatch stayed at 0 — including every run
+        // where premiumChecked was ALSO 0, i.e. no premium-vs-chain comparison ever executed
+        // (edition freshness unproven, entry_premium missing, or no chain quote resolved). That
+        // falsely claimed "Sampled play entry premiums sit within the live chain bid/ask band...
+        // confirmed against N matched strike(s)" and set independentlyConfirmed:true for a metric
+        // that was never compared against anything — a violation of this verifier family's own
+        // HONESTY PRINCIPLE (types.ts): "pass" requires a second independent source to have
+        // actually confirmed the value. Gate the outcome on premiumChecked, not confirmed/mismatch.
         checks.push(
           mk(
             "cross-provider",
             "premium",
-            premiumMismatch === 0 ? "pass" : "flag",
-            premiumMismatch === 0
-              ? `Sampled play entry premiums sit within the live chain bid/ask band (confirmed against ${confirmed} matched strike(s)).`
-              : `${premiumMismatch} play premium(s) are OUTSIDE the chain bid/ask band: ${premDetail.join("; ")} — entry premium doesn't match the live market (scale/quote error).`,
-            { id: "premium-vs-chain-ask", expected: 0, actual: premiumMismatch, independentlyConfirmed: premiumMismatch === 0 }
+            premiumChecked === 0 ? "skipped" : premiumMismatch === 0 ? "pass" : "flag",
+            premiumChecked === 0
+              ? `${confirmed} sampled play strike(s) chain-confirmed, but no premium-vs-chain comparison could be run this run (edition freshness unproven, entry premium missing, or no matching chain quote) — premium NOT independently confirmed.`
+              : premiumMismatch === 0
+                ? `Sampled play entry premiums sit within the live chain bid/ask band (confirmed against ${premiumChecked} matched strike(s)).`
+                : `${premiumMismatch} play premium(s) are OUTSIDE the chain bid/ask band: ${premDetail.join("; ")} — entry premium doesn't match the live market (scale/quote error).`,
+            {
+              id: "premium-vs-chain-ask",
+              expected: 0,
+              actual: premiumMismatch,
+              independentlyConfirmed: premiumChecked > 0 && premiumMismatch === 0,
+            }
           )
         );
       }
