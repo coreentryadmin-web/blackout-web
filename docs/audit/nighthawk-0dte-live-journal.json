@@ -431,12 +431,18 @@
     }
   ],
   "_pruned_note": "Pruned 2026-11-09T13:16Z: dropped all per-check timestamped entries older than ~2 trading days (last was 2026-10-26) per journal retention rule in the mandate. Session was dark Nov 2-7 (prompt-too-long backlog, now resolved by mandate-extraction PR #7099) and idle again through Nov 8 (no firings logged). This entry re-baselines the lane after the gap.",
-  "updated_at": "2026-11-09T13:16:00Z",
+  "updated_at": "2026-11-09T14:40:30Z",
   "2026-11-09T13:16Z_rebaseline_check": {
     "trigger": "15-min-offset lane, trigger 1 of 4 (:00 offset), pre-open",
     "action": "Fresh container: installed Node 20 + npm ci, ran zerodte-e2e-healthcheck.mjs --json against prod to re-baseline after the Nov 2-8 gap (journal was stale since 2026-10-26T20:46Z).",
     "result": "overall AMBER, market=off-hours/PRE_MARKET. Stage A SKIPPED (no AWS creds, expected). Stages B-F all AMBER for the single, consistent, pre-open-legitimate reason: 0 live setups / 0 committed plays / stale marks / 0 ledger rows / empty board -- none of it is a real defect, all consistent with pre-open. Stage G (GRADING/RECORD) GREEN: wins 126+losses 63+be 2=191 == graded 191, WR 66% over 19 sessions -- grading arithmetic and the record pipeline are healthy.",
     "open_findings_review": "Re-read all 5 journal open_findings: 4 are MERGED/FULLY FIXED (verified against main on their own dates), 1 (board-ledger-record propagation lag mislabels closed_reason) is CONFIRMED SYSTEMIC but self-correcting, already accepted as-is -- nothing newly actionable.",
     "status": "CLEAN -- lane healthy, no gate/code issue found, no PR needed. Will re-check once RTH opens (14:30 UTC) for a real WATCH/OPEN forensic pass with live board data."
+  },
+  "2026-11-09T14:40Z_rth_open_stage_d_red": {
+    "trigger": "15-min-offset lane, trigger 3 of 4 (:30 offset), ~10min into RTH (opened 14:30 UTC)",
+    "action": "Re-ran zerodte-e2e-healthcheck.mjs now that market=RTH (previous run this morning was off-hours/PRE_MARKET). Also re-confirmed GET /v3/snapshot?ticker.any_of=SPY directly.",
+    "result": "overall RED. Stage D (LIVE MARKS+P&L) is RED (mark=null, stale=true) -- NOT a new 0DTE defect: /v3/snapshot still returns the identical NOT_AUTHORIZED/\"not entitled... upgrade your plan\" body (same request signature as PR #7752 and the Sunday/Monday pre-open checks). This is the first direct RTH-hours confirmation that the known platform-wide Massive.com real-time entitlement outage is actually degrading 0DTE live marks, not just Swing as previously documented. Stages B/C (0 FLOW setups, 0 committed plays) are plausible for 10min post-open (heat=OPENING_DRIVE) on their own, but would also be gated by this same snapshot loss if discovery needs live quotes -- not yet separately isolated.",
+    "status": "REPORT-AND-HOLD -- live-trading-path issue outside this lane's control (upstream entitlement, not app code). No PR opened for this entry (already filed/escalated via PR #7752 + prior findings); logging here only to record that degradation is now empirically observed during RTH, not merely predicted. Will re-check once the operator confirms the Massive.com entitlement is renewed."
   }
 }
