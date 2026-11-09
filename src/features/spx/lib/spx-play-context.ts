@@ -44,7 +44,34 @@ export type SpxPlayDeskContext = {
 // bug already fixed elsewhere in this file's own isSpxRthActive comment (2026-07-03)
 // and in this cycle's other isTradingDayEt cron-gate fixes — this is the desk_context
 // display path, which none of those touched.
-function minutesToCashClose(now = new Date()): number | null {
+//
+// BUG FIX (2026-11-09, third occurrence of this same bug class): isTradingDayEt +
+// wall-clock gating alone is wrong on a THIRD trigger neither of the first two fixes
+// covers — a genuine, ordinary mid-RTH trading day where `desk.market_open` is false
+// not because the calendar/clock says so, but because of a live upstream DATA outage
+// (the tracked Polygon/Massive real-time-snapshot entitlement loss — see CLAUDE.md).
+// spx-play-engine.ts's closed-market branch (`!desk.market_open && !premarket`) keys
+// its entire "Session closed"/"resumes 6:30 AM PT" response off `desk.market_open`
+// alone — it does NOT additionally require isTradingDayEt/wall-clock agreement, so it
+// correctly fires for this case too. But these three countdown helpers never consulted
+// `desk.market_open` at all, only the calendar+clock, so on an ordinary weekday mid-RTH
+// (isTradingDayEt true, wall clock inside the session window) they kept computing a
+// live, ticking-down "time left in today's session" even while the rest of the payload
+// says the desk is offline until next morning. Confirmed live 2026-11-09 via two polls
+// five minutes apart during real RTH (headline:"Session closed", session_phase:"closed",
+// alongside desk_context.minutes_to_close counting down 328→325).
+//
+// Fix: thread `desk.market_open` into all three helpers as an additional, independent
+// gate — `!marketOpen` nulls a countdown regardless of what the calendar/clock say,
+// exactly mirroring the engine's own `!desk.market_open` condition for entering the
+// closed branch in the first place, so desk_context can never again disagree with the
+// headline/thesis/gates it's attached to. This is purely additive: every existing
+// null-producing path (holiday, pre-open, post-cutoff) is unchanged — baseDesk() in the
+// existing tests already sets market_open:true, so none of them are affected — the new
+// guard only changes the one case none of them exercise: `market_open:false` at a
+// wall-clock moment that otherwise reads as live.
+function minutesToCashClose(now = new Date(), marketOpen = true): number | null {
+  if (!marketOpen) return null;
   if (!isTradingDayEt(formatEtDate(now))) return null;
   const etMins = etMinutes(now);
   const closeMins = getEarlyCloseMinutes(now) ?? etClock(16, 0);
@@ -52,7 +79,8 @@ function minutesToCashClose(now = new Date()): number | null {
   return Math.max(0, closeMins - etMins);
 }
 
-function minutesUntilNoEntry(now = new Date()): number | null {
+function minutesUntilNoEntry(now = new Date(), marketOpen = true): number | null {
+  if (!marketOpen) return null;
   if (!isTradingDayEt(formatEtDate(now)) || isPastNoEntryCutoff(now)) return null;
   const etMins = etMinutes(now);
   // Mirrors minutesToCashClose's own pre-open guard — isPastNoEntryCutoff only checks the
@@ -66,7 +94,8 @@ function minutesUntilNoEntry(now = new Date()): number | null {
   return cutoffMins - etMins;
 }
 
-function minutesUntilForceExit(now = new Date()): number | null {
+function minutesUntilForceExit(now = new Date(), marketOpen = true): number | null {
+  if (!marketOpen) return null;
   if (!isTradingDayEt(formatEtDate(now)) || isPastForceExitCutoff(now)) return null;
   const etMins = etMinutes(now);
   // Same pre-open guard as minutesUntilNoEntry/minutesToCashClose — see their comments.
@@ -118,9 +147,9 @@ export function buildSpxPlayDeskContext(
     session_entries_max: entriesMax,
     session_losses_used: lossesUsed,
     session_losses_max: lossesMax,
-    minutes_to_close: minutesToCashClose(now),
-    minutes_to_no_entry: minutesUntilNoEntry(now),
-    minutes_to_force_exit: minutesUntilForceExit(now),
+    minutes_to_close: minutesToCashClose(now, desk.market_open ?? false),
+    minutes_to_no_entry: minutesUntilNoEntry(now, desk.market_open ?? false),
+    minutes_to_force_exit: minutesUntilForceExit(now, desk.market_open ?? false),
     gamma_flip_dist_pts,
     max_pain_dist_pts,
     suggested_strike,

@@ -128,6 +128,55 @@ test("buildSpxPlayDeskContext: post-open, pre-cutoff ET time still returns live 
   assert.ok((ctx.minutes_to_force_exit ?? 0) > 0);
 });
 
+// BUG FIX (2026-11-09, third occurrence of this same bug class — see this file's
+// "isTradingDayEt gates all three countdowns" comment above minutesToCashClose for the
+// full account): the first two fixes (NYSE holiday, pre-open) both covered cases where
+// the CALENDAR/CLOCK itself said no session was running — isTradingDayEt + wall-clock
+// gating alone was always sufficient to null the countdowns. This third trigger is
+// different: an ORDINARY weekday, mid-RTH wall-clock time (isTradingDayEt true, well
+// inside the 9:30am-4pm ET window) where `desk.market_open` is false anyway, because a
+// live upstream real-time-data outage (not a calendar/clock fact) took the desk offline.
+// spx-play-engine.ts's closed-market branch fires on `!desk.market_open` alone (no
+// calendar/clock condition), emitting headline:"Session closed" / session_phase:"closed"
+// / thesis:"Desk offline ... resumes 6:30 AM PT" — but pre-fix, buildSpxPlayDeskContext's
+// three countdown helpers never looked at `desk.market_open`, only the calendar+clock, so
+// they kept computing a live, ticking-down "time left in today's session" on the exact
+// same response. Confirmed live 2026-11-09 via two real polls five minutes apart during
+// confirmed RTH on an ordinary Monday: desk_context.minutes_to_close counted down
+// 328 → 325 alongside an unchanged "Session closed" headline/thesis/gates.blocks.
+test("buildSpxPlayDeskContext: desk.market_open:false during ordinary mid-RTH wall-clock time nulls every countdown (live data outage, not a calendar closure)", () => {
+  const ordinaryTuesdayAt1421Et = new Date("2026-09-08T18:21:00.000Z"); // mid-RTH, same fixture as the control tests above
+  const desk = { ...baseDesk(), market_open: false };
+  const ctx = buildSpxPlayDeskContext(
+    desk,
+    { score: 55, grade: "B", factors: [], direction: "long" },
+    { session_entries_today: 0, session_losses_today: 0 },
+    ordinaryTuesdayAt1421Et
+  );
+  assert.equal(ctx.minutes_to_close, null, "minutes_to_close must null when the desk reports market_open:false, even mid-RTH");
+  assert.equal(ctx.minutes_to_no_entry, null, "minutes_to_no_entry must null when the desk reports market_open:false, even mid-RTH");
+  assert.equal(ctx.minutes_to_force_exit, null, "minutes_to_force_exit must null when the desk reports market_open:false, even mid-RTH");
+});
+
+// Companion control, same shape as the holiday fix's own companion control above: the
+// IDENTICAL wall-clock fixture with market_open:true (the ordinary-trading-day control
+// tests already use baseDesk(), which sets market_open:true) must still report live
+// countdowns — proves the new guard is market_open-specific, not a blanket null that
+// would silently regress the two already-fixed trigger cases.
+test("buildSpxPlayDeskContext: the SAME mid-RTH wall-clock time with market_open:true is unaffected by the new guard", () => {
+  const ordinaryTuesdayAt1421Et = new Date("2026-09-08T18:21:00.000Z");
+  const ctx = buildSpxPlayDeskContext(
+    baseDesk(), // market_open: true
+    { score: 55, grade: "B", factors: [], direction: "long" },
+    { session_entries_today: 0, session_losses_today: 0 },
+    ordinaryTuesdayAt1421Et
+  );
+  assert.notEqual(ctx.minutes_to_close, null);
+  assert.ok((ctx.minutes_to_close ?? 0) > 0);
+  assert.notEqual(ctx.minutes_to_no_entry, null);
+  assert.notEqual(ctx.minutes_to_force_exit, null);
+});
+
 // BUG FIX (2026-10-26): spx-play-engine.ts's closed-market branch (evaluateSpxPlayCore,
 // `!desk.market_open && !premarket`) hand-built `gates: {blocks:["Session closed"],
 // warnings:[]}` and never called evaluatePlayGates — the only place that applies the
