@@ -85,9 +85,18 @@ export function primaryReturnLabel(play: TerminalPlay): string {
   return "P&L";
 }
 
+// ROUNDS BY MAGNITUDE, THEN REAPPLIES SIGN — plain `Math.round(n)` ties toward +Infinity
+// (`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`), a sign-biased asymmetry: a losing
+// Peak/Trough/P&L reading (CommandDeck.tsx, PlayLifecycleCard.tsx, TerminalPremiumPanels.tsx)
+// sitting exactly on a half-percent tie rendered a SMALLER magnitude than the identical-distance
+// gain. Same bug class already fixed in fmt-money.ts's fmtPct, round-floats.ts,
+// thermal/gex-heatmap/shift-math.ts's fmtShiftPercentForStrike, and this very command-deck's own
+// PlayTerminal.tsx/ZeroDteCommandPanel.tsx signPct helpers — this was an independent,
+// un-migrated paste of the same formatter.
 export function formatReturnPct(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return `${n > 0 ? "+" : ""}${Math.round(n)}%`;
+  const rounded = Math.sign(n) * Math.round(Math.abs(n));
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
 }
 
 /** First discovery origin label for the row chip. */
