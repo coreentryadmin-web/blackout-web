@@ -45,6 +45,23 @@ function fmtStrike(strike: number): string {
  * (gamma-desk.ts's own `topGexWalls`, `meridian-event-expiry-core.ts`'s `scopeStructureToExpiry`):
  * call wall = the resistance-kind strike with the largest POSITIVE net_gex; put wall = the
  * support-kind strike with the largest-magnitude NEGATIVE net_gex. Array order no longer matters.
+ *
+ * SIGN GUARD (found while re-verifying the fix above against the SAME reference it cites).
+ * `kind` on a `GexWall` is purely GEOMETRIC (gamma-desk.ts's own doc comment: "strike > spot ->
+ * resistance, else support" — NOT net_gex sign), and gamma-desk.ts's own secondary proximity-fill
+ * pass adds "resistance"/"support" rows from EVERY strike above/below spot regardless of that
+ * strike's net_gex sign ("walk OUT from spot on each side and take the nearest real strikes").
+ * So on a deep negative-gamma day — the exact scenario gamma-desk.ts's own header calls out
+ * ("on a negative-gamma day ... all puts") — every resistance-kind row in the ladder can have a
+ * NEGATIVE net_gex, and the fix above (picking the max net_gex among resistance-kind rows with no
+ * floor at zero) would still report the least-negative one as the "call wall" — inventing a call
+ * wall at a strike that is actually dealer-SHORT gamma there, exactly what gamma-desk.ts's own
+ * contract forbids ("If the chain genuinely has no positive-net_gex strike anywhere, NO call wall
+ * is invented — the ladder is honestly put-only") and what the cited `scopeStructureToExpiry`
+ * itself guards with its own explicit `v > 0`/`v < 0` checks. Requiring `netGex > 0` / `netGex < 0`
+ * here (not just comparing kind-filtered rows against each other) closes that gap: a side with no
+ * sign-correct strike anywhere in the ladder now honestly reports `null`, matching every other
+ * wall-picker this function's own comment claims parity with.
  */
 function topGexWalls(walls: unknown): { call: number | null; put: number | null } {
   if (!Array.isArray(walls)) return { call: null, put: null };
@@ -54,10 +71,10 @@ function topGexWalls(walls: unknown): { call: number | null; put: number | null 
     const strike = num(row?.strike);
     const netGex = num(row?.net_gex);
     if (strike == null || netGex == null) continue;
-    if (row.kind === "resistance" && (call == null || netGex > call.netGex)) {
+    if (row.kind === "resistance" && netGex > 0 && (call == null || netGex > call.netGex)) {
       call = { strike, netGex };
     }
-    if (row.kind === "support" && (put == null || netGex < put.netGex)) {
+    if (row.kind === "support" && netGex < 0 && (put == null || netGex < put.netGex)) {
       put = { strike, netGex };
     }
   }

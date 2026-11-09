@@ -215,3 +215,82 @@ test("shapeMeridianSpxDeskRead: call/put wall picks the DOMINANT (largest |net_g
   // Dominant put wall is $6400 (net_gex -3), not the farther, weaker $6350 decoy.
   assert.equal(read.put_wall, 6400);
 });
+
+test("shapeMeridianSpxDeskRead: NO call wall is invented on a deep negative-gamma day where every resistance-kind row is net-gamma NEGATIVE", () => {
+  // THE BUG. `kind` on a GexWall is purely GEOMETRIC (strike > spot -> "resistance"), not a
+  // net_gex sign check — gamma-desk.ts's own secondary proximity-fill pass adds a
+  // "resistance"/"support" row for every strike above/below spot regardless of that strike's own
+  // net_gex sign. On a day where the WHOLE visible chain is net-gamma negative (gamma-desk.ts's
+  // own header names this exact scenario: "on a negative-gamma day ... all puts"), every
+  // resistance-kind row here carries a negative net_gex. The fix in the prior test picked the
+  // max net_gex among resistance-kind rows with no floor at zero, so it would still report the
+  // LEAST-negative one (6550, net_gex -0.4) as the "call wall" — inventing resistance at a strike
+  // that is actually dealer-SHORT gamma there. gamma-desk.ts's own contract is explicit this must
+  // not happen ("If the chain genuinely has no positive-net_gex strike anywhere, NO call wall is
+  // invented — the ladder is honestly put-only"), and the sibling wall-picker this function's own
+  // comment claims to mirror (`scopeStructureToExpiry`) enforces exactly this with its own
+  // `v > 0`/`v < 0` guards.
+  const read = shapeMeridianSpxDeskRead({
+    summary: {
+      as_of: "2026-08-25T15:00:00.000Z",
+      market_open: true,
+      market_label: "RTH",
+      price: 6450,
+      change_pct: -0.9,
+      vix: 28,
+      vwap: 6460,
+      above_vwap: false,
+      hod: 6480,
+      lod: 6430,
+      pdh: 6490,
+      pdl: 6440,
+      ema20: 6465,
+      ema50: 6470,
+      gamma_flip: 6470,
+      gex_net: -1_000_000,
+      gex_king: 6400,
+      max_pain: 6440,
+      gamma_regime: "Short gamma",
+      // Every strike above spot (resistance, geometrically) is STILL net-gamma negative — no
+      // real call wall exists anywhere in this chain.
+      gex_walls: [
+        { strike: 6550, net_gex: -0.4, kind: "resistance", distance_pts: 100 },
+        { strike: 6500, net_gex: -3, kind: "resistance", distance_pts: 50 },
+        { strike: 6400, net_gex: -8, kind: "support", distance_pts: -50 },
+        { strike: 6350, net_gex: -1, kind: "support", distance_pts: -100 },
+      ],
+      flow_0dte_net: -250_000,
+      tide_bias: "bearish",
+      tide_net: -100,
+      nope: null,
+      tick: null,
+      trin: null,
+      add: null,
+      uw_iv_rank: null,
+      regime: null,
+      levels: null,
+      dark_pool: null,
+      spx_flows: null,
+      unified_tape: null,
+      net_prem_ticks: null,
+      news_headlines: null,
+      macro_events: null,
+      sector_heat: null,
+      leader_stocks: null,
+      oi_changes: null,
+      iv_term_structure: null,
+      vix_term: null,
+      greek_exposure: null,
+      market_breadth: null,
+      mag7_greek_flow: null,
+      macro_indicators: null,
+      strike_stacks: [],
+    },
+    playBadge: null,
+  });
+
+  // No real call wall exists in this chain — must read null, never the least-negative decoy.
+  assert.equal(read.call_wall, null);
+  // The dominant real put wall ($6400, net_gex -8) is unaffected by the call-side fix.
+  assert.equal(read.put_wall, 6400);
+});
