@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
-import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
+import {
+  evaluateSpxDeskSmoke,
+  shouldRetrySpxDeskProbe,
+} from "./lib/gha-desk-smoke-eval.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
@@ -72,9 +75,28 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
-    Authorization: `Bearer ${CRON}`,
-  });
+  const deskHeaders = { Authorization: `Bearer ${CRON}` };
+  const maxAttempts = Math.max(
+    1,
+    Number(process.env.SPX_DESK_SMOKE_RETRIES ?? 4) || 4
+  );
+  const retryDelayMs = Math.max(
+    0,
+    Number(process.env.SPX_DESK_SMOKE_RETRY_MS ?? 15_000) || 15_000
+  );
+  let status = 0;
+  let body;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    ({ status, body } = await fetchJson("/api/market/spx/desk", deskHeaders));
+    if (shouldRetrySpxDeskProbe(status) && attempt < maxAttempts) {
+      console.warn(
+        `  ↻ /api/market/spx/desk → ${status} (attempt ${attempt}/${maxAttempts}, retry in ${retryDelayMs / 1000}s)`
+      );
+      await new Promise((r) => setTimeout(r, retryDelayMs));
+      continue;
+    }
+    break;
+  }
   const verdict = evaluateSpxDeskSmoke({ status, body });
   if (verdict.outcome === "ok") {
     console.log(`  ✓ /api/market/spx/desk → ${verdict.message}`);
