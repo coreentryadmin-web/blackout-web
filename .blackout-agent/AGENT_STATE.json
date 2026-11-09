@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T06:51:33.321Z",
+  "updated_at": "2026-11-09T08:33:09.779Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T06:51:12.878Z"
+      "released_at": "2026-11-09T08:32:51.509Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T06:51:18.189Z",
-      "lease_until": "2026-11-09T06:52:18.189Z",
+      "claimed_at": "2026-11-09T08:32:56.018Z",
+      "lease_until": "2026-11-09T08:33:56.018Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T06:51:18.193Z"
+      "released_at": "2026-11-09T08:32:56.022Z"
     }
   },
   "reviews": {
@@ -83,49 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "021ec443068c42b66c834665af3b673b826f67f2",
+    "last_main_sha": "e5f9aa5e3ea40b07ee4ad6a1a0927c40ef697e17",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T06:50:16Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42575510081",
-    "last_deploy_sha": "021ec443068c42b66c834665af3b673b826f67f2"
+    "last_deploy_at": "2026-11-09T08:31:24Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42586559005",
+    "last_deploy_sha": "e5f9aa5e3ea40b07ee4ad6a1a0927c40ef697e17"
   },
   "events": [
-    {
-      "at": "2026-10-31T14:37:37.787Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T14:37:44.050Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T15:08:56.745Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T15:09:02.270Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
-    {
-      "at": "2026-10-31T15:09:06.896Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-10-31T15:38:19.964Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 10
-    },
     {
       "at": "2026-10-31T15:38:29.103Z",
       "type": "context_sync",
@@ -1289,19 +1253,45 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-09T08:32:51.509Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T08:32:56.020Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T08:32:56.022Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-09T08:33:00.749Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T08:33:05.349Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
+    },
+    {
+      "at": "2026-11-09T08:33:09.779Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 4
     }
   ],
   "open_prs": [
-    {
-      "number": 7716,
-      "title": "fix(largo): surface unavailableSources in Concrete mode, the default Largo renderer",
-      "branch": "fix/largo-concrete-unavailable-sources",
-      "author": "coreentryadmin-web",
-      "agent": "agent",
-      "draft": false,
-      "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-09T06:50:20Z"
-    },
     {
       "number": 5547,
       "title": "chore(deps): Bump next from 15.5.25 to 16.3.6",
