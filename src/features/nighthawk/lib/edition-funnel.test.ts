@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  anyDiscoveryLaneFetchFailed,
   engineStalledRecapReason,
+  failedDiscoveryLaneNames,
   formatEditionFunnelSummary,
   funnelFromMeta,
   publishGateBlockedRecapReason,
   recapReasonAtPublishExit,
   synthesisEmptyRecapReason,
+  zeroCandidatesRecapReason,
+  type DiscoveryLaneFetchFailures,
   type ZeroDteScanHeartbeatLike,
 } from "./edition-funnel";
 
@@ -146,4 +150,85 @@ test("recapReasonAtPublishExit is unchanged when heartbeat read failed (null)", 
     null
   );
   assert.match(reason, /Publish gates blocked all 1 play/);
+});
+
+// --- Audit finding (2026-11-09): 6-of-7-discovery-lanes-unmonitored recap-only gap -----------
+//
+// `alertRecapOnlyIfAnomalous` (edition-builder.ts) previously went `benign` (no ops alert) on a
+// zero-candidate night as long as the FLOW lane's own fetch hadn't thrown — even when one of the
+// other 6 lanes (oi_change, unusual_trades, catalyst, predictions, movers, breakout) had a real
+// provider outage. These tests cover the pure decision logic the fix now runs on.
+
+const ALL_LANES_OK: DiscoveryLaneFetchFailures = {
+  flow_fetch_failed: false,
+  oi_change_fetch_failed: false,
+  unusual_trades_fetch_failed: false,
+  catalyst_fetch_failed: false,
+  predictions_fetch_failed: false,
+  movers_fetch_failed: false,
+  breakout_fetch_failed: false,
+};
+
+test("anyDiscoveryLaneFetchFailed is false when every lane's fetch genuinely succeeded (honest quiet night)", () => {
+  assert.equal(anyDiscoveryLaneFetchFailed(ALL_LANES_OK), false);
+  assert.equal(anyDiscoveryLaneFetchFailed(undefined), false);
+  assert.equal(anyDiscoveryLaneFetchFailed(null), false);
+  assert.equal(anyDiscoveryLaneFetchFailed({}), false);
+});
+
+test("anyDiscoveryLaneFetchFailed is true when the flow lane's fetch failed (pre-existing behavior preserved)", () => {
+  assert.equal(anyDiscoveryLaneFetchFailed({ ...ALL_LANES_OK, flow_fetch_failed: true }), true);
+});
+
+// This is the core regression: each of the 6 PREVIOUSLY-unmonitored lanes, failing ALONE with
+// flow succeeding, must now flip the verdict to non-benign (an ops alert fires).
+for (const lane of [
+  "oi_change_fetch_failed",
+  "unusual_trades_fetch_failed",
+  "catalyst_fetch_failed",
+  "predictions_fetch_failed",
+  "movers_fetch_failed",
+  "breakout_fetch_failed",
+] as const) {
+  test(`anyDiscoveryLaneFetchFailed is true when ONLY ${lane} fails (flow itself succeeding)`, () => {
+    const flags: DiscoveryLaneFetchFailures = { ...ALL_LANES_OK, [lane]: true };
+    assert.equal(
+      anyDiscoveryLaneFetchFailed(flags),
+      true,
+      `${lane} failing alone must make a zero-candidate night non-benign`
+    );
+  });
+}
+
+test("failedDiscoveryLaneNames names every failed lane and omits healthy ones", () => {
+  const flags: DiscoveryLaneFetchFailures = {
+    ...ALL_LANES_OK,
+    catalyst_fetch_failed: true,
+    movers_fetch_failed: true,
+  };
+  assert.deepEqual(failedDiscoveryLaneNames(flags), ["catalyst", "movers"]);
+});
+
+test("failedDiscoveryLaneNames is empty when nothing failed or flags are absent", () => {
+  assert.deepEqual(failedDiscoveryLaneNames(ALL_LANES_OK), []);
+  assert.deepEqual(failedDiscoveryLaneNames(undefined), []);
+});
+
+test("zeroCandidatesRecapReason names all 7 discovery lanes' counts, not just 4", () => {
+  const reason = zeroCandidatesRecapReason({
+    flows: 0,
+    oi: 0,
+    unusual: 0,
+    catalyst: 3,
+    predictions: 2,
+    movers: 0,
+    breakout: 1,
+  });
+  assert.match(reason, /flows 0/);
+  assert.match(reason, /OI 0/);
+  assert.match(reason, /unusual 0/);
+  assert.match(reason, /catalyst 3/);
+  assert.match(reason, /predictions 2/);
+  assert.match(reason, /movers 0/);
+  assert.match(reason, /breakout 1/);
 });

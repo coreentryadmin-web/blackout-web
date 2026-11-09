@@ -72,7 +72,11 @@ import {
 } from "./publish-gates";
 import {
   recapReasonAtPublishExit,
+  anyDiscoveryLaneFetchFailed,
+  failedDiscoveryLaneNames,
+  zeroCandidatesRecapReason,
   type EditionFunnelCounts,
+  type DiscoveryLaneFetchFailures,
 } from "./edition-funnel";
 import { loadZeroDteScanHeartbeat } from "@/lib/play-engine-heartbeat";
 import { partitionPlaysByGeometry } from "./play-constraints";
@@ -134,28 +138,40 @@ function logFunnel(editionFor: string, f: Partial<FunnelCounts>): string {
 
 /**
  * Recap-only collapses come in two flavors (#77 hardening D, item 9):
- *  - BENIGN: no flow candidates at all (thin tape / UW returned nothing) — `funnel.candidates === 0`.
- *    Expected on a quiet evening, NOT worth paging ops.
- *  - ANOMALOUS: candidates EXISTED but the funnel zeroed downstream (no scored dossiers, Claude
- *    synthesized=0, critic dropped everything, empty finalPlays). This points at a real pipeline
- *    problem (data/scoring/Claude/critic) hiding behind an ok:true recap-only — alert ops (warning).
+ *  - BENIGN: no candidates at all, AND every one of the 7 discovery lanes (flow, oi_change,
+ *    unusual_trades, catalyst, predictions, movers, breakout) genuinely returned a thin/empty
+ *    read — `funnel.candidates === 0` with no upstream fetch failure anywhere. Expected on a
+ *    quiet evening, NOT worth paging ops.
+ *  - ANOMALOUS: either candidates EXISTED but the funnel zeroed downstream (no scored dossiers,
+ *    Claude synthesized=0, critic dropped everything, empty finalPlays), OR candidates are zero
+ *    because ONE OR MORE of the 7 lanes' own upstream fetch actually threw (a provider outage),
+ *    not because the market was quiet. Audit finding (2026-11-09): only the flow lane's fetch
+ *    failure was ever tracked (`opts.flowFetchFailed`), so a genuine outage on any of the other
+ *    six lanes — flow itself still succeeding — was silently classified `benign` and never paged
+ *    ops; see `docs/audit/findings-staging/2026-11-09-legacy-recap-only-silent-outage-gap.md`.
+ *    Either anomaly flavor points at a real pipeline/provider problem hiding behind an ok:true
+ *    recap-only — alert ops (warning).
  * No-op until DISCORD_OPS_WEBHOOK_URL is set; never throws.
  */
 async function alertRecapOnlyIfAnomalous(
   editionFor: string,
   funnel: Partial<FunnelCounts>,
   reason: string,
-  opts?: { flowFetchFailed?: boolean }
+  opts?: DiscoveryLaneFetchFailures
 ): Promise<void> {
-  // Zero candidates is benign ONLY when the flow feed genuinely returned a thin
-  // tape. When the fetch itself errored, zero candidates IS the incident — the
-  // audit found a UW outage and a quiet evening were indistinguishable here.
-  const benign = (funnel.candidates ?? 0) === 0 && !opts?.flowFetchFailed;
+  // Zero candidates is benign ONLY when every one of the 7 discovery lanes genuinely returned a
+  // thin/empty read. When ANY lane's own fetch errored, zero candidates IS the incident — the
+  // audit found a provider outage on any non-flow lane and a quiet evening were indistinguishable
+  // here (only flow's own fetch failure was ever checked).
+  const anyLaneFetchFailed = anyDiscoveryLaneFetchFailed(opts);
+  const benign = (funnel.candidates ?? 0) === 0 && !anyLaneFetchFailed;
   if (benign) return;
+  const failedLanes = failedDiscoveryLaneNames(opts);
+  const failedLanesLine = failedLanes.length ? `\nfailed lanes: ${failedLanes.join(", ")}` : "";
   await notifyOpsDiscord({
     severity: "warning",
     title: `Night Hawk recap-only (anomalous collapse) — ${editionFor}`,
-    body: `reason: ${reason}\n${formatFunnelLine(editionFor, funnel)}`,
+    body: `reason: ${reason}${failedLanesLine}\n${formatFunnelLine(editionFor, funnel)}`,
   }).catch(() => undefined);
 }
 
@@ -856,13 +872,27 @@ export async function buildEveningEdition(opts?: {
       console.info("[nighthawk/edition] stage_candidates: selection");
       candidates = await extractMultiSourceCandidates(ctx, MAX_CANDIDATES, editionFor);
       if (!candidates.length) {
-        const reason = `No candidates from any source (flows ${ctx.stock_flows.length}, OI ${ctx.market_oi_change.length}, unusual ${ctx.unusual_trades.length}, movers ${ctx.market_movers.length}).`;
+        const reason = zeroCandidatesRecapReason({
+          flows: ctx.stock_flows.length,
+          oi: ctx.market_oi_change.length,
+          unusual: ctx.unusual_trades.length,
+          catalyst: ctx.after_hours_catalysts.length,
+          predictions: ctx.predictions_consensus.length,
+          movers: ctx.market_movers.length,
+          breakout: ctx.breakout_movers.length,
+        });
         console.warn(`[nighthawk/edition] stage_candidates zeroed — recap-only fallback: ${reason}`);
         funnel.candidates = 0;
         funnel.published = 0;
         logFunnel(editionFor, funnel);
         await alertRecapOnlyIfAnomalous(editionFor, funnel, reason, {
-          flowFetchFailed: ctx.flow_fetch_failed,
+          flow_fetch_failed: ctx.flow_fetch_failed,
+          oi_change_fetch_failed: ctx.oi_change_fetch_failed,
+          unusual_trades_fetch_failed: ctx.unusual_trades_fetch_failed,
+          catalyst_fetch_failed: ctx.catalyst_fetch_failed,
+          predictions_fetch_failed: ctx.predictions_fetch_failed,
+          movers_fetch_failed: ctx.movers_fetch_failed,
+          breakout_fetch_failed: ctx.breakout_fetch_failed,
         });
         await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: 0, checkpointing, force: Boolean(opts?.force), funnel });
         return {

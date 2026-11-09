@@ -51,6 +51,16 @@ export type MarketWideContext = {
   tomorrow: string;
   tide: Record<string, unknown> | null;
   stock_flows: Record<string, unknown>[];
+  // `flow_fetch_failed` and its five siblings below (`oi_change_fetch_failed`,
+  // `unusual_trades_fetch_failed`, `catalyst_fetch_failed`, `predictions_fetch_failed`,
+  // `movers_fetch_failed`, `breakout_fetch_failed`) each mark whether that ONE discovery lane's
+  // own upstream fetch threw (vs legitimately returning zero/few rows) -- these are the seven
+  // lanes `extractMultiSourceCandidates` (candidates.ts) reads from this context to build the
+  // Night Hawk Legacy candidate pool. Audit finding (2026-11-09): previously only
+  // `flow_fetch_failed` existed, so a genuine provider outage on any of the other six lanes
+  // (fetch throws -> swallowed by `.catch(() => [] | null)`) was indistinguishable from that same
+  // lane legitimately returning zero rows on a quiet night -- both produced the same empty
+  // array/null, and `alertRecapOnlyIfAnomalous` (edition-builder.ts) never paged ops for either.
   /** True when the flow-alerts fetch itself failed (vs legitimately returning few rows). */
   flow_fetch_failed?: boolean;
   hot_chains: Record<string, unknown>[];
@@ -70,23 +80,38 @@ export type MarketWideContext = {
   vix_iv_rank: number | null;
   market_breadth: MarketBreadthMetrics | null;
   predictions_consensus: PredictionConsensusSignal[];
+  /** True when the UW predictions-consensus fetch itself failed (vs legitimately returning null). */
+  predictions_fetch_failed?: boolean;
   mag7_greek_flow: GroupGreekFlowSummary | null;
   macro_indicators: UwMacroIndicatorSnapshot[];
   /** Market-wide after-hours / movers headlines (free Benzinga channels) — the night's AH context. */
   after_hours_catalysts: BenzingaCatalyst[];
+  /** True when the Benzinga/Polygon after-hours-catalysts fetch itself failed (vs legitimately
+   *  returning zero rows). Feeds the discovery `catalyst` lane. */
+  catalyst_fetch_failed?: boolean;
   /** UW market-wide total options volume (all strikes/expiries across the tape). */
   total_options_volume: unknown | null;
   /** UW market-wide open-interest change — stocks with the biggest OI shifts today. */
   market_oi_change: Record<string, unknown>[];
+  /** True when the UW OI-change fetch itself failed (vs legitimately returning zero rows). */
+  oi_change_fetch_failed?: boolean;
   /** Cross-service platform intel (market_regime, anomalies, brief) — same source as /api/platform/intel. */
   platform_intel: PlatformIntelSnapshot | null;
   /** UW market-wide unusual trades — flagged by UW's internal algo as abnormal activity. */
   unusual_trades: Record<string, unknown>[];
+  /** True when the UW unusual-trades fetch itself failed (vs legitimately returning zero rows). */
+  unusual_trades_fetch_failed?: boolean;
   /** Polygon gainers/losers — today's biggest % movers (momentum candidates). */
   market_movers: Array<{ ticker: string; change_pct: number | null; price: number; volume?: number }>;
+  /** True when the Polygon gainers/losers (movers) fetch itself failed (vs legitimately returning
+   *  zero rows). */
+  movers_fetch_failed?: boolean;
   /** Whole-market breakout screen (P2b) — closed-strong, high-volume movers from the grouped-daily
    *  summary already fetched for breadth (no extra API call). Feeds the discovery `breakout` lane. */
   breakout_movers: import("./candidates").BreakoutMover[];
+  /** True when the Polygon daily-market-summary fetch — the breakout lane's sole upstream, also
+   *  used for market_breadth — itself failed (vs legitimately returning zero/empty results). */
+  breakout_fetch_failed?: boolean;
 };
 
 function flowRowToDict(row: { raw: Record<string, unknown>; flow: { ticker: string; premium: number } }) {
@@ -231,11 +256,20 @@ export async function fetchMarketWideContext(opts?: {
   /** Session date in America/New_York (YYYY-MM-DD). Defaults to todayEt(). */
   asOfEt?: string;
 }): Promise<MarketWideContext> {
-  // Set when the flow-alerts pull (the SOLE candidate source) actually errored —
-  // lets the edition builder distinguish "quiet tape, zero candidates" (benign)
-  // from "UW outage, zero candidates" (anomalous, must alert). Audit finding:
-  // the two were indistinguishable and neither alerted.
+  // Each flag below is set ONLY when that lane's own upstream fetch threw (never on a
+  // legitimate empty/thin result) — lets the edition builder distinguish "quiet tape, zero
+  // candidates across every lane" (benign) from "a provider outage on one or more of the 7
+  // discovery lanes, zero candidates" (anomalous, must alert). Audit finding (2026-11-09):
+  // originally only `flowFetchFailed` existed (flow was treated as "the SOLE candidate source"),
+  // so an outage on any of the other six lanes was indistinguishable from that lane legitimately
+  // returning nothing and never alerted ops.
   let flowFetchFailed = false;
+  let oiChangeFetchFailed = false;
+  let unusualTradesFetchFailed = false;
+  let catalystFetchFailed = false;
+  let predictionsFetchFailed = false;
+  let moversFetchFailed = false;
+  let dailyMarketFetchFailed = false; // breakout lane's sole upstream (also feeds market_breadth)
   const today = opts?.asOfEt ?? todayEt();
   const tomorrow = nextTradingDayEt(today);
   const from = priorFromEt(today, 45);
@@ -296,22 +330,50 @@ export async function fetchMarketWideContext(opts?: {
     fetchVixTermPreferPolygon(),
     fetchVixIvRankPercentile().catch(() => null),
     uwConfigured() ? fetchUwMarketTopNetImpact(12).catch(() => []) : Promise.resolve([]),
-    fetchDailyMarketSummary(today).catch(() => null),
-    uwConfigured() ? fetchUwPredictionsConsensus(15).catch(() => null) : Promise.resolve(null),
+    fetchDailyMarketSummary(today).catch(() => {
+      dailyMarketFetchFailed = true;
+      return null;
+    }),
+    uwConfigured()
+      ? fetchUwPredictionsConsensus(15).catch(() => {
+          predictionsFetchFailed = true;
+          return null;
+        })
+      : Promise.resolve(null),
     uwConfigured() ? fetchUwGroupGreekFlow("mag7").catch(() => []) : Promise.resolve([]),
     uwConfigured() ? fetchUwMacroIndicators().catch(() => []) : Promise.resolve([]),
     // Free Benzinga after-hours / movers context for the evening recap (the edition is after-hours
     // recon). Cached on a shared key inside the provider, so every concurrent build shares one pull.
-    polygonConfigured() ? fetchBenzingaAfterHoursMovers(15).catch(() => []) : Promise.resolve([]),
+    polygonConfigured()
+      ? fetchBenzingaAfterHoursMovers(15).catch(() => {
+          catalystFetchFailed = true;
+          return [];
+        })
+      : Promise.resolve([]),
     // UW market-wide total options volume (Redis-cached, negligible UW budget cost).
     uwConfigured() ? fetchUwMarketTotalOptionsVolume().catch(() => null) : Promise.resolve(null),
     // UW market-wide OI change — top movers by open-interest shift (Redis-cached).
-    uwConfigured() ? fetchUwMarketOiChange(20).catch(() => []) : Promise.resolve([]),
+    uwConfigured()
+      ? fetchUwMarketOiChange(20).catch(() => {
+          oiChangeFetchFailed = true;
+          return [];
+        })
+      : Promise.resolve([]),
     fetchPlatformIntelSnapshot().catch(() => null),
     // UW unusual trades — market-wide, Redis-cached with short TTL.
-    uwConfigured() ? fetchUwUnusualTrades(undefined, 100).catch(() => []) : Promise.resolve([]),
+    uwConfigured()
+      ? fetchUwUnusualTrades(undefined, 100).catch(() => {
+          unusualTradesFetchFailed = true;
+          return [];
+        })
+      : Promise.resolve([]),
     // Polygon gainers + losers — momentum movers for candidate discovery.
-    polygonConfigured() ? fetchMarketMovers(20).catch(() => []) : Promise.resolve([]),
+    polygonConfigured()
+      ? fetchMarketMovers(20).catch(() => {
+          moversFetchFailed = true;
+          return [];
+        })
+      : Promise.resolve([]),
   ]);
 
   const stockFlows = flowRows
@@ -386,16 +448,22 @@ export async function fetchMarketWideContext(opts?: {
     vix_iv_rank: vixIvRank,
     market_breadth: marketBreadth,
     predictions_consensus: predictionsRaw?.top_signals ?? [],
+    predictions_fetch_failed: predictionsFetchFailed,
     mag7_greek_flow: summarizeGroupGreekFlow("mag7", mag7Rows as Record<string, unknown>[]),
     macro_indicators: macroIndicators,
     after_hours_catalysts: afterHoursCatalysts,
+    catalyst_fetch_failed: catalystFetchFailed,
     total_options_volume: totalOptionsVolume ?? null,
     market_oi_change: (marketOiChange as Record<string, unknown>[]) ?? [],
+    oi_change_fetch_failed: oiChangeFetchFailed,
     platform_intel: platformIntel,
     unusual_trades: (unusualTrades as Record<string, unknown>[]) ?? [],
+    unusual_trades_fetch_failed: unusualTradesFetchFailed,
     market_movers: marketMovers ?? [],
+    movers_fetch_failed: moversFetchFailed,
     // Whole-market breakout screen off the grouped-daily summary already fetched for breadth — no
     // extra API call. Best-effort: no daily data → empty lane, never a throw (RECAP-MUST-NOT-THROW).
     breakout_movers: dailyMarket?.results?.length ? screenBreakoutMovers(dailyMarket.results, 40) : [],
+    breakout_fetch_failed: dailyMarketFetchFailed,
   };
 }
