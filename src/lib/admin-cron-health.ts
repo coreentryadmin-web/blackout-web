@@ -30,7 +30,7 @@ import {
   SWING_FORCE_CLEAR_RUNNING_BUFFER_MS,
   type SwingDiscoveryPhaseClaim,
 } from "@/lib/swing/discovery-claim";
-import { phaseRunKey } from "@/lib/swing/scan-cadence";
+import { phaseRunKey, resolveScanPhase } from "@/lib/swing/scan-cadence";
 import type { SwingDiscoveryPhase } from "@/lib/swing/discovery";
 import { todayEt } from "@/lib/et-date";
 
@@ -83,6 +83,23 @@ export function marketHoursCronInSession(job: CronJobDefinition, now = new Date(
 /** True when a `market_hours_only` job is outside the session gate its route uses (RTH vs SPX engine window). */
 function marketHoursCronOffWindow(job: CronJobDefinition, now: Date): boolean {
   return Boolean(job.market_hours_only) && !marketHoursCronInSession(job, now);
+}
+
+/** Phase-anchored swing-discovery: handshake can lag while POST_CLOSE window is still open (scan due before 20:00 ET). */
+export function swingDiscoveryPostCloseAwaitingScan(
+  health: CronJobHealth,
+  now = new Date()
+): CronJobHealth | null {
+  if (health.key !== "swing-discovery") return null;
+  if (health.status !== "stale" && health.status !== "failed") return null;
+  const active = resolveScanPhase(now.getTime());
+  if (active?.phase !== "POST_CLOSE") return null;
+  return {
+    ...health,
+    status: "warning",
+    market_hours_stale: false,
+    status_label: "POST_CLOSE window open — swing discovery scan due before 8:00 PM ET",
+  };
 }
 
 /** Night Hawk playbook job age — clock-skewed future timestamps exceed stuck threshold. */
@@ -598,6 +615,9 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
         meta: { ...(health.meta ?? {}), swing_discovery_in_flight: true },
       };
     }
+
+    const swingPostCloseGrace = swingDiscoveryPostCloseAwaitingScan(health);
+    if (swingPostCloseGrace) return swingPostCloseGrace;
 
     if (
       job.key === "nighthawk-backfill-repair" &&

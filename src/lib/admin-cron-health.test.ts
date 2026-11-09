@@ -11,6 +11,7 @@ import {
   nighthawkJobAgeMin,
   nighthawkBackfillRepairPreWindow,
   marketHoursCronInSession,
+  swingDiscoveryPostCloseAwaitingScan,
 } from "./admin-cron-health";
 import type { CronJobDefinition } from "./cron-registry";
 
@@ -344,6 +345,36 @@ test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bound
 // nothing read it until this fix. Unlike spx-evaluate's heartbeat cross-check (which only
 // escalates when the cron_job_runs handshake ALSO looks stale), zerodte-warm's must not gate on
 // that handshake first, since that signal is the known-unreliable one here.
+test("swingDiscoveryPostCloseAwaitingScan: stale handshake degrades to warning during POST_CLOSE window", () => {
+  const now = new Date("2026-11-09T23:00:00.000Z"); // Mon ~6:00 PM ET, inside POST_CLOSE
+  const out = swingDiscoveryPostCloseAwaitingScan(
+    {
+      key: "swing-discovery",
+      name: "Night Hawk Swing Discovery",
+      kind: "http",
+      path: "/api/cron/swing-discovery",
+      schedule_label: "",
+      description: "",
+      status: "stale",
+      status_label: "No run in 3000m",
+      market_hours_stale: false,
+      last_run_at: "2026-11-07T21:00:00.000Z",
+      last_status: "ok",
+      last_duration_ms: 10,
+      last_message: null,
+      age_min: 3000,
+      stale_after_min: 36 * 60,
+      effective_stale_min: 36 * 60,
+      stale_multiplier: 1,
+      runs_24h: { ok: 0, failed: 0, skipped: 0 },
+    },
+    now
+  );
+  assert.ok(out);
+  assert.equal(out!.status, "warning");
+  assert.match(out!.status_label, /POST_CLOSE window/i);
+});
+
 test("buildCronHealthSnapshot can override swing-discovery failed handshakes when serving snapshot probe is fresh", () => {
   const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
   assert.match(src, /"swing-discovery"/);

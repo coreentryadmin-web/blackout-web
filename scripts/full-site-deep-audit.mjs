@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -190,9 +190,19 @@ async function auditSpxDesk() {
   const bad = scanFinite(d).slice(0, 5);
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
+  if (d.available === false) {
+    ok("spx-desk", "unavailable", "honest empty desk — spot checks skipped");
+    return;
+  }
+
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  if (!(spot > 0)) {
+    if (!inRthOpenWindow()) {
+      ok("spx-desk", "off-hours-spot", `spot not live off-hours (${spot}) — checks skipped`);
+      return;
+    }
+    fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
+  } else ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
@@ -229,6 +239,7 @@ async function auditPlatformSnapshot() {
   const flows = snap.flows;
   const nh = snap.nighthawk;
   if (spx?.price > 0) ok("snapshot", "spx", `SPX ${spx.price} VIX ${spx.vix ?? "—"}`);
+  else if (!inRthOpenWindow()) ok("snapshot", "spx", "SPX not live off-hours — snapshot spot optional");
   else fail("snapshot", "SPX", "missing SPX price in snapshot");
 
   // Desk vs snapshot
