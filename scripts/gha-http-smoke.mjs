@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
 import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
+import { isTransientHttpStatus, withTransientRetry } from "./lib/gha-transient-http.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
@@ -72,9 +73,22 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
-    Authorization: `Bearer ${CRON}`,
-  });
+  const deskHeaders = { Authorization: `Bearer ${CRON}` };
+  const deskAttempts = Number(process.env.SMOKE_DESK_RETRIES ?? 6);
+  const deskRetryMs = Number(process.env.SMOKE_DESK_RETRY_MS ?? 5_000);
+  const { status, body } = await withTransientRetry(
+    () => fetchJson("/api/market/spx/desk", deskHeaders),
+    {
+      attempts: deskAttempts,
+      delayMs: deskRetryMs,
+      shouldRetry: (r) => isTransientHttpStatus(r.status),
+      onRetry: (nextAttempt, r) => {
+        console.log(
+          `  … /api/market/spx/desk → ${r.status} (transient; retry ${nextAttempt}/${deskAttempts} in ${deskRetryMs / 1000}s)`
+        );
+      },
+    }
+  );
   const verdict = evaluateSpxDeskSmoke({ status, body });
   if (verdict.outcome === "ok") {
     console.log(`  ✓ /api/market/spx/desk → ${verdict.message}`);
