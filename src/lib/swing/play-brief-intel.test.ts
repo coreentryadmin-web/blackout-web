@@ -82,6 +82,44 @@ test("bookContextSection: flags INTERNAL CONFLICT when an existing same-theme op
   assert.match(section?.body ?? "", /AMD SHORT/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-09): when a theme carries BOTH a same-direction
+// AND an opposed-direction book position at once — a real, reachable combination since
+// checkPortfolioOverlap classifies every matching row into one list or the other from a single
+// pass — the Concentration and Internal-conflict paragraphs used to sit unconnected with no
+// statement of which risk is more decisive or what the net exposure comes out to.
+test("bookContextSection: states net theme exposure and names the more decisive risk when BOTH concentration and internal conflict fire at once", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "AMD", direction: "LONG" },
+    { ticker: "SMH", direction: "SHORT" },
+  ];
+  const section = bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book);
+  assert.ok(section);
+  assert.match(section?.body ?? "", /Concentration/i);
+  assert.match(section?.body ?? "", /Internal conflict/i);
+  assert.match(section?.body ?? "", /Net theme exposure/i);
+  // One same-direction row (AMD) vs one opposed row (SMH) is a balanced 1-vs-1 split.
+  assert.match(section?.body ?? "", /roughly balanced/i);
+});
+
+test("bookContextSection: net exposure leans same-direction and names concentration as the more decisive risk when it outnumbers the opposed leg", () => {
+  const book: PortfolioPosition[] = [
+    { ticker: "AMD", direction: "LONG" },
+    { ticker: "MU", direction: "LONG" },
+    { ticker: "SMH", direction: "SHORT" },
+  ];
+  const section = bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book);
+  assert.ok(section);
+  assert.match(section?.body ?? "", /Net theme exposure leans \*\*same-direction\*\*/);
+  assert.match(section?.body ?? "", /concentration.*above is the more decisive risk/i);
+});
+
+test("bookContextSection: does NOT add a net-exposure line when only one category fires (no fabrication)", () => {
+  const book: PortfolioPosition[] = [{ ticker: "AMD", direction: "LONG" }];
+  const section = bookContextSection(fixturePlay({ ticker: "NVDA", direction: "LONG" }), book);
+  assert.ok(section);
+  assert.doesNotMatch(section?.body ?? "", /Net theme exposure/i);
+});
+
 // BUG FIX (Ask Largo standing mandate, 2026-10-20, live repro TSLA 385P SHORT candidate against a
 // real TSLA 352.5C LONG already held): a literal same-ticker opposed position used to flatten into
 // the same generic "theme X has an opposed position" sentence as a genuinely different name in the

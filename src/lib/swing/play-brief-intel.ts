@@ -797,6 +797,33 @@ export function bookContextSection(
     }
   }
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09): a theme with BOTH a same-direction and an
+  // opposed-direction book position (a real, reachable combination — checkPortfolioOverlap
+  // classifies every matching row into one list or the other from a single pass) used to leave
+  // the Concentration and Internal-conflict paragraphs above as two unconnected bullet-dump
+  // entries joined only by `\n\n`, with no statement of which risk is more decisive for THIS entry
+  // decision or what the net theme exposure comes out to once both are weighed together — unlike
+  // `renderCrossDeskConflict` (play-brief-narrative-coaching.ts), which ranks multiple inputs about
+  // the same candidate and names the most load-bearing one. Added here only when both categories
+  // actually fired (never fabricated when only one did), ranked by the real position COUNT on each
+  // side — the same quantity each paragraph above already reports, so this adds no new claim, only
+  // a comparison between two the member was already shown.
+  const sameDirN = overlap.sameThemeSameDirection.length;
+  const opposedN = overlap.sameThemeOpposedDirection.length;
+  if (sameDirN > 0 && opposedN > 0) {
+    const net = sameDirN - opposedN;
+    const netLine =
+      net > 0
+        ? `Net theme exposure leans **same-direction** (${sameDirN} vs ${opposedN}) — the concentration ` +
+          `above is the more decisive risk for this entry; the opposed leg offsets some of it, not all.`
+        : net < 0
+          ? `Net theme exposure leans **opposed** (${opposedN} vs ${sameDirN}) — the internal conflict ` +
+            `above is the more decisive risk for this entry; the matching leg does not cancel it.`
+          : `Net theme exposure is **roughly balanced** (${sameDirN} vs ${opposedN}) — neither risk cancels ` +
+            `the other's specific danger: the stacked wager and the self-conflicting hedge are both still live.`;
+    lines.push(netLine);
+  }
+
   return { title: "Book context", body: lines.join("\n\n"), bias: "neutral" };
 }
 
