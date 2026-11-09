@@ -6172,6 +6172,11 @@ html.product-shell .nav-mega {
     line-height: 1.35;
     color: #f0f0f8;
   }
+  .largo-concrete-unavailable {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
   .largo-concrete-body {
     color: #e0f2fe;
     line-height: 1.55;
