@@ -1460,9 +1460,37 @@ export function counterThesisLine(
   // confirmed live on 3 committed positions, different tickers/directions/scores, always the
   // byte-identical clause. 4th instance of this exact unguarded-pillar-read shape in this file; the
   // other three (degradedReadLine, thesisPillarCoaching, thesisHealthSection) were already fixed.
+  //
+  // BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, task #96): this used to be
+  // a bare `.find()` over `pillars` with no reference to `deltaPts` — it returned the FIRST pillar
+  // in fixed declaration order (persistence, entry_geometry, flow_corroboration, regime,
+  // theta_budget — see `computeSwingThesisHealth`'s `defs` array, thesis-health.ts) whose status is
+  // "lost"/"faded", regardless of which pillar actually moved the most. `degradeFromManage()`
+  // (thesis-health.ts) unconditionally clamps persistence's `currentScore` to `min(current, 0.55)`
+  // and force-sets its status to "faded" whenever the live manage action is
+  // TAKE_PARTIAL/EXIT_RUNNER — a clamp that is a mathematical no-op (deltaPts === 0) whenever
+  // persistence's own score was already at or below 0.55 (e.g. a FORMING setup, which
+  // `setupPersistenceScore` already scores at exactly 0.55). Persistence still won the `.find()`
+  // over a genuinely-decayed pillar (e.g. Theta budget migrating/cliffing on real DTE decay, a
+  // nonzero deltaPts) purely because of array position, not magnitude. Live repro (SHORT PLTR,
+  // positionId 74, manageAction TAKE_PARTIAL, FORMING setup): the SAME brief's Thesis-health
+  // section showed "Persistence — scale-out (Delta +0.0 pts)" and "Theta budget — DTE 4 migrate
+  // (Delta -3.0 pts)", yet this bullet cited the fading pillar as Persistence — directly
+  // contradicting the brief's own displayed numbers two bullets above. Reproduced identically on
+  // GOOG (positionId 73).
+  //
+  // Fix mirrors `thesisPillarCoaching`'s (play-brief-narrative-coaching.ts) already-correct
+  // selection: among lost/faded candidates, sort by `deltaPts` ascending and take the worst (most
+  // negative) real mover, falling back to `0` for a (never-expected, per the shared type) missing
+  // delta exactly as that sibling function does. `Array.prototype.sort` is stable, so when every
+  // candidate ties at the same delta (including the common all-zero case) the original
+  // declaration-order winner is preserved — same observable behavior as today whenever there is
+  // genuinely nothing to rank by, rather than reporting no fading pillar at all.
   const faded = thesisHealthUncalibrated(play.thesisHealth)
     ? undefined
-    : play.thesisHealth?.pillars?.find((p) => p.status === "lost" || p.status === "faded");
+    : play.thesisHealth?.pillars
+        ?.filter((p) => p.status === "lost" || p.status === "faded")
+        .sort((a, b) => (a.deltaPts ?? 0) - (b.deltaPts ?? 0))[0];
   // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA): a faded pillar used to be
   // pushed straight into `reasons[]`, counted identically to a genuine directional read (HELIX
   // flow, Night Hawk, Vector bias, a wall, EMA/MACD/structure, dealer posture) for the "corroborated

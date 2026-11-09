@@ -3442,6 +3442,49 @@ test("counterThesisLine: calibrated thesisHealth with a genuinely faded pillar s
   assert.match(line!, /fading pillar \*\*Persistence\*\*/);
 });
 
+// BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, task #96, live repro
+// SHORT PLTR positionId 74 / GOOG positionId 73): `faded` used to be a bare `.find()` over
+// `pillars`, returning the FIRST pillar in fixed declaration order (persistence, entry_geometry,
+// flow_corroboration, regime, theta_budget) whose status is "lost"/"faded" — with no reference to
+// `deltaPts` at all. Reproduces the exact live shape: a FORMING setup (persistence commit===
+// current===0.55, so `degradeFromManage`'s `min(current, 0.55)` clamp on a TAKE_PARTIAL manage
+// action is a mathematical no-op — deltaPts stays 0) alongside a genuinely-decayed Theta budget
+// pillar (dte=4 on a lane whose migration threshold is 4, a real negative deltaPts from calendar
+// decay alone). Persistence is still FIRST in array order and still gets force-set to "faded" by
+// `degradeFromManage` regardless of whether it actually moved — so the pre-fix `.find()` cited
+// Persistence as the "fading pillar" while the brief's own pillar breakdown two bullets above
+// (thesisHealthSection, play-brief.ts) would show Persistence at "Delta +0.0 pts" and Theta budget
+// at a real negative delta, a direct same-document contradiction. Post-fix, sorting by `deltaPts`
+// ascending (mirroring thesisPillarCoaching's already-correct selection) picks Theta budget, the
+// pillar that actually moved.
+test("counterThesisLine: cites the pillar with the worst real deltaPts (Theta budget), not the first array-order match (Persistence) with a zero delta (Largo C2)", () => {
+  const thesisHealth = computeSwingThesisHealth({
+    direction: "SHORT",
+    status: "TRIM",
+    setupState: "FORMING",
+    entryStatus: "AT_TRIGGER",
+    signalKinds: ["FLOW", "VECTOR"],
+    regime: "momentum short",
+    manageAction: "TAKE_PARTIAL",
+    dte: 4,
+    computedAtEt: "10:00:00",
+  });
+  assert.ok(thesisHealth, "expected a thesis health payload for an OPEN/HOLD/TRIM row");
+  assert.equal(thesisHealthUncalibrated(thesisHealth), false, "sanity: real commit inputs wired means this IS calibrated");
+
+  const persistencePillar = thesisHealth!.pillars.find((p) => p.label === "Persistence");
+  const thetaPillar = thesisHealth!.pillars.find((p) => p.label === "Theta budget");
+  assert.equal(persistencePillar?.status, "faded", "sanity: manage action still force-fades Persistence");
+  assert.equal(persistencePillar?.deltaPts, 0, "sanity: FORMING already scores 0.55 — the TAKE_PARTIAL clamp to 0.55 is a no-op");
+  assert.equal(thetaPillar?.status, "faded", "sanity: dte=4 genuinely fades the theta pillar (DTE 4 migrate)");
+  assert.ok((thetaPillar?.deltaPts ?? 0) < 0, "sanity: theta budget has a real, nonzero negative delta");
+
+  const line = counterThesisLine(ctx({}), play({ direction: "SHORT", thesisHealth }), null);
+  assert.ok(line, "expected a counter-thesis line — Theta budget is genuinely faded");
+  assert.match(line!, /fading pillar \*\*Theta budget\*\*/, `expected Theta budget to be cited as the fading pillar, got: ${line}`);
+  assert.doesNotMatch(line!, /fading pillar \*\*Persistence\*\*/, `Persistence must not win over the pillar with the real delta, got: ${line}`);
+});
+
 // BUG FIX (2026-10-21, Ask Largo round-3 deep-dive, live repro TSLA): Theta budget transitions
 // PURELY off DTE vs a fixed cliff/migration threshold (thetaBudgetScore, thesis-health.ts — "time
 // decay is the whole point of the pillar"), with zero dependence on price, flow, or any other market
