@@ -52,6 +52,20 @@ describe("play-card-display", () => {
     assert.equal(formatReturnPct(-12), "-12%");
   });
 
+  // BUG: plain `Math.round(n)` on the SIGNED value ties toward +Infinity
+  // (`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`), so a losing Peak/Trough/P&L
+  // reading sitting exactly on a half-percent tie renders a SMALLER magnitude than the
+  // identical-distance gain. Same bug class already fixed in fmt-money.ts's fmtPct,
+  // round-floats.ts, thermal/gex-heatmap/shift-math.ts, and this very command-deck's own
+  // PlayTerminal.tsx/ZeroDteCommandPanel.tsx signPct helpers — formatReturnPct
+  // (play-card-display.ts) is an independent, un-migrated instance of the same formatter.
+  it("formatReturnPct: a tie above zero and the mirror tie below zero round to the SAME magnitude", () => {
+    assert.equal(formatReturnPct(2.5), "+3%", "positive tie rounds away from zero");
+    // RED before the fix: plain Math.round(-2.5) === -2 gives "-2%" (a SMALLER magnitude
+    // than the mirrored "+3%"), not the symmetric "-3%".
+    assert.equal(formatReturnPct(-2.5), "-3%", "mirror-image tie must round to the same magnitude");
+  });
+
   it("useHeroPlayCard is always false — detail lives on the right rail", () => {
     assert.equal(useHeroPlayCard(base, true, 1), false);
     assert.equal(useHeroPlayCard(base, false, 1), false);
