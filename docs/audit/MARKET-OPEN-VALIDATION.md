@@ -9703,3 +9703,29 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   fix above (blocked on the weekend discovery-cron gap), this fix's code path runs live on every
   play-brief request regardless of cron cadence, and is already proven working end-to-end. Listed
   here for the audit record, not as an open Monday checklist item.
+
+## WATCH LIST — 2026-11-09 (Swing `closedReason` now persists the real gating rung instead of guessing from P&L sign, PR #7639) — merged, re-check on the next real close
+
+- **`closedReasonFromRow` (`src/lib/swing/closed-plays.ts`) used to derive `closedReason` purely
+  from the sign of `realized_pnl_pct`** — collapsing four genuinely distinct gating mechanisms
+  (`structural_stop`/`thesis_stop`/`premium_stop`/`expiry_risk`, computed by
+  `evaluateSwingManagement`) into just `"stopped"` (negative) or `"target"` (positive), which can
+  be wrong in both directions since a gating rung can fire regardless of P&L sign at the moment it
+  fires. Live repro: MRNA positionId 65 closed `-34.47%` (nowhere near the `-60%` `premium_stop`
+  threshold) but read `closedReason="stopped"`, asserting structural-invalidation framing
+  regardless of the real trigger. Opened by a sibling swing-lane session, reviewed and found
+  already merged (`merged_by: coreentryadmin-web`) by the time this session checked back — CI was
+  green (`verify`/CodeQL success) before the merge landed, per git log (`11542c0`).
+- **Fix**: `gradeParentFromMark` (`roll-plan.ts`) now stamps the real rung into
+  `grade_json.closing_rung` at grade time; `closedReasonFromRow` reads it first (`thesis_stop` →
+  `"thesis"`, `structural_stop` → `"stopped"`, `premium_stop`/`expiry_risk` → an honest generic
+  label), falling back to the old sign-based guess only for rows graded before this field existed —
+  additive, zero regression on historical data (confirmed by the PR's own regression tests).
+- **Re-check once the market opens and a real swing position closes (CLOSE or ROLL) post-deploy**:
+  pull `GET /api/market/swing/record` for that position and confirm `grade_json.closing_rung` is
+  present and that the play-brief's "Lessons"/closed-coaching text matches the REAL mechanism (e.g.
+  a thesis-pillar-break close should now render the dedicated `"thesis"` coaching line —
+  `"Thesis break exit — pillar degradation was the signal..."` — rather than generic
+  structural-stop framing), not just the P&L sign. The chain-composite (multi-leg rolled) mapper is
+  NOT covered by this fix (disclosed follow-up) — a rolled position's closed reason still uses the
+  old sign-based guess, so don't expect `closing_rung` on those rows yet.
