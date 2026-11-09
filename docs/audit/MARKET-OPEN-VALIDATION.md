@@ -10251,6 +10251,32 @@ and `/play` are actually serving a real price again
   `NOW()`/`Date.now()`, which is sub-second-granular in practice) — before this fix every one of
   these fields silently rounded down to the whole second on read.
 
+## WATCH LIST — 2026-11-09 (Meridian peer-reaction fetch failure cached as "no data" for 6h, `fix/array-mutation-cache-sweep`) — re-check once a live transient-failure case is observable
+
+- **What was broken**: `loadOnePeerReaction` (`src/lib/meridian/meridian-peer-reactions.ts`,
+  backing `GET /api/market/meridian/peer-reactions`) caught a per-ticker fetch failure INSIDE
+  the `serverCache(...)`-wrapped loader instead of outside it, so a transient upstream failure
+  (rate limit, timeout, no calendar entry) for one peer ticker got written into the cache as a
+  normal "no data" result for the full 6-hour TTL — `server-cache.ts`'s own failure-tracking
+  (`failureCount`/`degradedKeys`, which exists to retry past exactly this kind of blip) never
+  saw the failure at all, because nothing ever rejected.
+- **Fix**: extracted the cache-wrapping logic into a new pure helper,
+  `loadWithFailureIsolatedCache` (`src/lib/meridian/peer-reaction-cache-wrap.ts`), which moves
+  the try/catch outside the cached call so a real failure propagates through `serverCache` (and
+  is never cached) while still degrading gracefully to "no data" for that one request. RED→GREEN
+  proof via temporarily reverting the helper to the original buggy shape (fallback got cached;
+  a retry that should have succeeded instead replayed the stale fallback), then restoring the
+  fix. `tsc --noEmit` clean.
+- **Specific thing to check once live**: the next time CloudWatch logs show a real upstream
+  blip (a Polygon/Benzinga 403/429/timeout) during a Sector Peers panel load for some ticker's
+  cohort, confirm that peer's reaction data recovers on the NEXT panel view/request within the
+  same 6h window instead of staying frozen as "no data" — before this fix it would have stayed
+  frozen for the full TTL regardless of whether the next request's upstream call would have
+  succeeded. No live incident has exercised this path yet during this sweep; this is a
+  forward-looking check for whenever one next occurs (correlate against
+  `src/lib/providers/polygon.ts`/Benzinga entitlement-loss log lines, which this file already
+  tracks as a recurring live failure mode).
+
 ## WATCH LIST — 2026-11-09 (data-integrity-verifier `redis_ttl` check couldn't detect a no-expiry Redis key, `fix/redis-ttl-noexpiry-detection`) — re-check once a live correctness scorecard run is readable
 
 - **What was broken**: `src/lib/correctness/data-integrity-verifier.ts`'s `redis_ttl` check
@@ -10325,3 +10351,33 @@ and `/play` are actually serving a real price again
   live incident shape this guards against) — if/when that happens, confirm the 4H chart recovers
   within one TTL window (120s) after the upstream call starts succeeding again, rather than
   staying pinned on a stale/incomplete series for longer than that.
+
+## WATCH LIST — 2026-11-09 (Night Hawk `fetchFinancialsBundle` could cache a total Polygon/Benzinga outage as "no financials data" for a full hour, `fix/financials-bundle-total-outage-cached`) — re-check next time a provider blip touches Night Hawk dossiers
+
+- **What was broken**: `src/features/nighthawk/lib/dossier.ts`'s `fetchFinancialsBundle(sym)`
+  wrapped each of its 5 independent upstream calls (Polygon ratios/income/balance/cash-flow +
+  Benzinga price target) in its OWN `.catch(() => null | [])` BEFORE the `Promise.all` that
+  formed the body of a `serverCache(..., TTL.REFERENCE, ...)` (1-hour) loader. Because every
+  individual failure was swallowed before the `Promise.all` could ever see it, that `Promise.all`
+  — and therefore the cache loader — could never reject, even on a total correlated outage of
+  all 5 calls at once. The resulting all-null bundle was then cached for the full hour,
+  indistinguishable from a genuinely successful "this ticker has no fundamentals" read, and
+  `serverCache`'s own failure-tracking/SWR retry machinery never got a chance to engage. Flagged
+  as a specific lead by the previous round (#7773's write-up) rather than freshly discovered.
+- **Fix**: `fetchFinancialsBundle` now uses `Promise.allSettled` with no per-call `.catch()`,
+  then calls a new pure helper, `settledFinancialsOrThrow` (`financials-bundle-core.ts`), which
+  throws only when ALL 5 results are rejected — propagating the rejection through
+  `serverCache`'s loader so the all-null bundle is never cached and the key's real
+  failure-tracking fires instead. When at least one call succeeds, the bundle is returned with
+  today's same per-field null/[] fallback for whichever calls failed, unchanged. 4 new unit
+  tests in `financials-bundle-core.test.ts`; RED confirmed (reverting the helper to swallow
+  unconditionally fails the all-5-rejected case, 1/4 fail), GREEN post-fix (4/4 pass);
+  `tsc --noEmit` clean.
+- **Specific thing to check once live**: this is hard to trigger deliberately (needs a genuine
+  correlated Polygon+Benzinga failure), so the realistic validation is passive: if the next
+  Benzinga/Polygon entitlement incident (per this repo's CLAUDE.md environment notes — these do
+  recur) coincides with Night Hawk dossier builds, confirm that once the provider recovers, a
+  previously-affected ticker's financials panel (ratios, revenue/margin trend, analyst PT)
+  refreshes with real data on the NEXT dossier build rather than staying frozen on "no data" for
+  up to an hour after recovery. No live state captured pre-fix to diff against — there is no way
+  to force a correlated 5-way failure safely against production from this sandbox.
