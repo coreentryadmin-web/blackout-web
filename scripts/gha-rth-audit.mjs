@@ -264,7 +264,12 @@ run("Public HTTP smoke", "node", ["scripts/gha-http-smoke.mjs"]);
 run("Sentry smoke", "node", ["scripts/gha-sentry-smoke.mjs"]);
 
 if (!smokeOnly) {
-  run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  if (rthOpen) {
+    run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  } else {
+    console.log("\n── Full-site deep audit ──");
+    console.log("  ⚠ Off-hours (after 16:15 ET grace) — skipping live numeric deep audit");
+  }
   await cronHttpChecks();
   await postgresRthChecks();
 }

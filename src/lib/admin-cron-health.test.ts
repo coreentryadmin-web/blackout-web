@@ -13,6 +13,7 @@ import {
   marketHoursCronInSession,
 } from "./admin-cron-health";
 import type { CronJobDefinition } from "./cron-registry";
+import { swingDiscoveryHandshakeStaleMin } from "./swing/discovery-cron-health";
 
 function withDefaultNighthawkWindow(fn: () => void) {
   const prevHour = process.env.NIGHTHAWK_EDITION_HOUR_ET;
@@ -281,6 +282,13 @@ test("evaluateJob: clock-skewed future started_at does not read as fresh", () =>
 
 /** Labor Day 2026-09-07 — weekday NYSE holiday. Warmers gate via shouldRunCacheWarmer. */
 const LABOR_DAY_MIDDAY = new Date("2026-09-07T16:00:00Z"); // 12:00 ET Monday holiday
+
+test("effectiveStaleMinutes: swing-discovery uses weekly handshake ceiling, not 36h registry default", () => {
+  const job = jobDef({ key: "swing-discovery", stale_after_min: 36 * 60 });
+  const { effective } = effectiveStaleMinutes(job, new Date("2026-11-09T22:00:00.000Z"));
+  assert.ok(effective > 36 * 60);
+  assert.equal(effective, swingDiscoveryHandshakeStaleMin());
+});
 
 test("effectiveStaleMinutes: NYSE holiday uses relaxed multiplier for market_hours_only jobs", () => {
   const job = jobDef({ market_hours_only: true, stale_after_min: 15 });
