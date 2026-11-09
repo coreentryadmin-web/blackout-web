@@ -116,6 +116,33 @@ test("sessionTape: mixed horizons (0DTE + SWING) → hasProxyR=true", () => {
   assert.deepEqual([...t.horizons].sort(), ["SWING", "ZERO_DTE"]);
 });
 
+test("sessionTape: a non-contributing SWING WATCH row must NOT flip hasProxyR — the board is the FULL list (every horizon/status), so a pure-0DTE realized/open tape sitting beside a swing candidate that hasn't entered yet must not be mislabeled as mixing in swing-proxy R", () => {
+  const t = sessionTape([
+    play({ id: "1", ticker: "A", status: "CLOSED", pnlPct: 100, horizon: "ZERO_DTE" }), // +2R realized
+    play({ id: "2", ticker: "B", status: "OPEN", pnlPct: 25, horizon: "ZERO_DTE" }), // +0.5R open
+    // Never entered — pnlPct is null (per adapters.ts: WATCH/SKIP rows always carry pnlPct:null)
+    // so this contributes NOTHING to realizedR/openR, yet its horizon used to still flip
+    // hasProxyR because horizons.add ran before the pnlPct null-check.
+    play({ id: "3", ticker: "C", status: "WATCH", pnlPct: null, horizon: "SWING" }),
+  ]);
+  assert.equal(t.realizedR, 2);
+  assert.equal(t.openR, 0.5);
+  assert.equal(t.realizedCount, 1);
+  assert.equal(t.openCount, 1);
+  // The P&L shown is entirely 0DTE-derived — no swing play ever fed the sum.
+  assert.equal(t.hasProxyR, false);
+  assert.deepEqual([...t.horizons].sort(), ["ZERO_DTE"]);
+});
+
+test("sessionTape: a SKIP SWING row (also non-contributing) must not flip hasProxyR either", () => {
+  const t = sessionTape([
+    play({ id: "1", ticker: "A", status: "HOLD", pnlPct: 10, horizon: "ZERO_DTE" }), // +0.2R open
+    play({ id: "2", ticker: "B", status: "SKIP", pnlPct: null, horizon: "LEGACY" }),
+  ]);
+  assert.equal(t.hasProxyR, false);
+  assert.deepEqual([...t.horizons].sort(), ["ZERO_DTE"]);
+});
+
 test("workingTickersOf: only OPEN/HOLD/TRIM, uppercased", () => {
   const s = workingTickersOf([
     play({ id: "1", ticker: "nvda", status: "OPEN" }),
