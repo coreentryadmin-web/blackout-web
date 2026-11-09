@@ -34,4 +34,17 @@ describe("trade-excursion-graphic", () => {
     assert.equal(formatExcursionPct(14.2), "+14%");
     assert.equal(formatExcursionPct(-50.4), "-50%");
   });
+
+  it("formatExcursionPct rounds exact-half ties symmetrically by magnitude", () => {
+    // Math.round() ties toward +Infinity (Math.round(-10.5) === -10 but
+    // Math.round(10.5) === 11), so a plain Math.round(n) (or Math.round(n*10)/10
+    // below 10) combined with a raw-value sign check understates the magnitude of a
+    // negative excursion sitting exactly on a rounding tie relative to its positive
+    // mirror image. A trader reading this on the trade-excursion graphic sees -10.5%
+    // rendered as "-10%" while the identical-magnitude +10.5% renders as "+11%".
+    assert.equal(formatExcursionPct(10.5), "+11%");
+    assert.equal(formatExcursionPct(-10.5), "-11%");
+    assert.equal(formatExcursionPct(0.25), "+0.3%");
+    assert.equal(formatExcursionPct(-0.25), "-0.3%");
+  });
 });

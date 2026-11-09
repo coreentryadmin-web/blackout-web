@@ -112,6 +112,17 @@ export function tradeJourneyLayout(
 
 export function formatExcursionPct(n: number): string {
   if (!Number.isFinite(n)) return "—";
-  const rounded = Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10;
+  // ROUND BY MAGNITUDE, THEN REAPPLY SIGN — a plain `Math.round(n)` (or
+  // `Math.round(n * 10) / 10` below 10%) combined with a raw-value sign check ties
+  // toward +Infinity (`Math.round(-10.5) === -10` but `Math.round(10.5) === 11`), so a
+  // negative excursion sitting exactly on a rounding tie rendered a SMALLER magnitude
+  // ("-10%") than its positive mirror image ("+11%") would for the identical distance
+  // from zero — understating a drawdown right where a trader reads the trade-excursion
+  // graphic. Same bug class already fixed in `fmt-money.ts`'s `fmtPct`, `round-floats.ts`,
+  // `thermal/lib/gex-heatmap/shift-math.ts`'s `fmtShiftPercentForStrike`, and this
+  // feature's own `format.ts` dossier text (`roundedVex`) — this was an independent,
+  // un-migrated paste of the same formatter shape.
+  const scale = Math.abs(n) >= 10 ? 1 : 10;
+  const rounded = (Math.sign(n) * Math.round(Math.abs(n) * scale)) / scale;
   return `${rounded > 0 ? "+" : ""}${rounded}%`;
 }
