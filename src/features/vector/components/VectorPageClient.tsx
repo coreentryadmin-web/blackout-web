@@ -9,6 +9,7 @@ import {
   fetchVectorEmbedFastSeed,
 } from "@/features/vector/lib/vector-client-seed";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
+import { shouldAdoptFullVectorPageSeed } from "@/features/vector/lib/vector-seed-upgrade-guard";
 import {
   VECTOR_DEFAULT_TICKER,
   defaultVectorDeskOpenProps,
@@ -105,7 +106,15 @@ export function VectorPageClient({
         setSeed(fastToClientSeed(bootstrapTicker, fast));
         const full = await fetchVectorClientSeed(bootstrapTicker);
         if (cancelled) return;
-        setSeed(full);
+        // A degraded/failed phase-2 fetch resolves with empty bars rather than throwing — see
+        // `shouldAdoptFullVectorPageSeed`'s doc comment — so only upgrade the display when the
+        // full seed actually carries bars (or the fast seed never had any to protect). Without
+        // this guard, a transient enrichment-fetch hiccup on `full` silently blanked a chart the
+        // fast seed had already rendered correctly, the same regression fixed for the SPX Slayer
+        // embed's identical two-phase bootstrap (`shouldAdoptFullVectorSeed` in SpxVectorEmbed.tsx).
+        if (shouldAdoptFullVectorPageSeed(fast.initialBars.length, full.initialBars.length)) {
+          setSeed(full);
+        }
       } catch {
         if (cancelled) return;
         setSeed({
