@@ -21,7 +21,17 @@ function fmtPremShort(n: number): string {
   // (e.g. 999_950_000) had nowhere to promote TO either. Mirrors fmtCompactMoney's B tier in
   // meridian-earnings-analytics-core.ts exactly (round-to-the-unit's-own-precision FIRST, then
   // check whether THAT rounded value crossed the next threshold).
+  //
+  // BUG FIX (round 439): round 419's B tier above had no corresponding T tier above IT — the
+  // branch unconditionally returned `$${(n/1e9).toFixed(1)}B` with no overflow check, so a
+  // value at/above ~$1T (or that rounds up to it, e.g. 1_500_000_000_000) rendered the same
+  // nonsensical 4+ digit shape this file has now fixed twice below: "$1500.0B" instead of
+  // "$1.50T". `fmtCompactMoney` in meridian-earnings-analytics-core.ts — the sibling this
+  // comment already says this helper mirrors "exactly" — carries this T tier; this one never
+  // did. Same round-first-then-promote fix, one tier further out.
   if (abs >= 1_000_000_000) {
+    const b = Math.round((abs / 1_000_000_000) * 10) / 10;
+    if (b >= 1000) return `$${(n / 1_000_000_000_000).toFixed(2)}T`;
     return `$${(n / 1_000_000_000).toFixed(1)}B`;
   }
   if (abs >= 1_000_000) {
