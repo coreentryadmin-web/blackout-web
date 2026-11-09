@@ -196,7 +196,13 @@ export function vectorBoardScorecard(rows: VectorBoardTableRow[]): VectorBoardSc
     open,
     closed,
     hitRate: hitDenom > 0 ? Math.round((hitNum / hitDenom) * 100) : null,
-    netPremiumPct: pctN > 0 ? Math.round(sumPct / pctN) : null,
+    // Round by MAGNITUDE then reapply sign (BUG FIX, round 460) — `sumPct / pctN` is a SIGNED
+    // average (a losing stretch averages negative) and plain `Math.round` ties toward +Infinity
+    // (`Math.round(-2.5) === -2`, not -3), under-reporting a loss's magnitude relative to the
+    // identical-magnitude gain. Same fix already applied across fmt-money.ts/debrief.ts/
+    // trade-explanation.ts/round-floats.ts etc. (FINDINGS.md 2026-11-09) — this tile's own
+    // "Net premium" scorecard number carried the identical shape and was missed by all of them.
+    netPremiumPct: pctN > 0 ? Math.sign(sumPct / pctN) * Math.round(Math.abs(sumPct / pctN)) : null,
     winnersFloorPct: openTotal > 0 ? Math.round((openWinners / openTotal) * 100) : null,
     runnerPipelinePct: openTotal > 0 ? Math.round((openRunners / openTotal) * 100) : null,
     avgGivebackPct: givebackN > 0 ? Math.round(givebackSum / givebackN) : null,

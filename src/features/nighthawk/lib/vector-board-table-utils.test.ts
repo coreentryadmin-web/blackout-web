@@ -149,6 +149,23 @@ test("vectorBoardCalendarBuckets excludes rows with no usable premium from the b
   assert.equal(bucket!.net_premium_pct, 100); // but the average is NOT diluted by the undated row
 });
 
+// BUG FIX (round 460): `net_premium_pct: Math.round(avg)` over a SIGNED average (a losing day
+// averages negative) ties toward +Infinity (`Math.round(-2.5) === -2`, not -3) — the same
+// sign-biased rounding asymmetry fixed today across fmt-money.ts/debrief.ts/trade-explanation.ts
+// (FINDINGS.md 2026-11-09), missed here because this tile is a sibling implementation of the
+// same "Net premium" concept, not a shared call site. A day averaging exactly -2.5 must round
+// AWAY from zero to -3, same magnitude as +2.5 -> +3.
+test("vectorBoardCalendarBuckets: net_premium_pct rounds a negative tie AWAY from zero, not toward it (sign-bias)", () => {
+  const rowA = leaderToTableRow(leader({ id: 1, ticker: "AAA", premium_pct_from_entry: -2, peak_premium_pct: -2 }));
+  const rowB = leaderToTableRow(
+    leader({ id: 2, ticker: "BBB", session_date: rowA.sessionDate, premium_pct_from_entry: -3, peak_premium_pct: -3 })
+  );
+  const buckets = vectorBoardCalendarBuckets([rowA, rowB]);
+  const bucket = buckets.find((b) => b.session_date === rowA.sessionDate);
+  assert.ok(bucket);
+  assert.equal(bucket!.net_premium_pct, -3, `(-2 + -3) / 2 = -2.5 must round to -3, got ${bucket!.net_premium_pct}`);
+});
+
 test("vectorBoardMeter mirrors X Ads budget bar for peak and winner floor", () => {
   const peakRow = leaderToTableRow(leader({ premium_pct_from_entry: 40, peak_premium_pct: 50 }));
   const peakMeter = vectorBoardMeter(peakRow);

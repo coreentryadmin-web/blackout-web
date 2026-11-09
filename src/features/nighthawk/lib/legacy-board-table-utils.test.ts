@@ -151,6 +151,24 @@ test("legacyBoardCalendarBuckets rounds net_premium_pct to an integer (no float-
   assert.equal(today.net_premium_pct, -28);
 });
 
+// BUG FIX (round 460): `net_premium_pct: Math.round(net / withPremium.length)` over a SIGNED
+// average (a losing day averages negative) ties toward +Infinity (`Math.round(-2.5) === -2`,
+// not -3) — the same sign-biased rounding asymmetry already fixed today across
+// fmt-money.ts/debrief.ts/trade-explanation.ts (FINDINGS.md 2026-11-09), missed here because
+// this Legacy tile is an independent reimplementation of the same "Net premium" concept, not a
+// shared call site with the Vector siblings. A day averaging exactly -2.5 must round AWAY from
+// zero to -3, the same magnitude +2.5 already rounds to +3.
+test("legacyBoardCalendarBuckets: net_premium_pct rounds a negative tie AWAY from zero, not toward it (sign-bias)", () => {
+  const plays = [
+    basePlay({ id: "aaa", ticker: "AAA", status: "OPEN", pnlPct: -2 }),
+    basePlay({ id: "bbb", ticker: "BBB", status: "OPEN", pnlPct: -3 }),
+  ];
+  const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-11"));
+  const buckets = legacyBoardCalendarBuckets(rows, ["2026-09-11"]);
+  const today = buckets[0]!;
+  assert.equal(today.net_premium_pct, -3, `(-2 + -3) / 2 = -2.5 must round to -3, got ${today.net_premium_pct}`);
+});
+
 test("legacyBoardCalendarBuckets: closed count still includes the pull (tab-count parity, same as the scorecard fix)", () => {
   const plays = [basePlay({ id: "aso", ticker: "ASO", status: "SKIP", pnlPct: 306.67 })];
   const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-10"));

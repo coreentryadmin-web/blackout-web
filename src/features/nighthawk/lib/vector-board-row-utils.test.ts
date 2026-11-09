@@ -163,6 +163,22 @@ test("vectorBoardScorecard: a PULLED row's phantom return never dilutes Net prem
   assert.ok(sc.netPremiumPct != null && sc.netPremiumPct < 0, `expected a negative honest average, got ${sc.netPremiumPct}`);
 });
 
+// BUG FIX (round 460): `netPremiumPct` is `Math.round(sumPct / pctN)` over SIGNED premiumPct
+// values (a losing day's average is negative), but plain `Math.round` ties toward +Infinity
+// (`Math.round(-2.5) === -2`, not -3) — the exact sign-biased asymmetry already fixed today in
+// fmt-money.ts's fmtPct, debrief.ts's round2, trade-explanation.ts's fmtPts/fmtR, and the rest of
+// that family (see FINDINGS.md 2026-11-09 entries). This scorecard tile carries the identical
+// shape and was missed by every one of those passes. Two rows averaging to exactly -2.5 must
+// round AWAY from zero (-3), matching how the identical positive magnitude (+2.5 -> +3) already
+// rounds — not toward zero, which would under-report the loss's magnitude.
+test("vectorBoardScorecard: netPremiumPct rounds a negative tie AWAY from zero, not toward it (sign-bias)", () => {
+  const sc = vectorBoardScorecard([
+    row({ ticker: "AAA", kind: "live", status: "open", premiumPct: -2 }),
+    row({ ticker: "BBB", kind: "live", status: "open", premiumPct: -3 }),
+  ]);
+  assert.equal(sc.netPremiumPct, -3, `(-2 + -3) / 2 = -2.5 must round to -3, got ${sc.netPremiumPct}`);
+});
+
 test("vectorBoardSparklinePoints returns entry-to-mark path", () => {
   const pts = vectorBoardSparklinePoints(row({ premiumPct: 20, peakPct: 40 }));
   assert.ok(pts.length >= 3);
