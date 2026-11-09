@@ -48,10 +48,58 @@ export type ReconstructContract = {
 
 export type SpotSample = { time: number; spot: number };
 
-/** ACT/365 years from a session date to an expiry (both YYYY-MM-DD), floored at a tiny epsilon. */
+/**
+ * UTC offset (whole hours, negative) America/New_York observes on `dateYmd` — -4 under EDT,
+ * -5 under EST. Read at noon UTC on that calendar date, safely past the 2 AM local DST
+ * transition, so the one date-dependent read never straddles the flip itself.
+ *
+ * Duplicated from `vector-expected-move-atm.ts`/`discord-eod-recap.ts` ON PURPOSE: this module's
+ * own header says it is "Pure + dependency-light (no network, no Date.now)" specifically so the
+ * reconstruction stays deterministic and unit-testable without a provider import — importing a
+ * sibling here for a five-line pure function would be exactly the needless coupling that header
+ * exists to avoid (same reasoning `gex-depth.ts` gives for duplicating `normCdf` rather than
+ * importing it from `polygon-options-gex.ts`).
+ */
+function etUtcOffsetHours(dateYmd: string): number {
+  const noonUtc = new Date(`${dateYmd}T12:00:00.000Z`);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    timeZoneName: "shortOffset",
+  }).formatToParts(noonUtc);
+  const raw = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT-5";
+  const match = raw.match(/GMT([+-]\d+)/);
+  return match ? Number(match[1]) : -5;
+}
+
+/**
+ * ACT/365 years from a session date (09:30 ET open) to an expiry (16:00 ET close), both
+ * YYYY-MM-DD, floored at a tiny epsilon.
+ *
+ * BUG FIX (round 469): this used hardcoded "T20:00:00Z" (16:00 ET close) / "T13:30:00Z" (09:30 ET
+ * open) — correct ONLY under EDT (UTC-4). Under EST (UTC-5) each is off by a real hour: 16:00 ET
+ * is 21:00 UTC, not 20:00Z, and 09:30 ET is 14:30 UTC, not 13:30Z. Same bug SHAPE already fixed in
+ * this exact codebase for the identical close/open anchors — `marketCloseMs`
+ * (vector-expected-move-atm.ts, "was a hardcoded T20:00:00Z... under EST, 4:00 PM ET is 21:00
+ * UTC") and `sessionOpenMs` (discord-eod-recap.ts, "was a hardcoded T13:30:00.000Z... under EST,
+ * 9:30 AM ET is 14:30 UTC") — this module reimplemented the same two anchors independently and
+ * never inherited either fix.
+ *
+ * WHEN IT BITES: `expiry` and `sessionYmd` are usually on the SAME side of a DST transition, and
+ * then the 1-hour bias at each anchor cancels exactly in the (exp − now) difference — which is
+ * why this stayed invisible on every ordinary same-regime reconstruction. It does NOT cancel when
+ * the two dates straddle a DST flip (Nov 1 / Mar 8, 2026): a session reconstructed in late October
+ * (EDT) against a November weekly/monthly expiry (EST) silently loses a real hour of time-to-
+ * expiry. Measured: `sessionYmd="2026-10-26"`, `expiry="2026-11-06"` — the hardcoded anchors give
+ * 11.2708d instead of the real 11.3125d (a 0.37% relative T error at this 11-day horizon; the
+ * error is a FIXED 1 hour regardless of DTE, so it grows proportionally larger — and the gamma
+ * this feeds correspondingly more sensitive via the 1/√T term — the shorter the remaining time,
+ * i.e. exactly the near-dated weekly reconstructions this feature is most often used for).
+ */
 export function yearsToExpiry(expiry: string, sessionYmd: string): number {
-  const exp = Date.parse(`${expiry}T20:00:00Z`); // ~16:00 ET close
-  const now = Date.parse(`${sessionYmd}T13:30:00Z`); // ~09:30 ET open
+  const expUtcHour = String(16 - etUtcOffsetHours(expiry)).padStart(2, "0");
+  const exp = Date.parse(`${expiry}T${expUtcHour}:00:00.000Z`); // 16:00 ET close, DST-correct
+  const sessUtcHour = String(9 - etUtcOffsetHours(sessionYmd)).padStart(2, "0");
+  const now = Date.parse(`${sessionYmd}T${sessUtcHour}:30:00.000Z`); // 09:30 ET open, DST-correct
   if (!Number.isFinite(exp) || !Number.isFinite(now)) return 0;
   return Math.max((exp - now) / (365 * 86_400_000), 1 / (365 * 24 * 60)); // ≥ ~1 minute
 }
