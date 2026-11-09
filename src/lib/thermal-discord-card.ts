@@ -274,6 +274,32 @@ function fmtChangePct(n: number | null | undefined): { text: string; color: stri
   };
 }
 
+/**
+ * Whole-percent per-strike drift label (color + text), sign-aware. Same bug class already fixed
+ * at `fmt-money.ts`'s `fmtPct`, Night Hawk's `debrief.ts`, `vector-technicals.ts`'s `round2`, and
+ * `src/lib/api.ts`'s `fmtPct`: `Math.round()` always ties a `.5` toward `+Infinity`
+ * (`Math.round(-0.5) === -0`, not `-1`), so a formatter that plain-`Math.round`s a RAW signed
+ * value and decides the `+`/`-` prefix separately is exposed at exactly the boundary where the
+ * displayed magnitude disappears.
+ *
+ * This is NOT `fmtChangePct` above (which already correctly delegates its own rounding to
+ * `toFixed`, sign-safe by construction) — the per-strike drift column used an independent,
+ * un-migrated inline duplicate: `` `${driftPct >= 0 ? "+" : ""}${Math.round(driftPct)}%` `` with
+ * the sign decided from the RAW `driftPct` and the magnitude from a plain `Math.round(driftPct)`
+ * interpolated directly (no `toFixed`). At `driftPct = -0.5`, `Math.round(-0.5)` is `-0`, and
+ * `` `${-0}` `` stringifies to the bare digit `"0"` — a genuine ~0.5%+ melt (red-colored by the
+ * unaffected `color` branch, which still reads the raw value) rendered with the TEXT "0%", i.e.
+ * no sign and an understated-to-zero magnitude on the exact live-reachable GEX-drift-percent tie.
+ */
+export function fmtDriftPct(n: number): { text: string; color: string } {
+  const rounded = Math.sign(n) * Math.round(Math.abs(n));
+  const sign = rounded > 0 ? "+" : "";
+  return {
+    text: `${sign}${rounded}%`,
+    color: n >= 0 ? "#a3e635" : "#ff2d55",
+  };
+}
+
 function cellFill(value: number, peak: number): string {
   if (!value || peak <= 0) return "rgba(255,255,255,0.035)";
   const mag = Math.min(1, Math.abs(value) / peak);
@@ -584,8 +610,7 @@ export function buildThermalDiscordCardSvg(
       if (driftPct == null) {
         colsSvg += `<text x="${driftX}" y="${y + cellH * 0.68}" text-anchor="middle" fill="#7dd3fc" font-family="${FONT}" font-size="${driftSize}" font-weight="700">·</text>`;
       } else {
-        const driftColor = driftPct >= 0 ? "#a3e635" : "#ff2d55";
-        const driftText = `${driftPct >= 0 ? "+" : ""}${Math.round(driftPct)}%`;
+        const { text: driftText, color: driftColor } = fmtDriftPct(driftPct);
         colsSvg += `<text x="${driftX}" y="${y + cellH * 0.68}" text-anchor="middle" fill="${driftColor}" font-family="${FONT}" font-size="${driftSize}" font-weight="800">${esc(driftText)}</text>`;
       }
 

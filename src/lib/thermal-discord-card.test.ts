@@ -13,6 +13,7 @@ import {
   fmtCompactExpiry,
   fmtCompactHeatMoney,
   fmtDeskExpiry,
+  fmtDriftPct,
   resolveCompactExpiries,
   resolveDiscordDeskExpiry,
   resolveDiscordNearExpiries,
@@ -159,6 +160,27 @@ test("discordPerExpiryExtremes + discordDriftPct", () => {
   assert.equal(ex["2026-07-28"]?.king, 102);
   assert.equal(discordDriftPct(150, 50), 50);
   assert.equal(discordDriftPct(100, null), null);
+});
+
+// Sign-bias rounding tie (same bug class as fmt-money.ts's fmtPct/debrief.ts/vector-technicals.ts's
+// round2): `Math.round()` always ties a `.5` toward +Infinity, so `Math.round(-0.5) === -0`, and a
+// formatter that interpolates that straight into a template literal renders the bare digit "0" —
+// dropping the sign and understating the magnitude — unless the rounding is sign-aware.
+test("fmtDriftPct rounds the magnitude away from zero regardless of sign, never drops a tied negative's sign", () => {
+  // -0.5% is a real, reachable per-strike drift reading (discordDriftPct's own `(delta /
+  // Math.abs(baseline)) * 100`) — pre-fix this rendered text "0%" (wrong: should be "-1%") with
+  // an unaffected RED color, i.e. a melt shown as "no change".
+  assert.deepEqual(fmtDriftPct(-0.5), { text: "-1%", color: "#ff2d55" });
+  // Mirror positive tie already rounded away from zero correctly under plain Math.round — must
+  // stay byte-identical.
+  assert.deepEqual(fmtDriftPct(0.5), { text: "+1%", color: "#a3e635" });
+  // A magnitude that genuinely rounds to zero shows no sign either way (never a misleading "+0%"
+  // or "-0%") — same convention already established by fmt-money.ts's fmtPct fix.
+  assert.deepEqual(fmtDriftPct(-0.3), { text: "0%", color: "#ff2d55" });
+  assert.deepEqual(fmtDriftPct(0), { text: "0%", color: "#a3e635" });
+  // Ordinary non-tie values are unaffected.
+  assert.deepEqual(fmtDriftPct(-12.4), { text: "-12%", color: "#ff2d55" });
+  assert.deepEqual(fmtDriftPct(7.8), { text: "+8%", color: "#a3e635" });
 });
 
 test("resolveDiscordZeroDteExpiry prefers today when listed", () => {
