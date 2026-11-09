@@ -8331,6 +8331,42 @@ test("whyThisSetupSection: industry-read lag/lead magnitude always equals the di
   assert.doesNotMatch(section.body, /by 0\.2%/);
 });
 
+// BUG FOUND (Ask Largo standing mandate, 2026-11-09): the 2026-10-09 fix above made this line's
+// headline delta self-consistent with its two `fmtPct()`-rendered operands by rounding
+// `roundedName`/`roundedGroup` ONCE before subtracting — but it rounded them with plain
+// `Math.round(x * 10) / 10`, which ties toward +Infinity (`Math.round(-82.5) === -82`, not -83).
+// `fmtPct()` was independently fixed on 2026-10-26 to round by MAGNITUDE then reapply sign
+// (`fmtPct(-8.25)` now renders "-8.3%", not "-8.2%"), and this call site's own local rounding was
+// never updated to match — so the two "rounded once" operands this fix relies on can silently
+// disagree with what `fmtPct()` displays right beside them at a tie boundary, reopening the exact
+// "headline % must equal the subtraction a reader does from the two displayed operands" property
+// the 2026-10-09 fix was built to guarantee. With nameReturnPct=-8.25 (a tie at 1dp) and
+// groupReturnPct=1.0: the OLD local rounding gives roundedName=-8.2 (disagreeing with the
+// displayed "-8.3%"), so the headline read "by 9.2%" while a reader subtracting the two displayed
+// operands (+1.0% − (-8.3%)) gets 9.3%. Fixed, both must read "9.3%".
+test("whyThisSetupSection: industry-read headline delta matches fmtPct() rounding even at a sign tie boundary", () => {
+  const section = whyThisSetupSection(
+    fixturePlay({
+      ticker: "TIE",
+      sectorLeadershipFacts: {
+        benchmarkEtf: "XLK",
+        benchmarkLabel: "Technology",
+        kind: "sector",
+        nameReturnPct: -8.25, // exact .x5 tie at 1dp — fmtPct rounds this to "-8.3%", not "-8.2%"
+        groupReturnPct: 1.0,
+        deltaPct: -8.25 - 1.0, // raw, unrounded — exactly what industry-group-rs.ts produces
+      },
+    }),
+  );
+  // Must read "9.3%" (the subtraction a reader does from the two displayed fmtPct operands:
+  // +1.0% − (-8.3%) = 9.3), never "9.2%" (plain Math.round(-8.25*10)/10 ties the wrong direction).
+  assert.match(
+    section.body,
+    /\*\*Industry read:\*\* lagging \*\*Technology\*\* \(XLK\) by 9\.3% over 10 sessions \(-8\.3% vs \+1\.0%\)\./,
+  );
+  assert.doesNotMatch(section.body, /by 9\.2%/);
+});
+
 // GAP FOUND (Ask Largo standing mandate, 2026-09-18, fresh angle: `dossier.ts`'s commit-time
 // dataQuality.presentPillars/degraded read, pinned into `feature_vector.present_pillars`/
 // `dq_degraded` at commit — feature-vector.ts, commit.ts — but never read back out anywhere in the
