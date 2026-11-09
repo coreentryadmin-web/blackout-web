@@ -209,8 +209,19 @@ async function cronHttpChecks() {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+        const keys = json.problem_keys ?? [];
+        const rthStale = Number(json.rth_stale ?? 0);
+        // Off-hours: only market-hours staleness (rth_stale) should RED the scheduled audit — phase-
+        // anchored jobs like swing-discovery can legitimately read stale on handshake while cash is
+        // closed even though self-heal is already dispatching.
+        if (!rthOpen && rthStale === 0) {
+          console.log(
+            `  ⚠ ${label} → off-hours ${keys.length} problem(s) [${keys.join(", ")}] (not gating; no market-hours stale)`
+          );
+        } else {
+          failures.push(`${label}: ${keys.join(", ")}`);
+          console.log(`  ✗ ${label} → stale: ${keys.join(", ")}`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }

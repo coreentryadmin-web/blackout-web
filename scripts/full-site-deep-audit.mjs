@@ -8,6 +8,7 @@
 import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
+import { evaluateSpxDeskSmoke, isApproxUsCashRth } from "./lib/gha-desk-smoke-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -111,8 +112,20 @@ async function auditCrons() {
 
   if (wd.status === 200) {
     const keys = wd.json.problem_keys ?? [];
-    if (keys.length) for (const k of keys) fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`);
-    else ok("crons", "watchdog", `${wd.json.checked ?? "?"} jobs OK`);
+    const rthStaleKeys = wd.json.rth_stale_keys ?? [];
+    if (rthStaleKeys.length) {
+      for (const k of rthStaleKeys) {
+        fail("crons", `STALE-${k}`, `Cron watchdog market-hours stale: ${k}`, "P0");
+      }
+    } else if (keys.length && !isApproxUsCashRth()) {
+      ok(
+        "crons",
+        "watchdog",
+        `off-hours ${keys.length} non-RTH stale job(s) [${keys.join(", ")}] — not gating deep audit`
+      );
+    } else if (keys.length) {
+      for (const k of keys) fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`);
+    } else ok("crons", "watchdog", `${wd.json.checked ?? "?"} jobs OK`);
   }
 
   if (dc.status === 200) {
@@ -183,6 +196,15 @@ async function auditTrackRecord() {
 async function auditSpxDesk() {
   if (!CRON) return;
   const { status, json: d } = await getJson("/api/market/spx/desk");
+  const smoke = evaluateSpxDeskSmoke({ status, body: d });
+  if (smoke.outcome === "warn") {
+    ok("spx-desk", "smoke", smoke.message);
+    return;
+  }
+  if (smoke.outcome === "fail") {
+    fail("spx-desk", "SMOKE", smoke.message, status === 200 && isApproxUsCashRth() ? "P0" : "P1");
+    return;
+  }
   if (status !== 200) {
     fail("spx-desk", "HTTP", `HTTP ${status}`);
     return;
@@ -229,6 +251,7 @@ async function auditPlatformSnapshot() {
   const flows = snap.flows;
   const nh = snap.nighthawk;
   if (spx?.price > 0) ok("snapshot", "spx", `SPX ${spx.price} VIX ${spx.vix ?? "—"}`);
+  else if (!isApproxUsCashRth()) ok("snapshot", "spx", "missing SPX price off-hours (expected)");
   else fail("snapshot", "SPX", "missing SPX price in snapshot");
 
   // Desk vs snapshot
