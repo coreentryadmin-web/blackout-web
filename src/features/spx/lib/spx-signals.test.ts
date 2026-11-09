@@ -582,3 +582,79 @@ test("computeSpxConfluence: score always equals clamp(sum(factors[].weight), -10
   assert.ok(Math.abs(rawSum) < 100, `this fixture must stay inside the unclamped range, got raw sum ${rawSum}`);
   assert.equal(result.score, rawSum, `unclamped: score (${result.score}) must equal the raw factor-weight sum (${rawSum}) exactly, with no clamp distortion`);
 });
+
+// BUG FIX (2026-11-09): spx-play-engine.ts's Night Hawk "morning prior" mutation site fed
+// `confluence.score + nhBonus.bonus` into reclassifyConfluenceScore — but `confluence.score` at
+// that point is already the CLAMPED output of computeSpxConfluence (clamp(sum(factors[].weight),
+// -100, 100); line ~915 above), and reclassifyConfluenceScore clamps AGAIN internally (line ~240
+// above). This "double clamp" only agrees with the mathematically correct single
+// `clamp(rawSum + bonus)` when the pre-bonus raw sum was already inside [-100, 100] — on a
+// SATURATED setup (raw sum well past the bound, exactly the golden fixture's own regime two tests
+// above, raw sum 154) with an OPPOSING Night Hawk bonus (always exactly ±3 per
+// getNhConfluenceBonus's own contract, spx-play-engine.ts), the double clamp understates how
+// extreme the correct clamped score should be, by up to the overshoot amount (capped at the
+// bonus's own ±3 range). The fix recomputes the raw pre-bonus sum directly from
+// `confluence.factors` instead of reusing the already-clamped score — this test pins the exact
+// divergence between the two formulas on a concrete saturated+opposing-bonus fixture, following
+// the same "simulate the exact spx-play-engine.ts mutation path" idiom as the "rawScore reflects
+// the POST-bonus..." test above. A companion source-text test in spx-play-engine.test.ts asserts
+// the real mutation site actually implements the FIXED formula below, not the BUGGY one.
+test("reclassifyConfluenceScore mutation path: a saturated raw sum + opposing NH bonus needs a SINGLE clamp(rawSum + bonus), not a double clamp through the already-clamped score", () => {
+  // Raw pre-bonus factor sum deliberately well past -100 (saturated bearish setup) — same regime
+  // as computeSpxConfluence's own golden fixture (raw sum 154, clamped case) above, mirrored
+  // negative so an opposing (bullish, +3) Night Hawk bonus can be exercised.
+  const factors: SpxSignalFactor[] = [
+    { label: "VWAP", weight: -12, detail: "below VWAP" },
+    { label: "GEX resistance", weight: -18, detail: "into resistance" },
+    { label: "Live tape", weight: -12, detail: "bearish tape" },
+    { label: "0DTE flow", weight: -14, detail: "puts leading" },
+    { label: "Market tide", weight: -10, detail: "bearish broad flow" },
+    { label: "NOPE", weight: -7, detail: "NOPE -0.80" },
+    { label: "TICK", weight: -10, detail: "NYSE TICK -650" },
+    { label: "Mega-caps", weight: -6, detail: "leadership avg -0.80%" },
+    { label: "Net prem", weight: -6, detail: "SPY net prem decelerating" },
+    { label: "VIX curve", weight: -8, detail: "VIX backwardation" },
+    { label: "Strike stack", weight: -2, detail: "put $7400 — 4 repeated prints (short)" },
+  ];
+  const rawSum = factors.reduce((s, f) => s + f.weight, 0);
+  assert.equal(rawSum, -105, "fixture must sum past -100 to exercise the saturated/clamp regime");
+
+  // What computeSpxConfluence's own single clamp (line ~915) leaves on confluence.score by the
+  // time spx-play-engine.ts's NH-bonus mutation site runs.
+  const clampedPreBonusScore = Math.max(-100, Math.min(100, rawSum));
+  assert.equal(clampedPreBonusScore, -100);
+
+  const nhBonusWeight = 3; // opposing (bullish) bonus on a bearish-saturated setup.
+  const withBonus = [
+    ...factors,
+    { label: "Night Hawk prior", weight: nhBonusWeight, detail: "NH bias bullish (3 A-grade longs)" },
+  ];
+
+  // FIXED formula: recompute the raw pre-bonus sum from factors, pass rawSum + bonus — one clamp.
+  const fixed = reclassifyConfluenceScore(reclassifyDesk(), rawSum + nhBonusWeight, withBonus);
+  const expectedFixedScore = Math.max(-100, Math.min(100, rawSum + nhBonusWeight));
+  assert.equal(
+    fixed.score,
+    expectedFixedScore,
+    `fixed mutation path must equal a single clamp(rawSum + bonus) = ${expectedFixedScore}`
+  );
+  assert.equal(fixed.score, -100, "concrete pinned value for this fixture: clamp(-105 + 3) = clamp(-102) = -100");
+
+  // BUGGY formula (pre-fix spx-play-engine.ts): reuse the already-clamped confluence.score
+  // instead of the raw sum — a double clamp.
+  const buggy = reclassifyConfluenceScore(reclassifyDesk(), clampedPreBonusScore + nhBonusWeight, withBonus);
+  assert.equal(
+    buggy.score,
+    -97,
+    "double-clamp formula understates the true clamp by the overshoot (here capped at the bonus's own ±3 range): clamp(-100 + 3) = -97"
+  );
+
+  // The whole point of this fixture: on a saturated setup with an opposing bonus, the two
+  // formulas MUST diverge. If they ever agree again here, the fixture has stopped exercising the
+  // saturated-clamp regime and no longer proves anything about this bug class.
+  assert.notEqual(
+    fixed.score,
+    buggy.score,
+    "single-clamp (fixed) and double-clamp (buggy) formulas must diverge on a saturated+opposing-bonus setup"
+  );
+});
