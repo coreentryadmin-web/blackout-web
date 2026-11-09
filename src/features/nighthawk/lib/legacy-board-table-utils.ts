@@ -205,22 +205,38 @@ export function legacyBoardCalendarBuckets(
     const net = withPremium.reduce((s, r) => s + (r.premiumPct ?? 0), 0);
     const winners = resolved.filter((r) => (r.premiumPct ?? 0) >= 50).length;
     const closed = day.filter((r) => r.kind === "closed").length;
-    const tone = net > 2 ? "up" : net < -2 ? "down" : "flat";
+    // BUG FIX (found sweeping this file, 2026-11-09): `tone` must be derived from the AVERAGE
+    // premium — the exact quantity `net_premium_pct` below reports and the tile's render layer
+    // (VectorBoardCalendar.tsx) colors by — not from the raw per-day SUM. This line has summed
+    // unconditionally since the function was first written (see #4746's diff: `net` was already
+    // the day's plain sum before that PR even touched it, only the pulled-play filter changed),
+    // and every later fix here (the pulled-play exclusion, the stock-only-null dilution fix, the
+    // sign-bias rounding fix) corrected `net_premium_pct`'s math without ever touching this line,
+    // so the two drifted further apart each time rather than closer.
+    //
+    // A day's SUM scales with how many rows it has; the ±2 deadband below was sized against a
+    // single day's AVERAGE premium (a 2-point move is a small, "flat" nudge), not against a sum
+    // that grows with row count. Reproducible: 10 Legacy rows at a uniform +0.3% each sum to
+    // +3.0 (> 2 → tone "up"/green) while the average is +0.3, which `net_premium_pct` rounds to
+    // "+0%" — the calendar cell paints bullish-green over a tile reading "+0%", a direct visual
+    // contradiction a member reading the strip would see as a colored day with no move on it.
+    // Vector's own sibling `vectorBoardCalendarBuckets` (vector-board-table-utils.ts) never had
+    // this split: it derives `tone` from the SAME `avg` it reports, by construction.
+    const avg = withPremium.length ? net / withPremium.length : 0;
+    const tone = avg > 2 ? "up" : avg < -2 ? "down" : "flat";
     return {
       session_date,
       tone,
       // Matches vector-board-table-utils.ts's own net_premium_pct — the tile's render layer
       // (VectorBoardCalendar.tsx's fmtSigned) interpolates the number as-is with no rounding, so
       // an un-rounded average here prints raw floating-point noise (e.g. "-28.2700000000...4").
-      // Round by MAGNITUDE then reapply sign (BUG FIX, round 460) — `net / withPremium.length`
-      // is SIGNED (a losing day averages negative) and plain `Math.round` ties toward +Infinity
+      // Round by MAGNITUDE then reapply sign (BUG FIX, round 460) — `avg` is SIGNED (a losing day
+      // averages negative) and plain `Math.round` ties toward +Infinity
       // (`Math.round(-2.5) === -2`, not -3), under-reporting a loss's magnitude relative to the
       // identical-magnitude gain. Same fix already applied to fmt-money.ts/debrief.ts/
       // trade-explanation.ts/round-floats.ts etc. (FINDINGS.md 2026-11-09); this Legacy tile
       // reimplements the same "Net premium" average independently and was missed by all of them.
-      net_premium_pct: withPremium.length
-        ? Math.sign(net / withPremium.length) * Math.round(Math.abs(net / withPremium.length))
-        : 0,
+      net_premium_pct: withPremium.length ? Math.sign(avg) * Math.round(Math.abs(avg)) : 0,
       n: day.length,
       winners,
       closed,
