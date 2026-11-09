@@ -111,10 +111,32 @@ export async function GET(req: NextRequest) {
     ymd = previousTradingDayEt(ymd);
   }
 
+  // BUG FIX (round-497 audit): this `.catch(() => [])` used to swallow a genuine upstream
+  // failure (network error, Polygon rate-limit/entitlement loss — see CLAUDE.md's 2026-11-07
+  // snapshot-entitlement incident for exactly this failure shape hitting this same provider) into
+  // the IDENTICAL `[]` this route also returns for a day that legitimately has no bars (a weekend/
+  // holiday session past the walk-back's edge). Both outcomes read as "no data that day" to every
+  // caller below, so a transient failure on even ONE of the twelve days — most dangerously the
+  // newest/most-recent session, since `fetchStockMinuteBars`/`fetchIndexMinuteBars` are called
+  // with today's date first — silently produced a RESULT MISSING THAT SESSION'S CANDLES that then
+  // passed the `bars.length > 0` cache guard below (it only checked "is there SOME data", never
+  // "did every fetch actually succeed") and got pinned in the shared cache for the full
+  // `CACHE_TTL_SEC` (120s) as if it were a complete, successful fetch — exactly the "swallow
+  // failure before the combinator, cache the degraded result" bug class already fixed three times
+  // this session in src/lib/meridian/**/src/lib/providers/** (see docs/audit/FINDINGS.md), just
+  // reached via a day-level Promise.all instead of a component-level one. `anyFetchFailed` tracks
+  // whether ANY day's real fetch actually threw (as opposed to returning real-but-empty data), so
+  // the cache-write guard below can distinguish "no data today" (fine to cache) from "we don't
+  // actually know what today's data is" (must not cache — the next request should retry, not be
+  // served a hole in the series for two more minutes).
+  let anyFetchFailed = false;
   const settled = await Promise.all(
     ymds.map((d) =>
       (useIndex ? fetchIndexMinuteBars(sym, d, d) : fetchStockMinuteBars(ticker, d, d)).catch(
-        () => []
+        () => {
+          anyFetchFailed = true;
+          return [];
+        }
       )
     )
   );
@@ -141,9 +163,12 @@ export async function GET(req: NextRequest) {
   const minuteBars = sessions.reverse().flat();
   const bars = aggregateMinuteTo4h(minuteBars);
 
-  // Cache only a REAL result. Writing an empty series would pin a broken response for the whole
-  // TTL, turning a transient upstream blip into minutes of an empty chart.
-  if (bars.length > 0) {
+  // Cache only a REAL, COMPLETE result. Writing an empty series would pin a broken response for
+  // the whole TTL, turning a transient upstream blip into minutes of an empty chart — and writing
+  // a non-empty but PARTIAL series (one or more days genuinely failed, not just legitimately
+  // empty) would do the same thing more quietly: a believable-looking chart silently missing a
+  // session's candles, pinned for the same TTL. Require both.
+  if (bars.length > 0 && !anyFetchFailed) {
     await sharedCacheSet(cacheKey, { bars }, CACHE_TTL_SEC).catch(() => {});
   }
 

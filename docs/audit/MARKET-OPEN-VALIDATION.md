@@ -10301,7 +10301,6 @@ and `/play` are actually serving a real price again
   changes NOTHING about production Redis behavior, only what the correctness scorecard can now
   observe — a `flag` on this metric going forward would be a genuinely new, real finding (a
   no-expiry `gex-heatmap:SPX` key), not a regression from this change.
->>>>>>> origin/main
 
 ## WATCH LIST — 2026-11-09 (data-integrity-verifier.ts reported "consistency-only" for an empty `nighthawk_editions` table, `fix/data-integrity-pg-editions-empty-skip`) — re-check the next DATALAYER correctness scorecard/report
 
@@ -10324,6 +10323,34 @@ and `/play` are actually serving a real price again
   `pg_editions` no longer appears in the coverage-gaps list on a run where `nighthawk_editions`
   is genuinely empty (pre-launch state) — it should now show up only under `totals.skipped`, not
   `totals.consistencyOnly`, and should NOT be listed as a coverage gap at all.
+
+## WATCH LIST — 2026-11-09 (Vector 4H chart route cached a partial per-day fetch failure as complete, `fix/servercache-swallow-helix-vector-thermal`) — re-check during the next RTH session
+
+- **What was broken**: `GET /api/market/vector/4h-bars` walks back 12 trading days and fetches
+  each day's minute bars individually under a `Promise.all`, with `.catch(() => [])` on each
+  per-day call. That swallowed a genuine upstream failure (network error, rate limit, provider
+  entitlement loss) into the identical `[]` value a day that legitimately has no bars (weekend/
+  holiday) also produces — so a transient failure on even one day, most dangerously the
+  newest/most-recent session, silently produced a result missing that session's candles, which
+  then passed the cache-write guard (it only checked `bars.length > 0`, never "did every day's
+  fetch actually succeed") and got pinned in the shared cache for `CACHE_TTL_SEC` (120s) as if it
+  were a complete, successful fetch.
+- **Fix**: added an `anyFetchFailed` flag set inside each day's `.catch()`, and require
+  `!anyFetchFailed` alongside `bars.length > 0` before calling `sharedCacheSet`. The response to
+  the request that hit the failure is unchanged (still best-effort, real bars it has) — only the
+  decision to cache that result for future requests now requires every day's fetch to have
+  actually succeeded. RED→GREEN confirmed via `git stash` isolation on `route.ts` alone (new
+  test failed pre-fix: `sharedCacheSet` called once on a genuine per-day throw; passes post-fix:
+  0 calls); `tsc --noEmit` clean; `route.test.ts` 6/6 pass.
+- **Specific thing to check once live**: during RTH, hit `/api/market/vector/4h-bars?ticker=SPY`
+  (or any actively-traded Vector ticker) a few times a couple of minutes apart and confirm the
+  4H chart's candle count is stable and the newest candle's `time` keeps advancing — this fix
+  changes nothing about the happy path, so a clean RTH session should look identical to before;
+  the fix only matters the next time Polygon has a transient blip or entitlement hiccup on this
+  endpoint's minute-bar fetchers (see CLAUDE.md's 2026-11-07 snapshot-entitlement note for the
+  live incident shape this guards against) — if/when that happens, confirm the 4H chart recovers
+  within one TTL window (120s) after the upstream call starts succeeding again, rather than
+  staying pinned on a stale/incomplete series for longer than that.
 
 ## WATCH LIST — 2026-11-09 (Night Hawk `fetchFinancialsBundle` could cache a total Polygon/Benzinga outage as "no financials data" for a full hour, `fix/financials-bundle-total-outage-cached`) — re-check next time a provider blip touches Night Hawk dossiers
 
