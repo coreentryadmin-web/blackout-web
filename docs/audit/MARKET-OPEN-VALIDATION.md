@@ -9521,6 +9521,17 @@ TMDX/IOT/MSTR/GM), fixed and merged same day:
   Swing mark on the board is still the frozen 2026-11-06T16:15–16:20Z snapshot regardless of what
   `markAsOf`-adjacent UI chrome implies, and that's an entitlement outage to escalate to the
   operator (not an app bug to fix here).
+  **Monday pre-open confirmation, 2026-11-09 13:24 UTC (Night Hawk 0DTE lane, ~1h10m before the
+  14:30 UTC open): still down.** Re-ran the identical `GET /v3/snapshot?ticker.any_of=SPY` control
+  call live from this sandbox — same `NOT_AUTHORIZED`/"not entitled... upgrade your plan" body as
+  every prior check in this entry, no change since the 2026-11-08 Sunday confirmation above. This
+  is the same entitlement outage, not a new instance — flagging it here only because this is the
+  explicit Monday-morning check the addendum above called for, and it carries directly into 0DTE's
+  own LIVE MARKS+P&L stage (the `zerodte-e2e-healthcheck.mjs` stage D), not just Swing: once RTH
+  opens today, expect 0DTE live marks to be stale/unavailable from this same upstream cause, not a
+  0DTE-specific regression, until the operator renews the real-time entitlement on Massive.com.
+  Still nothing fixable from code — no PR, no gate change; report-and-hold per the standing
+  escalation rule for an ambiguous/live-trading-path issue outside this lane's control.
 
 ## WATCH LIST — 2026-11-07 (HELIX EOD Discord recap was dead code — `isDiscordEodRecapWindow` dead-window fix, `fix/helix-eod-recap-never-fires`)
 
