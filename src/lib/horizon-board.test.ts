@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { assembleHorizonBoard, makePlaySet, scopeBoardToHorizon, withLane } from "./horizon-board.ts";
 import type { HorizonPlay } from "./horizon-plays.ts";
 import type { ChainContract } from "./horizon-fanout.ts";
+import { horizonForView, parseNightHawkView } from "../features/nighthawk/lib/nighthawk-view.ts";
 
 const contract: ChainContract = {
   ticker: "SPY", right: "C", expiry: "2026-07-23", dte: 0, strike: 100,
@@ -75,6 +76,32 @@ test("scopeBoardToHorizon keeps only the selected lane's plays; others stay pres
 test("scopeBoardToHorizon with null (legacy/all-lanes view) returns the board unchanged", () => {
   const full = assembleHorizonBoard(makePlaySet({ ZERO_DTE: [play({})] }), "2026-07-23T15:00:00Z");
   assert.equal(scopeBoardToHorizon(full, null), full);
+});
+
+// Night Hawk horizons route (2026-11-09 audit): the route computes
+// `scopeBoardToHorizon(board, horizonForView(parseNightHawkView(viewParam)))`. LEGACY (and its
+// aliases playbook/tonight) is a KNOWN, validator-accepted `?view=` token
+// (`KNOWN_NIGHTHAWK_VIEW_TOKENS`) but has no horizon lane of its own — `horizonForView` returns
+// `null` for it, exactly like the "no ?view= given" case. This test pins the composition end to
+// end: `?view=legacy` must resolve through the SAME null no-op as the unscoped default (a real
+// full board, not an empty one) — a prior version of the route's own comment claimed the opposite
+// ("LEGACY ... scopes to an all-empty board"), which was never actually implemented. See
+// docs/audit/findings-staging/2026-11-09-nighthawk-horizons-legacy-view-scoping-contract-mismatch.md.
+test("LEGACY view tokens resolve through horizonForView to the SAME null scoping as the unscoped default — full board, never empty", () => {
+  const full = assembleHorizonBoard(
+    makePlaySet({
+      ZERO_DTE: [play({ status: "COMMIT" })],
+      SWING: [play({ ticker: "AAA", horizon: "SWING", scoreFloor: 60, status: "COMMIT" })],
+    }),
+    "2026-11-09T15:00:00Z",
+  );
+  for (const token of ["legacy", "LEGACY", "playbook", "tonight"]) {
+    const horizon = horizonForView(parseNightHawkView(token));
+    assert.equal(horizon, null, `?view=${token} must map to the null (no-lane) horizon`);
+    const scoped = scopeBoardToHorizon(full, horizon);
+    assert.equal(scoped, full, `?view=${token} must return the SAME object as the unscoped default (identity no-op)`);
+    assert.equal(scoped.totalCommitted, 2, `?view=${token} must serve the full board, not an empty one`);
+  }
 });
 
 test("SWING lane carries the seven serving sections; 0DTE/LEAPS carry none (back-compat intact)", () => {

@@ -1,6 +1,9 @@
 import { before, describe, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Fix 2 (SEV-3): /api/market/nighthawk/horizons spliced getSwingServingLane() (UNROUNDED) into a
 // board it re-derived without roundFloats — so once swings ship, raw provider floats (e.g.
@@ -283,6 +286,46 @@ describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
     assert.ok(
       play.troughPremium <= play.contract.mid,
       `trough ${play.troughPremium} must never read above mid ${play.contract.mid} — a trough is the LEAST mark ever observed`,
+    );
+  });
+});
+
+// Night Hawk horizons ?view=legacy scoping contract (2026-11-09 audit). The route's own header
+// comment used to claim "LEGACY has no horizon lane here ... so it scopes to an all-empty board" —
+// but nothing in the route, `horizonForView`, or `scopeBoardToHorizon` ever implemented that:
+// LEGACY maps to the `null` horizon, same as the "no ?view= given" case, and
+// `scopeBoardToHorizon(board, null)` is a documented no-op (horizon-board.ts/horizon-board.test.ts)
+// — so `?view=legacy` always returned the SAME full, unscoped board as the default, never an empty
+// one. Verified live 2026-11-09: `GET …/horizons?view=legacy` carried the real SWING lane with
+// live committed positions, not an empty board. Decided this is a documentation bug, not a
+// behavior bug (Option B — see the staged finding), because no real caller relies on "empty":
+// the live NightHawkFeed UI never calls this route with `view=legacy` (`LegacyDeck` fetches
+// `/api/market/nighthawk/edition` instead) and Largo's `get_nighthawk_horizons` tool takes no view
+// argument at all. `horizon-board.test.ts` pins the ACTUAL (correct, unchanged) runtime behavior;
+// this test pins that the route's own COMMENT stays truthful about it, so a future reader does not
+// "fix" the behavior toward the old, false claim.
+//
+// This is the genuine RED→GREEN half of the regression test: `git stash` on route.ts alone (which
+// only touches the comment, not runtime logic) flips this test from GREEN to RED, because the old
+// comment text matches the "all-empty board" pattern this test forbids and does not contain the
+// corrected explanation — while every behavioral test above and in horizon-board.test.ts stays
+// GREEN throughout, since no runtime behavior changed.
+describe("/api/market/nighthawk/horizons route comment stays truthful about ?view=legacy scoping", () => {
+  const routeSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "route.ts"), "utf8");
+
+  test("no longer claims LEGACY scopes to an empty board (it never did — it's the shared null no-op)", () => {
+    assert.doesNotMatch(
+      routeSource,
+      /scopes to an all-empty board/i,
+      "the route's comment must not claim a behavior that scopeBoardToHorizon(board, null) never implements"
+    );
+  });
+
+  test("explicitly documents the real, intentional full-board behavior for LEGACY", () => {
+    assert.match(
+      routeSource,
+      /same full, unscoped board/i,
+      "the route's comment should say what ?view=legacy ACTUALLY does, not what it was once mistakenly claimed to do"
     );
   });
 });
