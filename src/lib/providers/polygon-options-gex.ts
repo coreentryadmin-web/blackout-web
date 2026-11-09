@@ -5083,6 +5083,17 @@ export async function fetchPolygonIvTermStructure(
     `/v3/snapshot/options/${root}?${params}`
   ) as SnapshotResponse | null;
   let guard = 0;
+  // `polygonFetchUrl` collapses any non-2xx/thrown-network-error into the SAME `null` as "there is
+  // nothing more to fetch" — the only way to tell them apart is to notice it happened on a page we
+  // asked for BECAUSE a previous page's `next_url` said more existed. The existing
+  // `page?.next_url` truncation check below can't see this: once a mid-pagination fetch fails,
+  // `page` itself IS null, so `page?.next_url` is `undefined` and warnChainTruncated never fires —
+  // a transient blip reads as "that was the whole chain", and the PARTIAL byExpiry map built from
+  // whatever pages DID succeed then gets written into `ivTermCache` for a full 5 minutes as if it
+  // were the complete term structure (far expiries missing, with no signal anywhere that it's
+  // incomplete). Same bug class as the GEX-heatmap chain-less negative cache fixed just above in
+  // this file — cache nothing, or warn, rather than let a failure masquerade as a confirmed result.
+  let midPaginationFetchFailed = false;
 
   while (page && guard < HEATMAP_PAGE_GUARD) {
     for (const c of page.results ?? []) {
@@ -5107,10 +5118,18 @@ export async function fetchPolygonIvTermStructure(
       byExpiry.set(expiry, row);
     }
     if (!page.next_url) break;
-    page = await polygonFetchUrl(page.next_url) as SnapshotResponse | null;
+    const next = await polygonFetchUrl(page.next_url) as SnapshotResponse | null;
+    if (next == null) midPaginationFetchFailed = true;
+    page = next;
     guard += 1;
   }
   if (page?.next_url) warnChainTruncated("fetchPolygonIvTermStructure", root, guard);
+  if (midPaginationFetchFailed) {
+    console.warn(
+      `[polygon-gex] fetchPolygonIvTermStructure(${logToken(root)}) pagination fetch failed mid-chain — ` +
+        `term structure is incomplete, not caching.`
+    );
+  }
 
   const data: PolygonIvTermPoint[] = Array.from(byExpiry.entries())
     .map(([expiry, row]) => {
@@ -5131,7 +5150,7 @@ export async function fetchPolygonIvTermStructure(
     .filter((p) => p.avg_iv > 0)
     .sort((a, b) => a.expiry.localeCompare(b.expiry));
 
-  if (data.length) {
+  if (data.length && !midPaginationFetchFailed) {
     // Bound: keyed by user-supplied ticker → cap so garbage symbols can't leak memory.
     if (ivTermCache.size > 200) ivTermCache.clear();
     ivTermCache.set(root, { at: now, data });
