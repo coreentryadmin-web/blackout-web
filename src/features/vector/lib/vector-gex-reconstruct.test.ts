@@ -28,6 +28,42 @@ test("yearsToExpiry: positive & shrinks as expiry approaches, floored ≥ ~1min"
   assert.ok(yearsToExpiry("2026-07-10", "2026-07-10") > 0); // same-day floored, not zero
 });
 
+test("yearsToExpiry: DST-correct across the Nov 1 2026 EDT->EST transition", () => {
+  // Session is late October (still EDT, UTC-4); expiry is early November (already EST, UTC-5).
+  // Real wall-clock duration: 09:30 ET open on 2026-10-26 -> 16:00 ET close on 2026-11-06.
+  // Both anchors are DST-correct ET times, so this is the ground truth to match, computed
+  // independently of the function under test (not derived from its own hardcoded constants).
+  const realOpenMs = Date.parse("2026-10-26T13:30:00.000Z"); // 09:30 ET under EDT = 13:30 UTC
+  const realCloseMs = Date.parse("2026-11-06T21:00:00.000Z"); // 16:00 ET under EST = 21:00 UTC
+  const expectedYears = (realCloseMs - realOpenMs) / (365 * 86_400_000);
+
+  const got = yearsToExpiry("2026-11-06", "2026-10-26");
+  assert.ok(
+    Math.abs(got - expectedYears) < 1e-9,
+    `expected ${expectedYears} (real DST-aware duration), got ${got}`
+  );
+
+  // The pre-fix hardcoded anchors (T20:00:00Z close / T13:30:00Z open) silently drop the one real
+  // hour the EST expiry needed added back — same bug shape as marketCloseMs/sessionOpenMs's own
+  // "was a hardcoded Txx:xx:00Z" fixes. Pin the exact stale value so a regression is caught even
+  // if a future refactor changes the DST-correct result by some other small amount.
+  const staleBuggyMs =
+    Date.parse("2026-11-06T20:00:00.000Z") - Date.parse("2026-10-26T13:30:00.000Z");
+  const staleBuggyYears = staleBuggyMs / (365 * 86_400_000);
+  assert.ok(
+    Math.abs(got - staleBuggyYears) > 1e-6,
+    "must not reproduce the pre-fix DST-naive (1 hour short) duration"
+  );
+});
+
+test("yearsToExpiry: same-DST-regime durations are unchanged by the DST-correct anchors", () => {
+  // Both dates on the EDT side (well before the Nov 1 2026 flip) — the fix must not perturb the
+  // ordinary, non-straddling case this function is called on every other day of the year.
+  const sameRegime = yearsToExpiry("2026-07-13", "2026-07-10");
+  const expected = (Date.parse("2026-07-13T20:00:00.000Z") - Date.parse("2026-07-10T13:30:00.000Z")) / (365 * 86_400_000);
+  assert.ok(Math.abs(sameRegime - expected) < 1e-9);
+});
+
 const chain: ReconstructContract[] = [
   { strike: 7550, expiry: "2026-07-13", openInterest: 5000, iv: 0.15, type: "call" },
   { strike: 7600, expiry: "2026-07-13", openInterest: 8000, iv: 0.15, type: "call" },
