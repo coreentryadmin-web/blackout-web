@@ -9,6 +9,7 @@
 import { roundFloats } from "@/lib/round-floats";
 import { loadSwingPlayBriefContext } from "@/lib/swing/play-brief-context";
 import { composeSwingPlayBrief } from "@/lib/swing/play-brief";
+import { adaptSwingBriefToLargo } from "@/lib/swing/play-brief-adapter";
 
 export type SwingPlayBriefLargoHints = {
   positionId?: number | null;
@@ -72,7 +73,43 @@ export async function swingPlayBriefForLargo(ticker: string, hints?: SwingPlayBr
       };
     }
     const brief = composeSwingPlayBrief(ctx, { expandIntel: hints?.expandIntel ?? false });
-    return roundFloats({ available: true, ...brief });
+
+    // BUG FIX (Ask Largo standing mandate, 2026-11-09): this path used to return `...brief`
+    // verbatim, which skips adaptSwingBriefToLargo() entirely — the ONLY place that buckets
+    // dataAgeMs into the contract's required freshness enum (live/delayed/cached/snapshot/stale)
+    // + age_seconds, and derives direction/evidence_numbers/source/cohort. The HTTP route
+    // (route.ts) already calls the adapter; this tool-calling path (the one Largo's live chat
+    // actually uses) never did, so a chat answer received a bare, unclassified millisecond
+    // integer under a non-contract key with no documented way for the model to interpret it.
+    // Mirror route.ts's adapter call + field merge exactly, so both paths describe the same
+    // instant through identical logic.
+    const largoRead = adaptSwingBriefToLargo(brief);
+    if (!largoRead.ok) {
+      return {
+        available: false,
+        error: "swing brief unavailable",
+        unavailable: largoRead.unavailable,
+      };
+    }
+    // `distancePct` (structureLadder rungs/risk) is narrated everywhere at 1dp (`fmtPct`'s
+    // default) — round it to 1dp here too, not the generic 2dp default, the same override
+    // route.ts already applies, so this tool's wire number doesn't double-round against the
+    // narrative's own single round of the raw float at a half-unit boundary.
+    return roundFloats(
+      {
+        available: true,
+        ...brief,
+        as_of: largoRead.as_of,
+        freshness: largoRead.freshness,
+        age_seconds: largoRead.age_seconds,
+        direction: largoRead.data.direction,
+        evidence_numbers: largoRead.data.evidence,
+        source: largoRead.source,
+        cohort: largoRead.cohort,
+      },
+      2,
+      { distancePct: 1 }
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : "swing_play_brief_failed";
     return {
