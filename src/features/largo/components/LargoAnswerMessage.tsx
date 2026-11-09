@@ -19,6 +19,7 @@ import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
 import { proseSections } from "@/features/largo/answer/section-policy";
 import { BieScenarioCards } from "@/features/largo/answer/BieScenarioCards";
+import { BieStructureLadder } from "@/features/largo/answer/BieStructureLadder";
 
 /**
  * Renders a Largo assistant turn. Concrete mode = Talon-style prose; Deep dive = structured cards.
@@ -99,6 +100,19 @@ export function LargoAnswerMessage({
             />
             <LargoDeskRead envelope={envelope} question={question} markdownSource={content} />
             <LargoActionsBar actions={actions} sessionId={sessionId} />
+            {/* BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.structureLadder` — the
+                swing play-brief Structure Ladder (real per-level R:R, cross-desk gamma-regime
+                agreement, archetype/sub-lane track record) — reached this envelope but this
+                "Deep dive" (answerMode="deep") rendering branch never rendered it. `LargoDeskRead`
+                immediately above renders a DIFFERENT, generic ladder built from `envelope.levels`
+                (`ladderFromLevels`, level-ladder.ts) with no R:R/track-record/agreement data, and
+                is not a substitute. `BieAnswer.tsx` — the renderer this component falls back to
+                for a NOT-rich-enough envelope and for the no-envelope markdown-shim path below —
+                already renders `<BieStructureLadder ladder={envelope.structureLadder} />`, so the
+                member only ever saw this widget by NOT switching to Deep dive mode, or by asking a
+                question whose envelope happened to miss the `richEnough` bar. See
+                `BieStructureLadder`'s own header for what the widget shows. */}
+            <BieStructureLadder ladder={envelope.structureLadder} />
             <BieScenarioCards scenarios={envelope.scenarios} />
             <LargoAnswerCaveats caveats={caveats} />
           </>
