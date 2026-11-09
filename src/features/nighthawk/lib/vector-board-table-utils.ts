@@ -306,7 +306,13 @@ export function vectorBoardCalendarBuckets(rows: VectorBoardTableRow[]): VectorB
       return {
         session_date,
         tone,
-        net_premium_pct: Math.round(avg),
+        // Round by MAGNITUDE then reapply sign (BUG FIX, round 460) — `avg` is SIGNED (a losing
+        // day averages negative) and plain `Math.round` ties toward +Infinity
+        // (`Math.round(-2.5) === -2`, not -3), under-reporting a loss's magnitude relative to the
+        // identical-magnitude gain. Same fix already applied to fmt-money.ts/debrief.ts/
+        // trade-explanation.ts/round-floats.ts etc. (FINDINGS.md 2026-11-09); this sibling tile
+        // reimplements the same "Net premium" average independently and was missed by all of them.
+        net_premium_pct: Math.sign(avg) * Math.round(Math.abs(avg)),
         n: v.n,
         winners: v.winners,
         closed: v.closed,

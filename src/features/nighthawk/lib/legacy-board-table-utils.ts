@@ -209,10 +209,18 @@ export function legacyBoardCalendarBuckets(
     return {
       session_date,
       tone,
-      // Matches vector-board-table-utils.ts's own Math.round(avg) — the tile's render layer
+      // Matches vector-board-table-utils.ts's own net_premium_pct — the tile's render layer
       // (VectorBoardCalendar.tsx's fmtSigned) interpolates the number as-is with no rounding, so
       // an un-rounded average here prints raw floating-point noise (e.g. "-28.2700000000...4").
-      net_premium_pct: withPremium.length ? Math.round(net / withPremium.length) : 0,
+      // Round by MAGNITUDE then reapply sign (BUG FIX, round 460) — `net / withPremium.length`
+      // is SIGNED (a losing day averages negative) and plain `Math.round` ties toward +Infinity
+      // (`Math.round(-2.5) === -2`, not -3), under-reporting a loss's magnitude relative to the
+      // identical-magnitude gain. Same fix already applied to fmt-money.ts/debrief.ts/
+      // trade-explanation.ts/round-floats.ts etc. (FINDINGS.md 2026-11-09); this Legacy tile
+      // reimplements the same "Net premium" average independently and was missed by all of them.
+      net_premium_pct: withPremium.length
+        ? Math.sign(net / withPremium.length) * Math.round(Math.abs(net / withPremium.length))
+        : 0,
       n: day.length,
       winners,
       closed,
