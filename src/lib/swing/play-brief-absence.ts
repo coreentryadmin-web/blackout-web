@@ -1134,7 +1134,15 @@ export function collectBriefUnavailableSources(ctx: SwingPlayBriefContext): BieU
   // real peers at the same instant this play's own independent lane-rows read came back empty,
   // with nothing in unavailableSources explaining the vanished "Lane rank" section. Unlike GEX/
   // Vector-desk above, there was previously no disclosure chip for this absence at all.
-  if (!isNotLive && ctx.laneRowsFetchFailed) {
+  // BUG FIX (2026-11-09, Ask Largo standing mandate): this chip was gated on `!isNotLive`
+  // (isClosed || isDeadWatch), copying the CLOSED-play exemption pattern without re-checking it
+  // against THIS section's own rendering gate. `computeLaneRank`'s `bucketFor()` only short-circuits
+  // to null for `status === "CLOSED"` — a dead-but-not-closed WATCH play still reaches the real
+  // laneRows-driven ranking (`laneRankSection` is called unconditionally for every bucket in
+  // `buildIntelSections`), so a genuine fetch failure there is indistinguishable from a legitimately
+  // thin peer pool, exactly the C3 ambiguity this chip exists to resolve. Gate on `isClosed` alone —
+  // the dead-WATCH half of `isNotLive` is not moot here the way it is for the other checks above.
+  if (!isClosed && ctx.laneRowsFetchFailed) {
     out.push({
       source: "Lane rank",
       reason: "swing serving-lane snapshot unavailable",

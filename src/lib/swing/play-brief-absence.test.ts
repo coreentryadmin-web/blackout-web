@@ -1023,6 +1023,41 @@ test("collectBriefUnavailableSources: a genuinely thin lane (fetchFailed undefin
   assert.ok(!sources.some((s) => s.source === "Lane rank"));
 });
 
+// BUG FOUND (2026-11-09, Ask Largo standing mandate, live repro SWING:MSTR WATCH): laneRankSection
+// (play-brief-intel.ts) is invoked unconditionally for every bucket, including a dead WATCH play —
+// unlike every other `!isNotLive`-gated check in this file, where `isNotLive` genuinely means "no
+// section reads this data anyway". computeLaneRank's own bucketFor() only short-circuits to null
+// for bucket==="closed" (play.status==="CLOSED"); a dead-but-not-closed WATCH play still reaches
+// the real laneRows-driven ranking, so a genuine fetch failure (empty laneRows) is indistinguishable
+// from a legitimately thin peer pool for exactly the one case this disclosure exists to resolve.
+test("collectBriefUnavailableSources: laneRowsFetchFailed still surfaces a Lane rank chip for a dead (but not CLOSED) WATCH play", () => {
+  const ctx = {
+    play: { status: "WATCH", watchEntryExpired: true },
+    laneRowsFetchFailed: true,
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    sources.some(
+      (s) => s.source === "Lane rank" && s.reason === "swing serving-lane snapshot unavailable",
+    ),
+    "a dead-WATCH play still renders a real Lane Rank section — the fetch-failure disclosure must not be suppressed for it",
+  );
+});
+
+test("collectBriefUnavailableSources: laneRowsFetchFailed is still suppressed for a CLOSED play (laneRankSection is unconditionally null there)", () => {
+  const ctx = {
+    play: { status: "CLOSED" },
+    laneRowsFetchFailed: true,
+  } as unknown as SwingPlayBriefContext;
+
+  const sources = collectBriefUnavailableSources(ctx);
+  assert.ok(
+    !sources.some((s) => s.source === "Lane rank"),
+    "a CLOSED play never renders a Lane Rank section, so the chip would be moot",
+  );
+});
+
 test("collectBriefUnavailableSources: forwards Vector unavailable_sections to envelope", () => {
   const ctx = {
     vector: {
