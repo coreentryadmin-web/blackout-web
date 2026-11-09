@@ -10477,6 +10477,43 @@ and `/play` are actually serving a real price again
   cycle (the Redis matrix TTL, ~90s) once the upstream call starts succeeding again, rather than
   staying pinned empty for up to 10 minutes. No live state captured pre-fix to diff against — ACEEU/RWTN themselves (the tickers that motivated the original 600s cache) should be unaffected either way, since a genuinely dead ticker's fetches are confirmed-empty, not failed.
 
+## WATCH LIST — 2026-11-09 (GEX heatmap/chain-band/OI-by-expiry pagination read a FAILED mid-chain re-fetch as "chain complete", `fix/paging-null-collapse`) — re-check after the next transient Polygon blip mid-pagination on a wide chain (SPX/SPY/QQQ)
+
+- **What was broken**: `fetchHeatmapBandLoHi`, `fetchHeatmapBandUnfiltered`, and
+  `fetchPolygonOiByExpiry` (`src/lib/providers/polygon-options-gex.ts`) each derived their
+  truncation signal solely from the FINAL page object after their pagination loop exits
+  (`!!page?.next_url`). `polygonFetchUrl`/`polygonRefFetch` return `null` on both "genuine fetch
+  failure" and would otherwise be "no more pages" — but these loops only ever re-fetch a page
+  once a prior page's own `next_url` already proved more data exists, so a `null` re-fetch result
+  can only mean that known-good next page failed to load, never a legitimate end. Once that
+  happens, `page` itself is `null`, so `page?.next_url` reads `undefined` exactly as a clean,
+  complete fetch would. For the heatmap pair this meant a transient Polygon hiccup mid-chain
+  could silently leave `chain_truncated` unset on the `GexHeatmap` object cached for the full
+  matrix TTL — a partial GEX matrix (understated walls/OI/net-gamma) presenting as complete, with
+  no signal anywhere. For `fetchPolygonOiByExpiry` (a live per-request path for Night Hawk/Largo
+  OI-by-expiry reads) it meant the lost `console.warn` never fired either.
+- **Fix**: each loop now captures a re-fetch into a local `next` before assigning it to `page`,
+  sets an explicit `midPaginationFetchFailed` flag the moment `next` comes back `null`, and ORs
+  that flag into the truncation decision instead of deriving truncation solely from the final
+  page. New source-pattern regression test in `polygon-options-gex.test.ts` (pagination over a
+  live network fetch isn't practically unit-testable without heavy mocking in this file's
+  existing style). This branch collided with, but composes cleanly alongside, #7801 (merged the
+  same day): #7801 threaded a DIFFERENT `fetchFailed` signal through these same three functions,
+  captured only from the FIRST request, for a different purpose (the chain-less negative-cache
+  decision) — its own comment explicitly says a later-page failure "just stops pagination early",
+  i.e. it does not cover this bug. Rebased onto #7801 post-merge; auto-merged cleanly (disjoint
+  concerns). RED confirmed against the real post-#7801 pre-this-fix source (78/79 pass, 1 fail),
+  GREEN post-fix (79/79 pass); full `npm test` launched in background; `tsc --noEmit` clean.
+- **Specific thing to check once live**: hard to trigger deliberately (needs a genuine transient
+  Polygon failure landing exactly mid-pagination on a wide chain), so the realistic validation is
+  passive: next time a `[polygon-gex] fetchHeatmapBand(...)`/`fetchHeatmapBandUnfiltered(...)`/
+  `fetchPolygonOiByExpiry(...)` truncation warning appears in CloudWatch for a wide-chain ticker
+  (SPX/SPY/QQQ/NFLX-class) without a correspondingly huge page count, confirm it corresponds to a
+  real upstream blip (not a guard-exhaustion case, which logs a different "hit N-page guard"
+  message) and that the matrix/response actually carried `chain_truncated: true` rather than
+  silently serving as complete. No live state captured pre-fix to diff against — there is no safe
+  way to force a mid-pagination Polygon failure against production from this sandbox.
+
 ## WATCH LIST — 2026-11-09 (`fetchPolygonIvTermStructure` could cache a mid-pagination fetch failure as a complete IV term structure for 5 minutes, `fix/iv-term-cache-fetch-failure`) — re-check after the next Polygon/Massive blip mid-chain for a wide-expiry name (SPX/SPY/QQQ)
 
 - **What was broken**: `src/lib/providers/polygon-options-gex.ts`'s `fetchPolygonIvTermStructure`
@@ -10611,3 +10648,24 @@ and `/play` are actually serving a real price again
   the realistic validation is passive: the fix should make this class of staleness structurally
   impossible going forward, so nothing abnormal is expected, but it is worth one direct look
   during a live session with real play activity.
+
+## WATCH LIST — 2026-11-09 (0DTE Command board `fmtMoney` had no B tier, `fix/zerodte-board-money-billion-tier`) — re-check next time any ticker's session flow aggregate approaches $1B
+
+- **What was broken**: `zerodte-board-format.ts`'s `fmtMoney` (the formatter behind
+  `ZeroDteBoard.tsx`'s flow strips, `s.gross_premium`/`s.recent_premium_30m`) had no billions
+  tier at all — any value `>= $1,000,000` fell straight into the M branch, so a genuine >=$1B
+  session aggregate would have rendered as a four-digit `"$1250.0M"` instead of `"$1.3B"`, and a
+  value rounding up into the billions at M's own 1dp precision (`$999,950,000`) would have hit
+  the identical round-first-then-promote overflow this file's existing K→M guard was already
+  fixed for, one unit higher (`"$1000.0M"` instead of `"$1.0B"`).
+- **Fix**: added a B branch ahead of the M branch with the same round-first-then-promote guard
+  shape the file's own K→M branch already uses. K branch, sub-$1,000 branch, null/NaN handling,
+  and the sign-inside-the-glyph convention for negatives are unchanged.
+- **Specific thing to check once live**: this is an extreme-tail case for a single ticker's
+  per-session flow aggregate (sibling 0DTE gates treat `>= $5M` as already a strong signal), so
+  it may not fire organically for a while. Next time the 0DTE Command board's flow strip shows a
+  ticker's "gross" or "last 30m" figure anywhere near or above $1B (a single mega-cap or SPX/SPY
+  session on an extreme catalyst day), confirm it renders as `"$X.XB"`, never a 4+-digit `"$XXXX.XM"`
+  label. No live reproduction was possible pre-fix — real `gross_premium`/`recent_premium_30m`
+  values this large are rare by construction, so this is a passive next-occurrence check, not a
+  forced repro.

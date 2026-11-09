@@ -31,3 +31,21 @@ test("fmtMoney keeps the pre-existing negative-value convention untouched (not t
   // The negative-side boundary case also promotes correctly (by magnitude).
   assert.equal(fmtMoney(-999_600), "$-1.0M");
 });
+
+test("fmtMoney promotes into a B unit instead of printing an overflowed 4-digit M label", () => {
+  // RED on the pre-fix body: there is no B branch at all, so `abs >= 1_000_000` unconditionally
+  // returns the M-unit string — a genuine >=$1B value (e.g. a whole-market 0DTE flow aggregate on
+  // an extreme session) rendered as "$1250.0M" instead of "$1.3B", and a value that only ROUNDS up
+  // into the billions at M's own 1dp precision (999_950_000) rendered the exact
+  // round-first-then-promote overflow this file's own doc comment already describes for the K->M
+  // boundary ("$1000.0M" instead of "$1.0B") — just one unit higher, and still unfixed.
+  assert.equal(fmtMoney(1_250_000_000), "$1.3B");
+  assert.equal(fmtMoney(999_950_000), "$1.0B");
+  // Exactly at the cutoff already belongs in B — unaffected, still correct.
+  assert.equal(fmtMoney(1_000_000_000), "$1.0B");
+  // The negative-side boundary case also promotes correctly (by magnitude), matching this file's
+  // existing sign-inside-the-glyph convention for every other unit.
+  assert.equal(fmtMoney(-1_250_000_000), "$-1.3B");
+  // A value comfortably inside the M tier, nowhere near the boundary, is unaffected.
+  assert.equal(fmtMoney(45_000_000), "$45.0M");
+});
