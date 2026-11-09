@@ -139,3 +139,79 @@ test("shapeMeridianSpxDeskRead: desk + play badge when live", () => {
   assert.equal(read.play_action, "HOLD");
   assert.equal(read.strike_stacks.length, 1);
 });
+
+test("shapeMeridianSpxDeskRead: call/put wall picks the DOMINANT (largest |net_gex|) strike on each side, not merely the first array entry", () => {
+  // THE BUG. `gex_walls` ships from `topGexWalls` (gamma-desk.ts) sorted by STRIKE DESCENDING for
+  // display — that function's own doc comment says `kind` is purely GEOMETRIC (strike > spot ->
+  // "resistance") and explicitly warns consumers to derive the call/put wall from net_gex SIGN
+  // ("The component derives the call/put wall label from net_gex SIGN... geometry != sign"), not
+  // from `kind` alone. The local `topGexWalls` here instead took the FIRST row of each kind in
+  // array order — which, because the array is strike-descending, is the FARTHEST resistance strike
+  // (the highest strike overall) and the NEAREST support strike (the highest strike among supports)
+  // — an asymmetric mis-pick whenever the ladder's proximity-filled rows extend past the true
+  // dominant wall on the call side. 6550 here is a weak, far decoy that sorts before the real
+  // $6500 dominant call wall (net_gex 5 vs 0.5) purely because it has a higher strike.
+  const read = shapeMeridianSpxDeskRead({
+    summary: {
+      as_of: "2026-08-25T15:00:00.000Z",
+      market_open: true,
+      market_label: "RTH",
+      price: 6450,
+      change_pct: 0.42,
+      vix: 15,
+      vwap: 6440,
+      above_vwap: true,
+      hod: 6460,
+      lod: 6420,
+      pdh: 6445,
+      pdl: 6400,
+      ema20: 6430,
+      ema50: 6400,
+      gamma_flip: 6448,
+      gex_net: 1_000_000,
+      gex_king: 6500,
+      max_pain: 6440,
+      gamma_regime: "Long gamma",
+      // Strike-descending, exactly as `topGexWalls` (gamma-desk.ts) emits it.
+      gex_walls: [
+        { strike: 6550, net_gex: 0.5, kind: "resistance", distance_pts: 100 },
+        { strike: 6500, net_gex: 5, kind: "resistance", distance_pts: 50 },
+        { strike: 6400, net_gex: -3, kind: "support", distance_pts: -50 },
+        { strike: 6350, net_gex: -0.4, kind: "support", distance_pts: -100 },
+      ],
+      flow_0dte_net: 250_000,
+      tide_bias: "bullish",
+      tide_net: 100,
+      nope: null,
+      tick: null,
+      trin: null,
+      add: null,
+      uw_iv_rank: null,
+      regime: null,
+      levels: null,
+      dark_pool: null,
+      spx_flows: null,
+      unified_tape: null,
+      net_prem_ticks: null,
+      news_headlines: null,
+      macro_events: null,
+      sector_heat: null,
+      leader_stocks: null,
+      oi_changes: null,
+      iv_term_structure: null,
+      vix_term: null,
+      greek_exposure: null,
+      market_breadth: null,
+      mag7_greek_flow: null,
+      macro_indicators: null,
+      strike_stacks: [],
+    },
+    playBadge: null,
+  });
+
+  assert.equal(read.available, true);
+  // Dominant call wall is $6500 (net_gex 5), not the farther, weaker $6550 decoy.
+  assert.equal(read.call_wall, 6500);
+  // Dominant put wall is $6400 (net_gex -3), not the farther, weaker $6350 decoy.
+  assert.equal(read.put_wall, 6400);
+});

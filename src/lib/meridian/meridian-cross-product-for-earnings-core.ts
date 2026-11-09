@@ -23,17 +23,45 @@ function fmtStrike(strike: number): string {
   return Number.isInteger(strike) ? String(strike) : strike.toFixed(1);
 }
 
+/**
+ * Pick the DOMINANT call/put wall out of the SPX desk's `gex_walls` ladder.
+ *
+ * THE DEFECT THIS REPLACES. `gex_walls` ships from `topGexWalls` (gamma-desk.ts) sorted by
+ * STRIKE DESCENDING — a display order, not a significance order — and that function's own doc
+ * comment is explicit that `kind` is purely GEOMETRIC ("strike > spot -> resistance, else
+ * support"), warning callers to derive the call/put wall from net_gex SIGN/magnitude, not from
+ * `kind` alone ("the component derives the call/put wall label from net_gex SIGN... geometry !=
+ * sign"). This function used to take the FIRST row of each kind in array order instead. Because
+ * the array is strike-descending, that is the FARTHEST resistance strike (the highest strike
+ * overall) paired with the NEAREST support strike (the highest strike among supports) — an
+ * asymmetric mis-pick. The SPX gamma ladder is built from a guaranteed max-|net_gex| anchor on
+ * each side PLUS several smaller proximity-fill strikes walked outward from spot — whenever the
+ * real dominant call wall sits close to spot and a weaker fill strike extends farther out above
+ * it, the old loop reported that farther, weaker decoy as the "call wall" to Meridian's SPX
+ * earnings card (`Walls {put_wall} – {call_wall}`), understating how close dealers are actually
+ * defending.
+ *
+ * THE FIX. Pick by the SAME definition used everywhere else this ladder's anchors are chosen
+ * (gamma-desk.ts's own `topGexWalls`, `meridian-event-expiry-core.ts`'s `scopeStructureToExpiry`):
+ * call wall = the resistance-kind strike with the largest POSITIVE net_gex; put wall = the
+ * support-kind strike with the largest-magnitude NEGATIVE net_gex. Array order no longer matters.
+ */
 function topGexWalls(walls: unknown): { call: number | null; put: number | null } {
   if (!Array.isArray(walls)) return { call: null, put: null };
-  let call: number | null = null;
-  let put: number | null = null;
+  let call: { strike: number; netGex: number } | null = null;
+  let put: { strike: number; netGex: number } | null = null;
   for (const row of walls as GexWall[]) {
     const strike = num(row?.strike);
-    if (strike == null) continue;
-    if (row.kind === "resistance" && call == null) call = strike;
-    if (row.kind === "support" && put == null) put = strike;
+    const netGex = num(row?.net_gex);
+    if (strike == null || netGex == null) continue;
+    if (row.kind === "resistance" && (call == null || netGex > call.netGex)) {
+      call = { strike, netGex };
+    }
+    if (row.kind === "support" && (put == null || netGex < put.netGex)) {
+      put = { strike, netGex };
+    }
   }
-  return { call, put };
+  return { call: call?.strike ?? null, put: put?.strike ?? null };
 }
 
 /** Map today's Night Hawk board snapshot → Meridian inline card for one ticker. */
