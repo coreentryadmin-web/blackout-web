@@ -2538,6 +2538,97 @@ test("composeSwingPlayBrief: Entry and Exit-policy rails evidence are anchored t
   assert.equal(railsEvidence!.provenance?.freshness, "stale", "exit-policy rails committed 2 real days ago must never read as freshly 'recent'");
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-09 — live repro `GET .../swing/play-brief?playId=
+// SWING:TSLA&ticker=TSLA&status=WATCH`, reproduced identically on SWING:MGNI): a PRE-COMMIT bucket
+// (WATCH/RESEARCH/SKIP) always has `committedAt: null`, so the "Setup score" fact's
+// `commitTimeProvenance` call fell straight to its `{asOf: ctx.asOf, freshness: "unknown"}`
+// fallback -- today's brief-read time, honest-sounding but wrong, since a pre-commit play's score
+// is the last-discovery-SCAN value (`computeLaneRank`, play-brief-lane-rank.ts), not something
+// recomputed on every read. The SAME envelope's sibling "Swing discovery scan" fact already cites
+// the real scan timestamp/freshness for the identical underlying data -- before this fix the two
+// facts about the exact same scan structurally disagreed. Proves the Setup-score fact now reuses
+// the scan's own asOf/freshness for a WATCH play with no committedAt, agreeing with its sibling.
+test("composeSwingPlayBrief: WATCH play's Setup-score evidence is anchored to the discovery scan, not today's read time, when committedAt is absent", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", score: 72, factors: [{ label: "Rel. strength", points: 18 }] }),
+    asOf: "2026-11-09 08:24 ET",
+    sessionDate: "2026-11-09",
+    scanAsOf: "2026-11-06T14:15:00.000Z", // a prior session day's scan -- genuinely stale
+    scanSessionDay: "2026-11-06",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const scoreEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Setup score:"));
+  const scanEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Swing discovery scan as of"));
+  assert.ok(scoreEvidence, "expected a citable setup-score evidence entry");
+  assert.ok(scanEvidence, "expected a citable swing-scan evidence entry");
+
+  // The two facts describe the exact same underlying scan snapshot -- they must agree.
+  assert.equal(scoreEvidence!.provenance?.asOf, scanEvidence!.provenance?.asOf);
+  assert.equal(scoreEvidence!.provenance?.freshness, scanEvidence!.provenance?.freshness);
+
+  assert.equal(scoreEvidence!.provenance?.asOf, "2026-11-06 09:15 ET", "must cite the real scan time, not today's read time");
+  assert.notEqual(scoreEvidence!.provenance?.asOf, ctx.asOf, "must not reuse the brief-read timestamp when a real scan timestamp is available");
+  assert.equal(scoreEvidence!.provenance?.freshness, "stale", "a prior-session-day scan must read stale, never the uninformative 'unknown'");
+});
+
+// Sibling of the test above: a same-session-day scan must read "recent", not "stale" -- proves
+// the fallback actually threads `staleScan`'s real verdict through, not a hardcoded freshness.
+test("composeSwingPlayBrief: WATCH play's Setup-score evidence reads 'recent' when the discovery scan is from today's own session", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({ status: "WATCH", score: 72, factors: [{ label: "Rel. strength", points: 18 }] }),
+    asOf: "2026-11-09 08:24 ET",
+    sessionDate: "2026-11-09",
+    scanAsOf: "2026-11-09T14:15:00.000Z", // same session day as asOf/sessionDate
+    scanSessionDay: "2026-11-09",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const scoreEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Setup score:"));
+  assert.ok(scoreEvidence, "expected a citable setup-score evidence entry");
+  assert.equal(scoreEvidence!.provenance?.asOf, "2026-11-09 09:15 ET");
+  assert.equal(scoreEvidence!.provenance?.freshness, "recent", "a same-session-day scan must not be mislabeled stale");
+});
+
+// Proves the fix does not regress the already-correct POST-commit path: when `committedAt` IS
+// present (OPEN/CLOSED), the Setup-score fact must keep anchoring to it, never to a live scan
+// snapshot that may be sitting right alongside it in the same context (an OPEN position's brief
+// still reads today's discovery scan for `bookContextSection`'s sibling comparison -- see this
+// function's own `isClosed`-gated "Swing discovery scan" fact above).
+test("composeSwingPlayBrief: Setup-score evidence still anchors to committedAt, not a live scan snapshot, once a play is committed", () => {
+  const committedAt = "2026-09-08T14:00:00.000Z"; // 2 real days before asOf below
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "OPEN",
+      score: 72,
+      factors: [{ label: "Rel. strength", points: 18 }],
+      committedAt,
+    }),
+    asOf: "2026-09-10 16:00 ET",
+    sessionDate: "2026-09-10",
+    scanAsOf: "2026-09-10T19:30:00.000Z", // today's live scan -- must NOT override committedAt
+    scanSessionDay: "2026-09-10",
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+
+  const brief = composeSwingPlayBrief(ctx);
+  const scoreEvidence = brief.envelope.evidence.find((e) => e.text.startsWith("Setup score:"));
+  assert.ok(scoreEvidence, "expected a citable setup-score evidence entry");
+  assert.equal(scoreEvidence!.provenance?.asOf, etStampFromIso(committedAt), "must still cite the real commit time, not the live scan snapshot");
+  assert.equal(scoreEvidence!.provenance?.freshness, "stale", "a score committed 2 real days ago must still read stale, not 'recent' off today's scan");
+});
+
 // BUG FIX (2026-10-26, Ask Largo standing mandate, live-production audit): the test above only
 // ever fixtured a NOT-yet-fired trim rung (`fired: false`), so it could never catch the evidence[]
 // feeder citing a dead rail as live. Once a trim has fired (the position has scaled out), the
