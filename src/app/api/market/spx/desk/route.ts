@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { loadSpxDesk, peekSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import { buildSpxDeskPulseMinimal, deskShellFromPulse } from "@/features/spx/lib/spx-desk";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { ServerCacheTimeoutError } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -42,6 +44,23 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     console.error("[market/spx/desk]", error);
+    // Cold replica / post-deploy: loadSpxDesk()'s withServerCache lane can throw
+    // ServerCacheTimeoutError when the full build and pulse fallback both exceed maxBlockMs.
+    // A 502 here is a false outage — /spx/play already degrades to 200 on the same error.
+    if (error instanceof ServerCacheTimeoutError) {
+      const stalePeek = await peekSpxDesk().catch(() => null);
+      if (stalePeek && stalePeek.price > 0 && stalePeek.source !== "none") {
+        return NextResponse.json(
+          roundFloats({ ...stalePeek, polled_at: stalePeek.polled_at ?? stalePeek.as_of }),
+          { headers: NO_STORE_HEADERS }
+        );
+      }
+      const shell = deskShellFromPulse(await buildSpxDeskPulseMinimal());
+      return NextResponse.json(
+        roundFloats({ ...shell, polled_at: shell.polled_at ?? shell.as_of }),
+        { headers: NO_STORE_HEADERS }
+      );
+    }
     return NextResponse.json({ available: false, error: "Desk build failed" }, { status: 502 });
   }
 }
