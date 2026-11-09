@@ -67,6 +67,29 @@ function parseDow(field: string): Set<number> | null {
       for (let v = Number(rangeMatch[1]); v <= Number(rangeMatch[2]); v++) out.add(v % 7);
       continue;
     }
+    // Named weekday RANGE ("MON-FRI", "SAT-SUN", case-insensitive) — the exact textual form
+    // several EventBridge schedules in this codebase's own comments are written in (see
+    // isDualBandMorningUtcSchedule's `dowField.toUpperCase() === "MON-FRI"` check a few lines
+    // down, and the `cron(*/5 11-21 ? * MON-FRI *)` style comments on heatmap-warm/uw-cache-
+    // refresh/bie-full-state-snapshot). Before this, a named range fell through to the bare
+    // `Number(part)` branch below, which parses "MON-FRI" as NaN — `out.add(NaN % 7)` — so the
+    // allowed-day set never matches any real weekday and every caller (enumerateFiresOnUtcDay →
+    // dailyFireBounds/lastExpectedCronFireUtc/nextExpectedCronFireUtc) silently computes ZERO
+    // fires, forever, for that schedule. That reads as "no fire is scheduled" rather than an
+    // error, which is the worst way for a staleness watchdog to fail: isInOffScheduleIdleGap's
+    // `if (!bounds) return true` then treats the job as permanently off-schedule-idle, so a
+    // genuinely stuck cron on this schedule would never alarm. Must stay the SAME non-wrapping
+    // range semantics the numeric `rangeMatch` branch above already has (no "FRI-MON wraps to
+    // Fri,Sat,Sun,Mon" support) rather than inventing new behavior nothing here has ever used.
+    const namedRangeMatch = part.match(/^([A-Za-z]{3})-([A-Za-z]{3})$/);
+    if (namedRangeMatch) {
+      const start = DOW_NAMES[namedRangeMatch[1]!.toUpperCase()];
+      const end = DOW_NAMES[namedRangeMatch[2]!.toUpperCase()];
+      if (start != null && end != null) {
+        for (let v = start; v <= end; v++) out.add(v % 7);
+        continue;
+      }
+    }
     const named = DOW_NAMES[part.toUpperCase()];
     if (named != null) {
       out.add(named);
