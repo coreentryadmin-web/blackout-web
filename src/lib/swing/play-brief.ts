@@ -1532,16 +1532,36 @@ function levelsFromContext(
 // stamped `freshness: "stale"` sitting right next to "Entry"/"Exit-policy rails" both stamped
 // `freshness: "recent"` for the SAME commit event. Factored into a shared helper so all three
 // facts derive from one `committedAt`-anchored rule rather than drifting independently again.
+// BUG FIX (Ask Largo standing mandate, 2026-11-09 — live repro `GET .../swing/play-brief?playId=
+// SWING:TSLA&ticker=TSLA&status=WATCH`, reproduced identically on SWING:MGNI): added the optional
+// `scanFallback` param. `committedAt` is null for every PRE-COMMIT bucket (WATCH/RESEARCH/SKIP),
+// and this function previously had no other anchor for those — it fell straight to
+// `{asOf: ctxAsOf, freshness: "unknown"}`, i.e. TODAY's brief-read time, for the Setup-score fact
+// below even though a pre-commit play's score is the last-discovery-scan value (`computeLaneRank`,
+// play-brief-lane-rank.ts, sources `playScore` straight off the same scan snapshot). The SAME
+// `evidenceFromContext()` already computes the real scan timestamp/staleness a few dozen lines up
+// for the sibling "Swing discovery scan" fact — net effect before this fix: one envelope carried
+// two facts about the exact same scan, one correctly stamped `freshness:"stale", asOf:"2026-11-06
+// 09:15 ET"`, its sibling Setup-score fact stamped `freshness:"unknown", asOf:"2026-11-09 08:24
+// ET"` (today, wrong) — a structured self-contradiction. `scanFallback` lets a caller offer that
+// same real scan-based provenance instead; it is only ever consulted when `committedAt` itself is
+// absent/unparseable, so the existing, correct post-commit (OPEN/CLOSED) behavior — and the two
+// other call sites (Entry, Exit-policy rails) that pass no 4th argument — are untouched.
 function commitTimeProvenance(
   committedAt: string | null | undefined,
   ctxAsOf: string,
   readMs: number,
+  scanFallback?: { asOf: string; freshness: BieFreshness } | null,
 ): { asOf: string; freshness: BieFreshness } {
   const committedMs = committedAt ? Date.parse(committedAt) : NaN;
-  return {
-    asOf: (committedAt ? etStampFromIso(committedAt) : null) ?? ctxAsOf,
-    freshness: Number.isFinite(committedMs) ? freshnessFromObservedMs(committedMs, readMs) : "unknown",
-  };
+  if (committedAt && Number.isFinite(committedMs)) {
+    return {
+      asOf: etStampFromIso(committedAt) ?? ctxAsOf,
+      freshness: freshnessFromObservedMs(committedMs, readMs),
+    };
+  }
+  if (scanFallback) return scanFallback;
+  return { asOf: ctxAsOf, freshness: "unknown" };
 }
 
 function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvidence[] {
@@ -1554,10 +1574,22 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
   // hidden `evidence[]`/markdown-footer array can't cite an irrelevant "recent" live scan as if
   // it supported a CLOSED play's claims (Ask Largo deep-dive, 2026-10-06, live repro: HUT).
   const isClosed = String(ctx.play.status ?? "").toUpperCase() === "CLOSED";
+  // Largo Ask standing mandate fix (2026-11-09): `scanEt`/`staleScan` hoisted out of the `if`
+  // below (that fact's own push is unchanged) so the Setup-score fact further down this function
+  // can reuse the SAME scan-based asOf/freshness as a `commitTimeProvenance` fallback for
+  // pre-commit (WATCH/RESEARCH/SKIP) buckets, instead of independently falling back to today's
+  // read time under an uninformative "unknown" — see `commitTimeProvenance`'s `scanFallback`
+  // param doc comment for the full story. `!isClosed` matches the gate immediately below (a
+  // CLOSED play's historical outcome has no bearing from today's live scan either way, same
+  // reasoning as that gate's own comment) — moot in practice since a CLOSED play always carries a
+  // real `committedAt` and never reaches the fallback branch regardless.
+  const scanEt = ctx.scanAsOf ? etStampFromIso(ctx.scanAsOf) : null;
+  const staleScan = Boolean(
+    ctx.scanSessionDay && ctx.sessionDate && ctx.scanSessionDay !== ctx.sessionDate,
+  );
+  const scanFallbackProvenance: { asOf: string; freshness: BieFreshness } | null =
+    scanEt != null && !isClosed ? { asOf: scanEt, freshness: staleScan ? "stale" : "recent" } : null;
   if (ctx.scanAsOf && !isClosed) {
-    const scanEt = etStampFromIso(ctx.scanAsOf);
-    const staleScan =
-      ctx.scanSessionDay && ctx.sessionDate && ctx.scanSessionDay !== ctx.sessionDate;
     out.push({
       kind: "fact",
       text: `Swing discovery scan as of ${scanEt}.`,
@@ -1990,12 +2022,23 @@ function evidenceFromContext(ctx: SwingPlayBriefContext, readMs: number): BieEvi
     // recomputed on a later brief read. A score committed days ago read `freshness: "recent"`
     // forever — the identical dead-wired-timestamp shape the WATCH-levels `pinnedProvenance` fix
     // above (2026-10-07) already corrected for `detectedAt`; same fix, anchored to `committedAt`.
-    // Falls back to `ctx.asOf`/"unknown" only when `committedAt` itself is absent, never silently
-    // reusing the wrong-but-present value.
+    // BUG FIX (Ask Largo standing mandate, 2026-11-09 — live repro SWING:TSLA/SWING:MGNI WATCH
+    // briefs): for a PRE-COMMIT bucket (WATCH/RESEARCH/SKIP), `committedAt` is always null — the
+    // score there is the last-discovery-SCAN value (`computeLaneRank`, play-brief-lane-rank.ts),
+    // not a commit-time snapshot at all, and the sibling "Swing discovery scan" fact a few dozen
+    // lines above already carries the honest asOf/freshness for that exact same scan. Passing
+    // `scanFallbackProvenance` lets this fact agree with its sibling instead of independently
+    // falling back to `ctx.asOf`/"unknown" (today, uninformative) whenever `committedAt` is
+    // absent — see `commitTimeProvenance`'s `scanFallback` param for the full story. Still falls
+    // back to `ctx.asOf`/"unknown" when NEITHER `committedAt` nor a scan snapshot is available,
+    // never silently reusing a wrong-but-present value.
     out.push({
       kind: "fact",
       text: `Setup score: ${Math.round(ctx.play.score)}${factorStr}.`,
-      provenance: { source: "Swing ledger", ...commitTimeProvenance(ctx.play.committedAt, ctx.asOf, readMs) },
+      provenance: {
+        source: "Swing ledger",
+        ...commitTimeProvenance(ctx.play.committedAt, ctx.asOf, readMs, scanFallbackProvenance),
+      },
     });
   }
   const swingArchetype = (SWING_ARCHETYPES as readonly string[]).includes(ctx.play.archetype ?? "")
