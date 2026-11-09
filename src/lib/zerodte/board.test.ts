@@ -579,6 +579,23 @@ test("ledger grade: a move inside the rounding band (rounds to move_pct 0) is a 
   assert.equal(justOutsideBand.direction_hit, true);
 });
 
+// Plain `Math.round(signed * 100) / 100` ties toward +Infinity (`Math.round(-312.5) === -312`
+// but `Math.round(312.5) === 313`), so a LONG and a SHORT setup graded off the exact same
+// underlying move at a rounding-tie boundary get different MAGNITUDES — the ledger's own
+// header comment says its honesty depends on exactly this kind of arithmetic being symmetric.
+// $160 -> $165 is a clean, floating-point-exact 3.125% move (5/160 = 0.03125 exactly in binary).
+test("ledger grade: mirror-image long/short setups at a rounding-tie boundary grade the same magnitude", () => {
+  const long = computeLedgerGrade("long", 160, 165);
+  const short = computeLedgerGrade("short", 160, 165);
+  assert.equal(long.move_pct, 3.13, "long setup: +3.125% rounds up to 3.13");
+  assert.equal(
+    short.move_pct,
+    -3.13,
+    "short setup graded on the identical underlying move must report the same magnitude, not -3.12"
+  );
+  assert.equal(Math.abs(long.move_pct!), Math.abs(short.move_pct!));
+});
+
 // ── earnings + hot-news flags ────────────────────────────────────────────────────
 
 test("earnings: only tickers reporting today/next session are flagged", () => {

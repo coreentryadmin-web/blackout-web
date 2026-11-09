@@ -2059,7 +2059,10 @@ export function computeLedgerGrade(
   // below as "breakeven — no directional edge", so a row showing 0 must never also show
   // a directional hit/miss. Basing both on the same rounded number makes that
   // impossible by construction.
-  const move_pct = Math.round(signed * 100) / 100;
+  // Round the MAGNITUDE then reapply sign — plain `Math.round(signed * 100) / 100` ties
+  // toward +Infinity (`Math.round(-312.5) === -312` but `Math.round(312.5) === 313`), which
+  // would grade a long and a short setup differently sized at the identical underlying move.
+  const move_pct = Math.sign(signed) * (Math.round(Math.abs(signed) * 100) / 100);
   return {
     close_price: closePrice,
     move_pct,
