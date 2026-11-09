@@ -317,9 +317,24 @@ export async function buildPlayTechnicals(
   }
 
   const today = todayEtYmd();
+  // ERROR ISOLATION (2026-11-09 fix): fetchIndexRsi already guards itself (try/catch -> null on
+  // failure, see its own comment in polygon.ts) but fetchIndexMinuteBars does not — a thrown
+  // upstream error (a Polygon 403/429, or the rate-limiter's circuit-open guard) used to
+  // propagate straight out of this Promise.all, past buildPlayTechnicals, past
+  // evaluateSpxPlayState (whose caller only has try{...}finally{...}, no catch), and into
+  // withServerCache's internal Promise.race — where a fast rejection wins the race before the
+  // timeout branch (the only one that engages the configured `fallback`) ever fires, skipping
+  // the fallback entirely. Each leg now degrades independently to the SAME sentinel the rest of
+  // this function already treats as "no data" — `[]` for bars (which the existing
+  // `if (!bars.length) return empty;` check below already turns into the graceful
+  // `available:false` shape) and `null` for RSI (mirroring fetchIndexRsi's own internal guard) —
+  // so a thrown fetch produces the exact same downstream behavior as a legitimately-empty one,
+  // instead of crashing the whole evaluation. This is the shared function both the member-read
+  // path (spx-service.ts) and the cron-write path (cron/spx-evaluate/route.ts) call, so fixing it
+  // here covers both call sites without touching either of them.
   const [bars, indexRsi] = await Promise.all([
-    fetchIndexMinuteBars(SPX, today, today),
-    fetchIndexRsi(SPX, 14, "minute"),
+    fetchIndexMinuteBars(SPX, today, today).catch(() => []),
+    fetchIndexRsi(SPX, 14, "minute").catch(() => null),
   ]);
 
   if (!bars.length) return empty;
