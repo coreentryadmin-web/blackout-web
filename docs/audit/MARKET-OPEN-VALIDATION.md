@@ -10443,6 +10443,40 @@ and `/play` are actually serving a real price again
   an hour-long window after recovery. No live state captured pre-fix to diff against — there is
   no way to force a one-sided `/fed/v1/*` failure safely against production from this sandbox.
 
+## WATCH LIST — 2026-11-09 (GEX heatmap chain-less negative cache could pin a transient Polygon/UW fetch failure for 10 minutes, `fix/gex-negative-cache-transient-failure`) — re-check during the next RTH session, especially any UW rate-limiter pressure window
+
+- **What was broken**: `buildGexHeatmapUncached` (`src/lib/providers/polygon-options-gex.ts`)
+  marks a root "confirmed chain-less" (`markNoChainTicker`, 600s negative cache) whenever the
+  banded Polygon chain fetch AND the UW spot-exposures fallback both returned zero
+  contracts/strikes — built 2026-09-18 to stop two genuinely dead tickers (ACEEU/RWTN) hammering
+  both upstreams every ~75-90s for 90+ minutes. But "both returned zero" was, pre-fix, the exact
+  same observable outcome whether the chain was genuinely confirmed empty OR the fetch simply
+  never got an answer (rate-limited, 403'd, timed out, circuit breaker open). A single transient
+  blip on a perfectly normal, liquid ticker — the same kind of blip this repo's own CLAUDE.md
+  already documents happening live during RTH (UW rate-limiter queue-timeout surges, 2026-09-17)
+  — could get that ticker's heatmap pinned to an all-empty matrix for a full 10 minutes.
+- **Fix**: threaded a `fetchFailed`/`failed` boolean through `fetchHeatmapBandLoHi`/
+  `fetchHeatmapBandUnfiltered`/`fetchHeatmapBand` (Polygon side) and a new
+  `fetchUwSpotExposuresByStrikeResult` (UW side, same Result-shape precedent as
+  `fetchUwTickerFlowAlertsResult`, #7788), then gated `markNoChainTicker` on
+  `!chainResult.fetchFailed && !uwResult.fetchFailed`. A transient failure on either side now
+  falls through to the normal short empty-heatmap path instead of the 10-minute negative cache.
+  The original ACEEU/RWTN fix is unchanged — a genuinely dead/no-options root still gets
+  negative-cached exactly as before, since its chain requests resolve with confirmed (non-null)
+  empty responses, not failures. RED→GREEN confirmed via `git stash` isolating the two source
+  files (140 tests: 135 pass/5 fail pre-fix including a `TypeError: ... is not a function` for
+  the not-yet-existing `fetchUwSpotExposuresByStrikeResult`, 140/140 pass post-fix); `tsc
+  --noEmit` clean; `eslint` clean on all four touched files.
+- **Specific thing to check once live**: this is hard to trigger deliberately (needs a genuine
+  transient Polygon/UW failure on a thin-chain ticker at the exact moment its matrix rebuilds),
+  so the realistic validation is passive, same as the sibling financials-bundle entry above: next
+  time CloudWatch shows a UW rate-limiter queue-timeout surge or a Polygon 403/429 blip during
+  RTH (per CLAUDE.md's "UW flow-alert audit backtests share the SAME production rate limiter"
+  and 2026-11-07/08 Polygon entitlement notes), check the GEX heatmap for any ticker caught in
+  that window — it should recover to a real, non-empty matrix on the very next ordinary rebuild
+  cycle (the Redis matrix TTL, ~90s) once the upstream call starts succeeding again, rather than
+  staying pinned empty for up to 10 minutes. No live state captured pre-fix to diff against — ACEEU/RWTN themselves (the tickers that motivated the original 600s cache) should be unaffected either way, since a genuinely dead ticker's fetches are confirmed-empty, not failed.
+
 ## WATCH LIST — 2026-11-09 (`fetchPolygonIvTermStructure` could cache a mid-pagination fetch failure as a complete IV term structure for 5 minutes, `fix/iv-term-cache-fetch-failure`) — re-check after the next Polygon/Massive blip mid-chain for a wide-expiry name (SPX/SPY/QQQ)
 
 - **What was broken**: `src/lib/providers/polygon-options-gex.ts`'s `fetchPolygonIvTermStructure`

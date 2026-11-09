@@ -2319,7 +2319,7 @@ async function fetchHeatmapBandLoHi(
   underlying: string,
   lo: number,
   hi: number
-): Promise<{ contracts: ChainContract[]; truncated: boolean }> {
+): Promise<{ contracts: ChainContract[]; truncated: boolean; fetchFailed: boolean }> {
   const params = new URLSearchParams({
     "strike_price.gte": String(lo),
     "strike_price.lte": String(hi),
@@ -2329,6 +2329,13 @@ async function fetchHeatmapBandLoHi(
 
   const out: ChainContract[] = [];
   let page = await polygonFetchUrl(`/v3/snapshot/options/${underlying}?${params}`);
+  // `polygonFetchUrl` collapses "not configured", any non-2xx (403/429/5xx) and a thrown network
+  // error into the IDENTICAL `null` as... nothing — it never represents "confirmed zero results"
+  // that way (a real 200 with an empty chain still returns a parsed body with `results: []`).
+  // So a null on this FIRST request means we never got an answer at all — a transient/unknown
+  // outcome, not evidence the chain is empty. A null on a LATER page (after `next_url`) just
+  // stops pagination early; the contracts already collected on earlier pages are still real.
+  const fetchFailed = page == null;
   let guard = 0;
   while (page && guard < HEATMAP_PAGE_GUARD) {
     out.push(...(page.results ?? []));
@@ -2338,7 +2345,7 @@ async function fetchHeatmapBandLoHi(
   }
   const truncated = !!page?.next_url;
   if (truncated) warnChainTruncated("fetchHeatmapBand", underlying, guard);
-  return { contracts: out, truncated };
+  return { contracts: out, truncated, fetchFailed };
 }
 
 /**
@@ -2347,10 +2354,17 @@ async function fetchHeatmapBandLoHi(
  * tiny low-priced chains. Megacap names (NFLX, GOOGL) escalate here too when their
  * banded pull returns a sparse ladder — see HEATMAP_UNFILTERED_PAGE_GUARD below.
  */
-async function fetchHeatmapBandUnfiltered(underlying: string): Promise<{ contracts: ChainContract[]; truncated: boolean }> {
+async function fetchHeatmapBandUnfiltered(underlying: string): Promise<{ contracts: ChainContract[]; truncated: boolean; fetchFailed: boolean }> {
   const params = new URLSearchParams({ limit: "250", apiKey: KEY });
   const out: ChainContract[] = [];
   let page = await polygonFetchUrl(`/v3/snapshot/options/${underlying}?${params}`);
+  // Same "did the FIRST request ever get an answer" signal as fetchHeatmapBandLoHi above — this
+  // is the DECISIVE full-chain check for `buildGexHeatmapUncached`'s chain-less negative cache
+  // (see NO_CHAIN_NEGATIVE_TTL_SEC's doc comment), since shouldEscalateToFullChain always fires
+  // when the banded pull comes back with 0 strikes, so a null here is the one signal available
+  // that distinguishes "Polygon confirmed this root has no listed contracts at all" from "Polygon
+  // never actually answered this request".
+  const fetchFailed = page == null;
   let guard = 0;
   while (page && guard < HEATMAP_UNFILTERED_PAGE_GUARD) {
     out.push(...(page.results ?? []));
@@ -2360,18 +2374,19 @@ async function fetchHeatmapBandUnfiltered(underlying: string): Promise<{ contrac
   }
   const truncated = !!page?.next_url;
   if (truncated) warnChainTruncated("fetchHeatmapBandUnfiltered", underlying, guard);
-  return { contracts: out, truncated };
+  return { contracts: out, truncated, fetchFailed };
 }
 
 async function fetchHeatmapBand(
   underlying: string,
   spot: number,
   root: string
-): Promise<{ contracts: ChainContract[]; truncated: boolean }> {
+): Promise<{ contracts: ChainContract[]; truncated: boolean; fetchFailed: boolean }> {
   const { lo, hi } = resolveHeatmapStrikeBounds(spot, root);
   let result = await fetchHeatmapBandLoHi(underlying, lo, hi);
   let contracts = result.contracts;
   let truncated = result.truncated;
+  let fetchFailed = result.fetchFailed;
 
   // A thin ladder means the band missed most of the chain — escalate at ANY price, not just
   // NIO-class. See shouldEscalateToFullChain: ASTS ($71.66) returned 30 of its 119 listed strikes,
@@ -2392,6 +2407,7 @@ async function fetchHeatmapBand(
     if (fullStrikes > inBand) {
       contracts = full;
       truncated = fullResult.truncated;
+      fetchFailed = fullResult.fetchFailed;
       console.info(
         `[polygon-gex] full-chain escalation ADOPTED for ${underlying}: ${inBand} -> ${fullStrikes} strikes ` +
           `(spot ${spot.toFixed(2)}, band ${lo}-${hi}).`
@@ -2402,6 +2418,15 @@ async function fetchHeatmapBand(
       // genuinely already held the chain. Without this line the two look identical from the API.
       // If escalation was attempted, use the unfiltered truncation status; otherwise keep the banded status.
       truncated = fullResult.truncated;
+      // DECISIVE for the chain-less negative cache: shouldEscalateToFullChain always fires when
+      // the band comes back with 0 strikes (both its thresholds are positive), so whenever
+      // `contracts` ends up empty, this branch ran and `fullResult.fetchFailed` is the ONLY signal
+      // that tells "Polygon confirmed the full chain is empty too" apart from "the full-chain
+      // request itself never got an answer". Override rather than keep the banded fetch's own
+      // fetchFailed — a confirmed-empty full-chain response settles the question even if the band
+      // fetch failed, and a FAILED full-chain response must not be read as confirmation even if
+      // the band fetch itself happened to succeed empty.
+      fetchFailed = fullResult.fetchFailed;
       console.warn(
         `[polygon-gex] full-chain escalation NO-OP for ${underlying}: band gave ${inBand} strikes, ` +
           `unfiltered pull gave ${fullStrikes} — keeping the banded ladder. If ${underlying} is known ` +
@@ -2410,7 +2435,7 @@ async function fetchHeatmapBand(
     }
   }
 
-  return { contracts, truncated };
+  return { contracts, truncated, fetchFailed };
 }
 
 
@@ -3223,11 +3248,17 @@ async function buildGexHeatmapFromUwStrikeExposures(
   now: number,
   cacheKey: string,
   ttlMs: number
-): Promise<GexHeatmap | null> {
+): Promise<{ heatmap: GexHeatmap | null; fetchFailed: boolean }> {
   try {
-    const { fetchUwSpotExposuresByStrike } = await import("./unusual-whales");
-    const rows = await fetchUwSpotExposuresByStrike(root, 500);
-    if (!rows?.length) return null;
+    const { fetchUwSpotExposuresByStrikeResult } = await import("./unusual-whales");
+    // `fetchUwSpotExposuresByStrikeResult`'s `failed` flag is the one signal that distinguishes
+    // "UW confirmed there are no exposures for this root" from "the UW call itself never got an
+    // answer" (403 / circuit-breaker-open / exhausted retries) — see that function's own doc
+    // comment. The plain `fetchUwSpotExposuresByStrike` this replaces could not tell those apart,
+    // which is exactly the ambiguity `buildGexHeatmapUncached`'s chain-less negative cache must
+    // not inherit (see NO_CHAIN_NEGATIVE_TTL_SEC's doc comment).
+    const { rows, failed } = await fetchUwSpotExposuresByStrikeResult(root, 500);
+    if (!rows?.length) return { heatmap: null, fetchFailed: failed };
 
     const today = todayEtYmd();
     const { lo, hi } = resolveHeatmapStrikeBounds(spot, root);
@@ -3284,7 +3315,9 @@ async function buildGexHeatmapFromUwStrikeExposures(
       totalCharm += netC;
     }
 
-    if (!strikes.length) return null;
+    // UW genuinely answered here (rows.length > 0, above) — this is a real filter outcome (every
+    // row fell outside the strike band or netted to zero gamma), not a fetch failure.
+    if (!strikes.length) return { heatmap: null, fetchFailed: false };
     strikes.sort((a, b) => b - a);
 
     const gexFlip = computeZeroGammaFlip(gexStrikeTotals, spot);
@@ -3376,13 +3409,17 @@ async function buildGexHeatmapFromUwStrikeExposures(
     console.warn(
       `[gex-heatmap] built UW strike-exposure fallback matrix for ${root} @ ${spot} (${strikes.length} strikes) — Polygon chain unavailable`
     );
-    return heatmap;
+    return { heatmap, fetchFailed: false };
   } catch (err) {
     console.warn(
       `[gex-heatmap] UW strike-exposure fallback failed for ${root}:`,
       err instanceof Error ? err.message : String(err)
     );
-    return null;
+    // An exception reaching here is something going wrong mid-build (not the exposure fetch
+    // itself, which already resolves its own failures to `failed:true` without throwing) — treat
+    // it the same as a fetch failure for the negative-cache decision below rather than risk
+    // marking a root chain-less off a local bug.
+    return { heatmap: null, fetchFailed: true };
   }
 }
 
@@ -3452,7 +3489,7 @@ async function buildGexHeatmapUncached(
     console.warn(
       `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — trying UW strike-exposure fallback.`
     );
-    const uwMatrix = await buildGexHeatmapFromUwStrikeExposures(
+    const uwResult = await buildGexHeatmapFromUwStrikeExposures(
       root,
       spot,
       changePct,
@@ -3460,12 +3497,21 @@ async function buildGexHeatmapUncached(
       cacheKey,
       ttlMs
     );
-    if (uwMatrix) return uwMatrix;
-    // Both Polygon AND UW came up empty for this root — confirmed chain-less, not a one-off
-    // blip. Mark the negative cache so the NEXT several rebuild cycles (Redis matrix TTL,
-    // ~90s each by default) skip straight past both upstream fetches instead of re-proving the
-    // same empty result over and over. See NO_CHAIN_NEGATIVE_TTL_SEC's doc comment.
-    markNoChainTicker(root, now);
+    if (uwResult.heatmap) return uwResult.heatmap;
+    // Both Polygon AND UW came up empty for this root — but ONLY mark the negative cache when
+    // BOTH upstreams are CONFIRMED empty (chainResult.fetchFailed / uwResult.fetchFailed both
+    // false). A 0-contracts result can also mean the Polygon full-chain request or the UW
+    // exposures request simply never got an answer (403/429/5xx/timeout/circuit-breaker-open —
+    // see fetchHeatmapBandUnfiltered's and fetchUwSpotExposuresByStrikeResult's own doc comments
+    // for why `null`/`failed` is indistinguishable from "confirmed empty" one level down without
+    // this flag) — pinning THAT for 10 minutes would reintroduce exactly the kind of silent,
+    // long-lived false negative this negative cache exists to avoid, just shifted from "never
+    // negative-cache a transient blip" to "confidently negative-cache one". A transient failure
+    // instead falls through to the normal (short) empty-heatmap path below and is retried on the
+    // next ordinary rebuild cycle, same as before this negative cache existed.
+    if (!chainResult.fetchFailed && !uwResult.fetchFailed) {
+      markNoChainTicker(root, now);
+    }
     return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs, spotSource });
   }
 

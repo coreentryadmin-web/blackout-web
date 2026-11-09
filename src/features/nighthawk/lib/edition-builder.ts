@@ -879,20 +879,12 @@ export async function buildEveningEdition(opts?: {
       console.info("[nighthawk/edition] stage_candidates: selection");
       candidates = await extractMultiSourceCandidates(ctx, MAX_CANDIDATES, editionFor);
       if (!candidates.length) {
-        const reason = zeroCandidatesRecapReason({
-          flows: ctx.stock_flows.length,
-          oi: ctx.market_oi_change.length,
-          unusual: ctx.unusual_trades.length,
-          catalyst: ctx.after_hours_catalysts.length,
-          predictions: ctx.predictions_consensus.length,
-          movers: ctx.market_movers.length,
-          breakout: ctx.breakout_movers.length,
-        });
-        console.warn(`[nighthawk/edition] stage_candidates zeroed — recap-only fallback: ${reason}`);
-        funnel.candidates = 0;
-        funnel.published = 0;
-        logFunnel(editionFor, funnel);
-        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason, {
+        // Assembled ONCE and threaded into both the member/Largo-facing reason string and the
+        // internal ops Discord alert below — audit finding (2026-11-09, narrower follow-up to
+        // #7745): these flags already reached the ops alert, but a failed lane's "0" and a
+        // genuinely-empty lane's "0" were indistinguishable in `reason`, the ONLY one of the two
+        // a member or Largo's `get_nighthawk_edition` tool ever sees.
+        const laneFetchFailures: DiscoveryLaneFetchFailures = {
           flow_fetch_failed: ctx.flow_fetch_failed,
           oi_change_fetch_failed: ctx.oi_change_fetch_failed,
           unusual_trades_fetch_failed: ctx.unusual_trades_fetch_failed,
@@ -900,7 +892,24 @@ export async function buildEveningEdition(opts?: {
           predictions_fetch_failed: ctx.predictions_fetch_failed,
           movers_fetch_failed: ctx.movers_fetch_failed,
           breakout_fetch_failed: ctx.breakout_fetch_failed,
-        });
+        };
+        const reason = zeroCandidatesRecapReason(
+          {
+            flows: ctx.stock_flows.length,
+            oi: ctx.market_oi_change.length,
+            unusual: ctx.unusual_trades.length,
+            catalyst: ctx.after_hours_catalysts.length,
+            predictions: ctx.predictions_consensus.length,
+            movers: ctx.market_movers.length,
+            breakout: ctx.breakout_movers.length,
+          },
+          laneFetchFailures
+        );
+        console.warn(`[nighthawk/edition] stage_candidates zeroed — recap-only fallback: ${reason}`);
+        funnel.candidates = 0;
+        funnel.published = 0;
+        logFunnel(editionFor, funnel);
+        await alertRecapOnlyIfAnomalous(editionFor, funnel, reason, laneFetchFailures);
         await publishRecapOnlyEdition({ editionFor, ctx, reason, candidates: 0, checkpointing, force: Boolean(opts?.force), funnel });
         return {
           ok: true,
