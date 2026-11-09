@@ -167,6 +167,33 @@ test("empty levels or spot<=0 returns []", () => {
   assert.deepEqual(topGexWalls([lvl(5000, 100)], 0, 10), []);
 });
 
+// --- distance_pts: sign-bias rounding tie (same bug class as fmtPct/shift-math/signPct) ---
+//
+// `Math.round((strike - spot) * 100) / 100` rounds the SIGNED cents value directly.
+// `Math.round` ties toward +Infinity (`Math.round(-2.5) === -2` but `Math.round(2.5) === 3`),
+// so a strike sitting exactly on a half-cent tie below spot gets a SMALLER magnitude than the
+// mirror-image strike the same distance above spot. `distance_pts` is served straight into
+// Largo's Night Hawk positioning text with an explicit sign (`positioning.ts`:
+// `w.distance_pts >= 0 ? "+" : ""`), so this asymmetry reaches a human-read "pts from spot"
+// number, not just an internal float.
+test("distance_pts: a tie above spot and the mirror-image tie below spot round to the SAME magnitude", () => {
+  const spot = 7542.375;
+  const above = 7545; // 7545 - 7542.375 = 2.625 -> *100 = 262.5 (a tie)
+  const below = 7539.75; // 7539.75 - 7542.375 = -2.625 -> *100 = -262.5 (the mirror tie)
+  const walls = topGexWalls([lvl(above, 500), lvl(below, -500)], spot, 10);
+  const wAbove = walls.find((w) => w.strike === above)!;
+  const wBelow = walls.find((w) => w.strike === below)!;
+  assert.equal(wAbove.distance_pts, 2.63, "positive tie rounds away from zero");
+  // RED before the fix: plain Math.round(-262.5) === -262 gives -2.62 (a SMALLER magnitude
+  // than the mirrored +2.63), not the symmetric -2.63.
+  assert.equal(
+    Math.abs(wBelow.distance_pts),
+    Math.abs(wAbove.distance_pts),
+    "mirror-image ties must round to the same magnitude regardless of sign"
+  );
+  assert.equal(wBelow.distance_pts, -2.63);
+});
+
 test("gammaRegimeWithHysteresis: holds prior regime until buffer cleared", () => {
   const flip = 6000;
   assert.equal(gammaRegime(6001, flip), "mean_revert");
