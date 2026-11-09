@@ -30,6 +30,11 @@ test("full-site-deep-audit PREMIUM-CAP check uses the real $35/share cap, not a 
   assert.equal(/ep > 20\)/.test(src), false);
 });
 
+test("full-site-deep-audit does not P0-fail missing desk spot off-hours", () => {
+  assert.match(src, /inRthOpenWindow/);
+  assert.match(src, /spot-off-hours/);
+});
+
 test("full-site-deep-audit SPX oracle follows data-validator RTH/off-hours ground truth", () => {
   assert.match(src, /spxOracleVerdict/);
   assert.match(src, /marketstatus\/now/);

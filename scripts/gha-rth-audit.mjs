@@ -24,6 +24,7 @@ import {
   isTransientAuditPgError,
   resolveAuditDbUrl,
 } from "./pg-audit.mjs";
+import { cronWatchdogGhaVerdict } from "./lib/gha-cron-watchdog-eval.mjs";
 import { isCronRunHealthyStatus, probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
@@ -208,9 +209,17 @@ async function cronHttpChecks() {
       } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
-      } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        failures.push(`${label}: ${(json.problem_keys ?? []).join(", ")}`);
-        console.log(`  ✗ ${label} → stale: ${(json.problem_keys ?? []).join(", ")}`);
+      } else if (label === "cron-watchdog") {
+        const v = cronWatchdogGhaVerdict(json);
+        if (v.fail) {
+          const msg = v.failures.join("; ");
+          failures.push(`${label}: ${msg}`);
+          console.log(`  ✗ ${label} → ${msg}`);
+        } else if (v.warnKeys.length > 0) {
+          console.log(`  ⚠ ${label} → non-RTH stale (P1, not failing run): ${v.warnKeys.join(", ")}`);
+        } else {
+          console.log(`  ✓ ${label} → ok`);
+        }
       } else {
         console.log(`  ✓ ${label} → ok`);
       }

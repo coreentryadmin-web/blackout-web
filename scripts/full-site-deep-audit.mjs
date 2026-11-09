@@ -5,7 +5,7 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 
@@ -191,8 +191,16 @@ async function auditSpxDesk() {
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  else ok("spx-desk", "spot", String(spot));
+  const rthOpen = inRthOpenWindow();
+  if (!(spot > 0)) {
+    // The 16:30 ET scheduled deep-audit slot is intentionally post-close (inRthOpenWindow ends 16:15).
+    // A zero/missing desk spot off-hours is expected — only P0 during RTH when members see the desk.
+    if (!rthOpen) {
+      ok("spx-desk", "spot-off-hours", `spot absent off-hours (got ${spot ?? "—"})`);
+      return;
+    }
+    fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
+  } else ok("spx-desk", "spot", String(spot));
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
