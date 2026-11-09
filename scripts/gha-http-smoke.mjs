@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Minimal prod HTTP smoke for GitHub Actions (no secrets except optional CRON). */
 import { evaluateSpxDeskSmoke } from "./lib/gha-desk-smoke-eval.mjs";
+import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const CRON = process.env.CRON_SECRET?.trim() ?? "";
@@ -33,6 +34,25 @@ async function fetchJson(path, headers = {}) {
     body = text.slice(0, 120);
   }
   return { status, body };
+}
+
+/** Desk build can 502 briefly on fresh ECS tasks while Redis/Postgres warm — retry 5xx only here. */
+async function fetchDeskJson(headers = {}) {
+  const retries = Number(process.env.GHA_SMOKE_DESK_RETRIES ?? 5);
+  const baseDelayMs = Number(process.env.GHA_SMOKE_DESK_RETRY_DELAY_MS ?? 4000);
+  const res = await fetchRetry(
+    `${BASE}/api/market/spx/desk`,
+    { headers },
+    { retries, baseDelayMs, timeoutMs: 90_000 }
+  );
+  const text = await res.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text.slice(0, 120);
+  }
+  return { status: res.status, body };
 }
 
 const seoTextChecks = [
@@ -72,7 +92,7 @@ for (const c of seoTextChecks) {
 }
 
 if (CRON) {
-  const { status, body } = await fetchJson("/api/market/spx/desk", {
+  const { status, body } = await fetchDeskJson({
     Authorization: `Bearer ${CRON}`,
   });
   const verdict = evaluateSpxDeskSmoke({ status, body });

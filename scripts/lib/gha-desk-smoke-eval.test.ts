@@ -43,6 +43,15 @@ test("evaluateSpxDeskSmoke: cron secret drift is warn", () => {
   assert.equal(v.outcome, "warn");
 });
 
+test("evaluateSpxDeskSmoke: desk build 502 fails", () => {
+  const v = evaluateSpxDeskSmoke({
+    status: 502,
+    body: { available: false, error: "Desk build failed" },
+  });
+  assert.equal(v.outcome, "fail");
+  assert.match(v.message, /502/);
+});
+
 test("isApproxUsCashRth: Saturday is false", () => {
   assert.equal(isApproxUsCashRth(SATURDAY_MIDDAY_ET), false);
 });
