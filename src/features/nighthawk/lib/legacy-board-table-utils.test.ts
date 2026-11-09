@@ -209,6 +209,53 @@ test("legacyBoardCalendarBuckets: an all-stock-only day (zero real premium data)
   assert.equal(buckets[0]?.net_premium_pct, 0, "no real premium data that day — same honest-zero fallback as the no-resolution case");
 });
 
+// BUG FIX (found 2026-11-09): `tone` used to be derived from the day's raw premium SUM
+// (`net`), not the AVERAGE that `net_premium_pct` reports and VectorBoardCalendar.tsx colors by.
+// A sum scales with row count, so a day with enough small-premium rows can trip the sum past the
+// +-2 deadband while the actual average rounds to "+0%" — the calendar cell would render
+// bullish-green (or bearish-red) over a tile whose own text reads "+0%", a direct, member-visible
+// contradiction. 10 rows at a uniform +0.3% each is the minimal repro: sum = 3.0 (> 2, tripping
+// the old "up" branch) while the average is 0.3, which rounds to 0.
+test("legacyBoardCalendarBuckets: tone tracks the AVERAGE premium, not a row-count-scaled SUM", () => {
+  const plays = Array.from({ length: 10 }, (_, i) =>
+    basePlay({ id: `p${i}`, ticker: `T${i}`, status: "OPEN", pnlPct: 0.3 })
+  );
+  const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-20"));
+  const buckets = legacyBoardCalendarBuckets(rows, ["2026-09-20"]);
+  const today = buckets[0]!;
+  assert.equal(today.net_premium_pct, 0, "fixture sanity: the honest average (+0.3%) rounds to +0%");
+  assert.equal(
+    today.tone,
+    "flat",
+    `tone must be "flat" to match a tile reading "+0%" — a day with 10 rows at +0.3% each ` +
+      `used to sum to +3.0 and trip the "up" (bullish-green) branch, coloring a visually flat day`
+  );
+});
+
+// Mirror on the loss side: 10 rows at a uniform -0.3% each — sum = -3.0 (< -2, tripping the old
+// "down" branch) while the average is -0.3, rounding to -0 (displayed "+0%", same as the gain
+// side — net_premium_pct never prints a signed zero).
+test("legacyBoardCalendarBuckets: tone tracks the AVERAGE premium on the loss side too", () => {
+  const plays = Array.from({ length: 10 }, (_, i) =>
+    basePlay({ id: `n${i}`, ticker: `U${i}`, status: "OPEN", pnlPct: -0.3 })
+  );
+  const rows = plays.map((p) => terminalPlayToLegacyRow(p, "2026-09-21"));
+  const buckets = legacyBoardCalendarBuckets(rows, ["2026-09-21"]);
+  const today = buckets[0]!;
+  // `Math.sign(-0.3) * Math.round(0.3)` is `-1 * 0 === -0` — a signed-zero float that is `===` 0
+  // (and renders as "+0%" through VectorBoardCalendar.tsx's `fmtSigned`, since template-literal
+  // interpolation of `-0` yields the string `"0"`), but which `assert.equal` from
+  // `node:assert/strict` treats as distinct from `0` via `Object.is`. `Math.abs` sidesteps that
+  // without weakening what the fixture is actually asserting (a rounded-to-zero average).
+  assert.equal(Math.abs(today.net_premium_pct), 0, "fixture sanity: the honest average (-0.3%) rounds to -0% (prints as +0%)");
+  assert.equal(
+    today.tone,
+    "flat",
+    `tone must be "flat" to match a tile reading "+0%" — a day with 10 rows at -0.3% each ` +
+      `used to sum to -3.0 and trip the "down" (bearish-red) branch, coloring a visually flat day`
+  );
+});
+
 // Bug fixed 2026-09-16 (live audit): legacyBoardExportCsv used JSON.stringify as a stand-in for
 // CSV field quoting. JSON's `\"` escape is not valid CSV (RFC 4180 requires doubling an embedded
 // quote as `""`), so any field containing a literal double quote corrupted the exported row — a
