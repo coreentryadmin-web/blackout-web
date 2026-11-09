@@ -55,6 +55,73 @@ test("buildPlayTerminalLines: structure HOLD includes VWAP and WHY HOLD", () => 
   assert.match(text, /Gamma/);
 });
 
+test("buildPlayTerminalLines: 0DTE flow net just under $1M promotes to M, never '1000K'", () => {
+  // Round-first-then-promote bug: moneyShort() used to pick the K/M unit by comparing the
+  // RAW value against 1_000_000, then round INSIDE the K branch — so a net premium like
+  // 999,600 (abs < 1_000_000, picks the K branch) rounded to Math.round(999.6) = 1000 and
+  // rendered "$1000K" instead of promoting to "$1.0M". `flow_0dte_net` is an unbounded signed
+  // net-premium sum (see spx-play-terminal-lines.ts's moneyShort header / platform/types.ts),
+  // so a real session can land exactly in this boundary band.
+  const play = {
+    action: "HOLD",
+    direction: "long",
+    headline: "HOLD",
+    thesis: "",
+    factors: [],
+    levels: { entry: 7450, stop: 7440, target: 7470, invalidation: "" },
+    confirmations: null,
+    open_play: null,
+  } as unknown as SpxPlayPayload;
+
+  const lines = buildPlayTerminalLines({
+    selected: {
+      id: "structure-open",
+      chip: { id: "structure-open", column: "open", kind: "structure", label: "7450 C", prefix: "STR", tone: "call" },
+      stages: ["hold", "trim", "sell"],
+      activeStage: "hold",
+      trimDone: false,
+    },
+    play,
+    lotto: null,
+    powerHour: null,
+    desk: {
+      price: 7460,
+      vwap: 7450,
+      above_vwap: true,
+      flow_0dte_net: 999_600,
+    } as never,
+    confirmationLayer: null,
+  });
+
+  const text = lines.map((l) => l.text).join("\n");
+  assert.match(text, /0DTE flow net \$1\.0M/);
+  assert.doesNotMatch(text, /1000K/);
+
+  // Negative side of the same boundary.
+  const linesNeg = buildPlayTerminalLines({
+    selected: {
+      id: "structure-open",
+      chip: { id: "structure-open", column: "open", kind: "structure", label: "7450 C", prefix: "STR", tone: "call" },
+      stages: ["hold", "trim", "sell"],
+      activeStage: "hold",
+      trimDone: false,
+    },
+    play,
+    lotto: null,
+    powerHour: null,
+    desk: {
+      price: 7460,
+      vwap: 7450,
+      above_vwap: true,
+      flow_0dte_net: -999_600,
+    } as never,
+    confirmationLayer: null,
+  });
+  const textNeg = linesNeg.map((l) => l.text).join("\n");
+  assert.match(textNeg, /0DTE flow net \$-1\.0M/);
+  assert.doesNotMatch(textNeg, /1000K/);
+});
+
 test("buildPlaybookTerminalLines: empty panel shows awaiting copy when session live", () => {
   const lines = buildPlaybookTerminalLines(null, true);
   const text = lines.map((l) => l.text).join("\n");
