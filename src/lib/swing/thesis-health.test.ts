@@ -383,6 +383,57 @@ describe("computeSwingThesisHealth", () => {
         "an \"unread\" regime pillar must trip the aggregate-withhold guard",
       );
     });
+
+    // BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, live repro MRVL
+    // positionId 70): the #6931 fix above correctly stopped borrowing a DIFFERENT pillar's label
+    // (e.g. "Structure") when `regime` is null, by consulting the factor actually labeled
+    // "Regime" instead of `factors[0]`. But it left a new gap: when that "Regime" factor DOES
+    // exist (the common case whenever the REGIME pillar scored any points at commit), the
+    // fallback label becomes the bare, tautological word "Regime" itself -- just the category
+    // name, with zero descriptive content -- and `UNCALIBRATED_PILLAR_LABELS.regime` was never
+    // updated to recognize this new possible fallback value alongside the pre-existing
+    // Banger-sentinel/"unread" cases. So this bare-"Regime" label slipped through both
+    // `thesisHealthUncalibrated()` and `calibratedThesisPillars()` as if it were a real,
+    // calibrated per-position regime read. Live evidence: GET
+    // /api/market/nighthawk/horizons?view=swings showed MRVL (positionId 70) with top-level
+    // `"regime": null` and a `factors[]` entry `{"label":"Regime","points":8.3}`; the play-brief
+    // then rendered a shown (not withheld) "51% · Degraded" aggregate with a self-referential
+    // "Regime fit -- Regime" line.
+    test("regime:null, the real \"Regime\" factor's label IS the bare word \"Regime\" -- must be recognized as uncalibrated, not rendered as a real read (live repro MRVL positionId 70)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "LONG",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "AT_TRIGGER",
+        signalKinds: ["FLOW"],
+        regime: null,
+        factors: [{ label: "Regime", points: 8.3 }],
+        dte: 9,
+        subLane: "STANDARD",
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      const regimePillar = h!.pillars.find((p) => p.id === "market");
+      assert.ok(regimePillar);
+      assert.equal(
+        regimePillar!.currentLabel,
+        "Regime",
+        "test setup must actually hit the bare-\"Regime\" fallback label",
+      );
+      assert.ok(
+        thesisHealthUncalibrated(h),
+        "a bare-\"Regime\" fallback label must trip the aggregate-withhold guard, same as \"unread\"",
+      );
+      const kept = calibratedThesisPillars(h);
+      const keptIds = kept.map((p) => p.id);
+      assert.ok(
+        !keptIds.includes("market"),
+        "regime (bare-\"Regime\" fallback default) must be dropped, not rendered as a calibrated read",
+      );
+      assert.ok(keptIds.includes("structure"), "persistence (real: triggered) must still survive the filter");
+      assert.ok(keptIds.includes("momentum"), "entry_geometry (real: at trigger) must still survive the filter");
+      assert.ok(keptIds.includes("flow"), "flow_corroboration (real: FLOW signal) must still survive the filter");
+    });
   });
 
   describe("Banger-origin ledger rows must not render a fabricated-precision pillar breakdown (found 2026-09-15)", () => {
