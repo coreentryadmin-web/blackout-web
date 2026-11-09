@@ -52,11 +52,21 @@ existing caller sees identical output until a quote crosses the new, higher 4-ho
 
 New/extended tests in `play-brief-absence.test.ts`, `play-brief-narrative.test.ts`,
 `play-brief.test.ts` covering: the severely-stale branch's wording at both `sameContractAsMarkAbove`
-values, the `actionable` escalation wording, and that every pre-existing (non-actionable,
-mildly-stale) call site's output is unchanged. Full touched-file suite
-(`play-brief.test.ts`, `play-brief-intel.test.ts`, `play-brief-narrative.test.ts`,
-`play-brief-narrative-coaching.test.ts`, `play-brief-absence.test.ts`, `play-brief-adapter.test.ts`,
-1091 tests) passes clean; `npx tsc --noEmit` clean.
+values, the `actionable` escalation wording, that every pre-existing (non-actionable, mildly-stale)
+call site's output is unchanged, and a `composeSwingPlayBrief`-level reproduction of the exact
+SWING:HLF:2473 shape (a severely-stale, confirmed-$0.00-bid "total loss" line).
+
+RED → GREEN (`git checkout <parent-commit> -- <the 3 touched source files>`, isolating only the
+source-file fix while every test file — new and pre-existing — stayed as written; Node 20,
+`npx tsx --experimental-test-module-mocks --test`):
+- RED (pre-fix sources, post-fix tests): 1090/1101 pass, **11 fail** — exactly the new/updated
+  tests (`optionMarkSeverelyStale` ×5, `optionMarkStaleCaveat` severely-stale/actionable/sibling
+  ×3, the rewritten Break-watch/PHM and Live-read/PANW narrative tests ×2, the new
+  `composeSwingPlayBrief` HLF total-loss repro ×1); zero pre-existing, unrelated test regressed.
+- GREEN (fix restored): 1101/1101 pass.
+
+Full repo suite (`npm test`, Node 20) both before test additions and after: 18587 pass / 0 fail / 3
+skipped (pre-existing, unrelated skips). `npx tsc --noEmit`: clean.
 
 ### Blast radius
 
