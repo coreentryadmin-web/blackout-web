@@ -516,3 +516,17 @@ test("applyGlobalRateCap: window prunes old emit times", () => {
   const { emitted } = applyGlobalRateCap([t3], [1, 2, 3, 4, 5, 6], 100_000, { maxPerMin: 6, windowMs: 60_000 });
   assert.equal(emitted.length, 1);
 });
+
+test("flowAlertToPulseSignal: huge print near the M/B boundary promotes to B, not an overflowed 4-digit M label (round-first-then-promote bug class, same fix already shipped in fmt-money.ts's fmtPremium but missed in this duplicate)", () => {
+  const flow: FlowAlert = {
+    ticker: "SPY", premium: 999_950_000, option_type: "call", expiry: "2026-07-16",
+    strike: 560, direction: "buy", score: 90, route: "SWEEP", alerted_at: "2026-07-16T14:00:00Z",
+    gex_proximity: "near_call_wall",
+  };
+  const sig = flowAlertToPulseSignal(flow, 6000);
+  assert.ok(sig);
+  // 999_950_000 rounds to 1000.0 at the M unit's own 1dp precision, so it belongs in the
+  // next tier up ("$1.0B"), never the overflowed literal "$1000.0M".
+  assert.ok(sig!.line.includes("$1.0B"), `expected $1.0B in line, got: ${sig!.line}`);
+  assert.ok(!sig!.line.includes("$1000.0M"), `should not render overflowed label, got: ${sig!.line}`);
+});

@@ -385,8 +385,25 @@ export function detectPlayStateSignals(
 // noteworthy relative to what the rest of the app already calls "big".
 const FLOW_MIN_PREMIUM = 1_000_000;
 
+// BUG FIX (round 516): this duplicated the SAME "pick the display unit off the raw value,
+// then round the quotient" defect shape already fixed repeatedly elsewhere in the repo
+// (fmt-money.ts's own `fmtPremium`, helix-flow-format.ts's `fmtOi`, thermal-compact-matrix.ts,
+// gex-heatmap-money-format.ts, helix-tide-money-format.ts, etc — see those files' own BUG FIX
+// comments for the full account) but was missed when the canonical fix landed, because this is
+// a separate, drifted copy rather than an import of the shared helper. It also had no billions
+// tier at all, so any whale print at or above ~$1B (real option-flow premiums do reach this —
+// this formatter only runs on prints already above the $1M whale floor, with no upper bound)
+// rendered a literal four-digit overflow like "$1234.5M" instead of "$1.2B", and a value that
+// rounds to 1000 of the M unit (e.g. 999_950_000) rendered "$1000.0M" instead of promoting to
+// "$1.0B". Fixed with the same round-first-then-promote guard the canonical fix uses: compute
+// the candidate unit's rounded magnitude BEFORE deciding whether it crossed into the next tier.
 function fmtPremium(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) {
+    const m = Math.round((n / 1_000_000) * 10) / 10;
+    if (m >= 1000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+    return `$${m.toFixed(1)}M`;
+  }
   return `$${(n / 1_000).toFixed(0)}K`;
 }
 
