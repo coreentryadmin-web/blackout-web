@@ -10497,9 +10497,13 @@ and `/play` are actually serving a real price again
   that flag into the truncation decision instead of deriving truncation solely from the final
   page. New source-pattern regression test in `polygon-options-gex.test.ts` (pagination over a
   live network fetch isn't practically unit-testable without heavy mocking in this file's
-  existing style); RED confirmed via `git stash` isolating the source change (77/78 pass, 1 fail
-  against the real pre-fix shape for all three sites), GREEN post-fix (78/78 pass); full
-  `npm test` launched in background; `tsc --noEmit` clean.
+  existing style). This branch collided with, but composes cleanly alongside, #7801 (merged the
+  same day): #7801 threaded a DIFFERENT `fetchFailed` signal through these same three functions,
+  captured only from the FIRST request, for a different purpose (the chain-less negative-cache
+  decision) — its own comment explicitly says a later-page failure "just stops pagination early",
+  i.e. it does not cover this bug. Rebased onto #7801 post-merge; auto-merged cleanly (disjoint
+  concerns). RED confirmed against the real post-#7801 pre-this-fix source (78/79 pass, 1 fail),
+  GREEN post-fix (79/79 pass); full `npm test` launched in background; `tsc --noEmit` clean.
 - **Specific thing to check once live**: hard to trigger deliberately (needs a genuine transient
   Polygon failure landing exactly mid-pagination on a wide chain), so the realistic validation is
   passive: next time a `[polygon-gex] fetchHeatmapBand(...)`/`fetchHeatmapBandUnfiltered(...)`/

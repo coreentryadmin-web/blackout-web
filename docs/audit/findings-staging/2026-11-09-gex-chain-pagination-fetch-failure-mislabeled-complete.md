@@ -29,6 +29,17 @@ cached for the full matrix TTL. So the identical bug class silently produces a c
 -looking GEX matrix (walls/OI/net-gamma all understated, not flagged) one layer further out than
 the function PR #7804 fixed, not merely a console log gap.
 
+**Also collides with, but composes cleanly alongside, a second concurrent PR**: #7801 (merged to
+`main` the same day, just before this one was opened) independently threaded a DIFFERENT
+`fetchFailed` boolean through these exact same three functions — `fetchFailed = page == null`,
+captured once right after the FIRST request only, feeding `buildGexHeatmapUncached`'s chain-less
+negative-cache decision. That signal does NOT cover a later-page failure (its own comment says so
+explicitly: "a null on a LATER page ... just stops pagination early"), so it does not fix — and
+does not overlap in effect with — the bug this finding addresses. This branch was rebased onto
+#7801 after it merged; the two fixes auto-merged cleanly (disjoint concerns: "did the first
+request ever answer" vs "did a later, known-good page fail"), confirmed by re-running the RED→
+GREEN proof against the post-#7801 source.
+
 ## Root cause
 
 ```ts
@@ -63,10 +74,11 @@ three sites must track a `midPaginationFetchFailed` flag, set it the moment a re
 `null`, and OR it into the truncation decision rather than deriving truncation solely from the
 final page's own `next_url`.
 
-RED (pre-fix, via `git stash` isolating only `polygon-options-gex.ts`): 77/78 pass, 1 fail (the
-new test, failing against the real pre-fix source for all three functions in turn).
+RED (pre-fix, isolating only `polygon-options-gex.ts` — swapped to the real `origin/main` HEAD,
+i.e. post-#7801/pre-this-fix, with this PR's test file kept): 78/79 pass, 1 fail (the new test,
+failing against the real pre-fix source for all three functions in turn).
 
-GREEN (post-fix): 78/78 pass. `npx tsc --noEmit` (Node 20): clean.
+GREEN (post-fix): 79/79 pass. `npx tsc --noEmit` (Node 20): clean.
 
 ## Fix
 
