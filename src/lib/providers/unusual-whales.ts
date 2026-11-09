@@ -1754,6 +1754,40 @@ export async function fetchUwTickerFlowAlerts(ticker = "SPX", limit = 15) {
   return (await fetchUwTickerFlowAlertsWithRaw(ticker, limit)).map((r) => r.flow);
 }
 
+/**
+ * Per-ticker flow, WITH explicit tracking of whether the upstream call itself failed —
+ * GET /api/stock/{t}/flow-alerts. Sibling of `fetchUwTickerFlowAlertsWithRaw`/
+ * `fetchUwTickerFlowAlerts` above, which — like every other `uwGetSafe`-backed fetcher in this
+ * file — inherit `uwGetSafe`'s deliberate "never throw" contract: UW not configured, the circuit
+ * breaker open with no stale cache, a 403, or an exhausted-retries 429/5xx/network blip ALL
+ * resolve to the identical `null`, and `extractRows(null)` is `[]` — the exact same empty array a
+ * genuinely-answered, genuinely-quiet ticker produces. Because `fetchUwTickerFlowAlerts` therefore
+ * never rejects, a caller's `.catch(() => [])` around it (e.g. `fetchIndexFlowsPooled` in
+ * nighthawk/lib/market-wide.ts) can structurally never fire, so a genuine per-ticker UW outage was
+ * silently indistinguishable from a flat tape (2026-11-09 audit finding).
+ *
+ * `fetchUwDarkPool` elsewhere in this file already names this exact collapse and guards it with
+ * `if (data == null) return null` before calling `extractRows` — this is the same guard, applied
+ * here as a `failed` flag (rather than a nullable return) so the existing callers of
+ * `fetchUwTickerFlowAlerts`/`fetchUwTickerFlowAlertsWithRaw` (largo/run-tool.ts, spx-desk.ts) keep
+ * their unchanged non-nullable-array contract.
+ */
+export async function fetchUwTickerFlowAlertsResult(
+  ticker = "SPX",
+  limit = 15
+): Promise<{ alerts: MarketFlowAlert[]; failed: boolean }> {
+  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/flow-alerts`, {
+    limit: Math.min(limit, 50),
+  });
+  return {
+    alerts: extractRows(data).map((row) => rowToFlow(row)),
+    // `data == null` is the one value `uwGetSafe`'s success path (`uwGet`'s raw parsed JSON body
+    // — an array, an object, even `{}`) cannot produce; it is the real, distinguishing failure
+    // signal, not a bare `.catch()` (which never fires — see the doc above).
+    failed: data == null,
+  };
+}
+
 export type NetPremTick = { time: string; net: number };
 
 /** Tick-level net premium velocity */

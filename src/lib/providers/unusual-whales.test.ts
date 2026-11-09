@@ -21,6 +21,7 @@ import {
   fetchUwMacroIndicators,
   fetchUwGreekExposureExpiry,
   pickUwNextEarningsRow,
+  fetchUwTickerFlowAlertsResult,
 } from "./unusual-whales";
 import { shapeMeridianDarkPool } from "../meridian/meridian-earnings-intel-core";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
@@ -720,6 +721,66 @@ test("the Meridian shaper makes no claim when handed an unknown", () => {
   const answered = shapeMeridianDarkPool(emptyDarkPoolSnapshot());
   assert.equal(answered.available, false);
   assert.equal(answered.detail, "No large dark pool prints today");
+});
+
+// ── fetchUwTickerFlowAlertsResult: the same "did it answer" distinction as fetchUwDarkPool's
+// `if (data == null) return null`, applied to per-ticker flow-alerts (audit finding, 2026-11-09).
+// `fetchUwTickerFlowAlerts`/`fetchUwTickerFlowAlertsWithRaw` discard this distinction at
+// `extractRows(data)` — `extractRows(null)` is `[]`, identical to a genuinely-answered-but-empty
+// result — so `fetchIndexFlowsPooled`'s (market-wide.ts) `.catch(() => [])` around
+// `fetchUwTickerFlowAlerts` could never fire: that function never rejects. This is the lower-level
+// fetcher these two tests prove actually distinguishes the two cases, via the new `failed` flag.
+
+test("fetchUwTickerFlowAlertsResult: failed:true when the upstream never answered (403) — not silently 'zero alerts'", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  process.env.UW_API_KEY = "test-uw-key";
+
+  mock.method(globalThis, "fetch", async () =>
+    new Response("forbidden", { status: 403 })
+  );
+
+  try {
+    const result = await fetchUwTickerFlowAlertsResult("FLOWFAILTEST", 30);
+    assert.deepEqual(result.alerts, [], "no alerts can be parsed from a failed call");
+    assert.equal(result.failed, true, "a 403 (PLAN_BLOCKED) must be reported as a failure, not a quiet ticker");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+  }
+});
+
+test("fetchUwTickerFlowAlertsResult: failed:false when UW genuinely answered with zero alerts", async () => {
+  const prevKey = process.env.UW_API_KEY;
+  process.env.UW_API_KEY = "test-uw-key";
+
+  mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })
+  );
+
+  try {
+    const result = await fetchUwTickerFlowAlertsResult("FLOWQUIETTEST", 30);
+    assert.deepEqual(result.alerts, [], "genuinely zero alerts");
+    assert.equal(result.failed, false, "a real 200 answer of zero rows is NOT a failure");
+  } finally {
+    mock.restoreAll();
+    if (prevKey === undefined) delete process.env.UW_API_KEY; else process.env.UW_API_KEY = prevKey;
+  }
+});
+
+test("fetchUwTickerFlowAlertsResult: the pre-fix collapse — both cases above produced the identical [] via the old extractRows(data)-only path, with no way to tell them apart", () => {
+  // Source guard, mirroring the fetchUwDarkPool test above: the decision of WHEN `failed` is set
+  // lives inside fetchUwTickerFlowAlertsResult's own closure (network + uwGetSafe-bound), which the
+  // two behavioral tests above already exercise end-to-end. This proves the function derives
+  // `failed` from the real distinguishing signal (`data == null`), not from re-deriving it off the
+  // already-collapsed `alerts` array (e.g. `alerts.length === 0`), which would make failure and a
+  // quiet ticker indistinguishable again — exactly the bug this PR fixes.
+  const src = readFileSync(join(process.cwd(), "src/lib/providers/unusual-whales.ts"), "utf8");
+  const body = /export async function fetchUwTickerFlowAlertsResult\(([\s\S]*?)\n}/.exec(src)?.[0] ?? "";
+  assert.ok(body, "fetchUwTickerFlowAlertsResult must exist");
+  assert.match(body, /failed:\s*data == null/, "failed must be derived from data == null, not from the post-extractRows alerts array");
 });
 
 // ── pickUwNextEarningsRow: `/api/earnings/{ticker}` carries BOTH past prints and the future
