@@ -399,6 +399,35 @@ test("SEV-2: no quote on the snapshot → honest nulls, and the commit-pinned de
   assert.equal(c.openInterest, 0);
 });
 
+// BUG FIX (2026-11-09, five-engine-largo-cycle audit, sibling of the 2026-11-08 produceHorizonPlays
+// fix — src/lib/horizon-plays.test.ts's own "SHORT/PUT plays carry a NEGATIVE delta" test).
+// row.contract_delta is pinned at commit as ChainContract.delta's ABSOLUTE MAGNITUDE
+// (contract-ranker.ts's own convention), never re-signed — the fallback branch above (no live
+// quote) must re-sign a PUT's commit-pinned delta, same as closed-plays.ts's sibling fix.
+test("SEV-2 sibling (2026-11-09): no quote on the snapshot and the contract is a PUT → the commit-pinned fallback delta is re-signed negative", () => {
+  const p = livePlayFromSwingPosition(
+    row({ contract_type: "put", contract_delta: 0.59, last_mark: 5.5 }),
+    178,
+    { rung: "hold", action: "HOLD" },
+  );
+  assert.ok(p);
+  const c = p!.contract!;
+  assert.equal(c.right, "P");
+  assert.equal(c.delta, -0.59, "a PUT's fallback delta must be negative, matching standard options convention");
+});
+
+test("SEV-2 sibling (2026-11-09): a LIVE quote's delta for a PUT is used as-is, never re-signed a second time", () => {
+  const p = livePlayFromSwingPosition(
+    row({ contract_type: "put", contract_delta: 0.59, last_mark: 5.5 }),
+    178,
+    { rung: "hold", action: "HOLD", quote: { delta: -0.58, asOf: "2026-07-24T15:00:00Z" } },
+  );
+  assert.ok(p);
+  const c = p!.contract!;
+  assert.equal(c.right, "P");
+  assert.equal(c.delta, -0.58, "a genuine signed live quote delta must pass through untouched");
+});
+
 test("liveQuoteFromEvent: malformed / empty / absent quote blobs all degrade to null", () => {
   assert.equal(liveQuoteFromEvent(null), null);
   assert.equal(liveQuoteFromEvent({}), null);

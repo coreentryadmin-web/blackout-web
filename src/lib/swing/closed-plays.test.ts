@@ -254,6 +254,29 @@ describe("closedDeckSourceFromRow", () => {
     assert.equal(src?.contract.right, "P");
   });
 
+  // BUG FIX (2026-11-09, five-engine-largo-cycle audit, sibling of the 2026-11-08
+  // produceHorizonPlays fix — src/lib/horizon-plays.test.ts's own "SHORT/PUT plays carry a
+  // NEGATIVE delta" test). `contract_delta` is pinned at commit/roll as `ChainContract.delta`'s
+  // ABSOLUTE MAGNITUDE (contract-ranker.ts's own convention), never re-signed for a CLOSED row —
+  // unlike a live position, a closed one has no live-quote fallback to mask it, so every PUT
+  // closed position rendered a wrong-signed (positive) delta.
+  it("re-signs a PUT's contract_delta negative — a CLOSED position has no live quote to mask the sign (2026-11-09 audit)", () => {
+    const src = closedDeckSourceFromRow(row({ contract_type: "put", contract_delta: 0.58 }));
+    assert.equal(src?.contract.right, "P");
+    assert.equal(src?.contract.delta, -0.58);
+  });
+
+  it("leaves a CALL's contract_delta positive, unaffected by the PUT re-sign fix (no regression)", () => {
+    const src = closedDeckSourceFromRow(row({ contract_type: "call", contract_delta: 0.55 }));
+    assert.equal(src?.contract.right, "C");
+    assert.equal(src?.contract.delta, 0.55);
+  });
+
+  it("leaves a null contract_delta null for a PUT — never fabricates a sign from nothing", () => {
+    const src = closedDeckSourceFromRow(row({ contract_type: "put", contract_delta: null }));
+    assert.equal(src?.contract.delta, null);
+  });
+
   // BUG FIX (2026-09-18, Ask Largo standing mandate, live repro PYPL#24): a true flat/breakeven
   // close (entryPremium === peakPremium === troughPremium) can carry float-division residue in
   // realized_pnl_pct (e.g. -0.0001, not a real loss) — must round before the sign check, else this

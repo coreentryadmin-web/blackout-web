@@ -216,7 +216,16 @@ function contractBundleFromRow(
   // shrinking on every subsequent view).
   const exitAt = row.closed_at ?? row.graded_at;
   const dte = calendarDte((exitAt ?? etYmd()).slice(0, 10), expiry.slice(0, 10));
-  return { strike, right, expiry, dte, occ: row.contract_occ, mid: row.last_mark, delta: row.contract_delta };
+  // BUG FIX (2026-11-09, five-engine-largo-cycle audit, sibling of the 2026-11-08 produceHorizonPlays
+  // fix): `contract_delta` is pinned at commit/roll as `ChainContract.delta`'s ABSOLUTE MAGNITUDE
+  // (contract-ranker.ts's own convention — calls positive, puts' MAGNITUDE, so the ranker can
+  // band-match |delta| regardless of side), never re-signed for a closed row. A CLOSED position has
+  // no live-quote concept at all (unlike live-plays.ts's quote?.delta fallback), so a PUT's delta
+  // rendered here is wrong-signed every time, not merely raced. Re-sign at read time — a pure
+  // display-layer fix, no DB backfill needed, correcting every already-closed historical row too.
+  const delta =
+    right === "P" && row.contract_delta != null ? -Math.abs(row.contract_delta) : row.contract_delta;
+  return { strike, right, expiry, dte, occ: row.contract_occ, mid: row.last_mark, delta };
 }
 
 /**
