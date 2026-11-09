@@ -5,6 +5,7 @@ import {
   buildLegacyBoardRows,
   legacyBoardCalendarBuckets,
   legacyBoardExportCsv,
+  legacyBoardMeter,
   terminalPlayToLegacyRow,
 } from "@/features/nighthawk/lib/legacy-board-table-utils";
 import { vectorBoardScorecard } from "@/features/nighthawk/lib/vector-board-row-utils";
@@ -281,4 +282,48 @@ test("legacyBoardExportCsv: a risk_note containing an embedded quote is CSV-esca
     `expected a properly double-quote-escaped risk_note field, got: ${dataLine}`
   );
   assert.ok(!dataLine.includes('\\"'), `must never emit a JSON-style backslash-quote escape in CSV output, got: ${dataLine}`);
+});
+
+// Bug: legacyBoardMeter's progressPct branch colors the "Target path" meter off the UNDERLYING
+// stock's move (`stockTone`) even when the meter's own `valueLabel` is showing the real, live
+// OPTION PREMIUM return (`premiumLabel`, preferred whenever `pct` — `row.premiumPct` — is
+// non-null). `progressPct` (how far the stock has moved toward its published target/stop) is
+// computed independently of `premiumPct` (the live option mark's % return), so an actively
+// tracked OPEN Legacy row with both a live stock quote and a live option mark routinely carries
+// both at once — the common case, not an edge case (same composition `overlayLegacyQuotes` +
+// `overlayLegacyOptionMarks` already documented in play-card-display.ts's own primaryReturnLabel
+// fix). When the stock ticked down while the premium ticked up (or vice versa — routine on an
+// option with its own vol/skew/decay dynamics), the meter showed a positive premium number in a
+// RED/bearish tone, or a negative premium number in a GREEN/bullish tone. The sibling generic
+// `vectorBoardMeter` (vector-board-table-utils.ts) gets this right — it colors its progressPct
+// branch off the SAME `pct`-derived `tone` it uses everywhere else; this Legacy-specific copy
+// diverged by introducing a second, stock-derived tone variable and using it unconditionally.
+test("legacyBoardMeter colors the Target-path meter by the PREMIUM's sign when a live option mark exists, not the stock's", () => {
+  const play = basePlay({
+    pnlPct: 6.4, // premium is UP
+    stockMovePct: -2.1, // stock is DOWN — the two disagree in sign, the reproducing case
+    progress: 0.42,
+  });
+  const row = terminalPlayToLegacyRow(play, "2026-11-09");
+  const meter = legacyBoardMeter(row);
+  assert.ok(meter, "expected a meter when progressPct is set");
+  assert.equal(meter!.valueLabel, "+6%", "value label must show the real premium return");
+  assert.equal(
+    meter!.tone,
+    "up",
+    `tone must follow the premium's sign (up) since that's the number actually shown — got "${meter!.tone}", which is the STOCK's sign instead`,
+  );
+});
+
+test("legacyBoardMeter still colors by the stock's sign when no live option mark exists yet", () => {
+  const play = basePlay({
+    pnlPct: null,
+    stockMovePct: -2.1,
+    progress: 0.42,
+  });
+  const row = terminalPlayToLegacyRow(play, "2026-11-09");
+  const meter = legacyBoardMeter(row);
+  assert.ok(meter, "expected a meter when progressPct is set");
+  assert.equal(meter!.valueLabel, "-2%", "no live mark yet — value label falls back to the stock move");
+  assert.equal(meter!.tone, "down", "with no premium to show, the stock-derived tone is correct");
 });

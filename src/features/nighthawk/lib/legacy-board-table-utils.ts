@@ -145,6 +145,24 @@ export function legacyBoardMeter(row: LegacyBoardTableRow): VectorBoardMeter | n
   if (row.progressPct != null) {
     const stockTone = premiumPctTone(stockMove);
     const premiumLabel = pct != null ? formatPremiumPct(pct) : null;
+    // BUG FIX (2026-11-09, Night Hawk Legacy / Ask Largo standing mandate): `valueLabel` already
+    // prefers the real, live option-PREMIUM return (`premiumLabel`, from `pct`) whenever one
+    // exists, falling back to the stock's move only when it doesn't — but `tone` here used to be
+    // derived from `stockTone` UNCONDITIONALLY, regardless of which number `valueLabel` actually
+    // settled on. `progressPct` (stock progress toward its published target/stop) and `pct`
+    // (the live option mark's % return) are computed independently, so an actively tracked OPEN
+    // Legacy row with both a live stock quote and a live option mark carries both non-null at
+    // once — the common case, not an edge case (same two-overlay composition
+    // play-card-display.ts's `primaryReturnLabel` fix already documents). Whenever the premium
+    // and the underlying disagreed in sign (routine — an option has its own vol/skew/decay
+    // dynamics independent of the stock's tick), the meter showed a positive premium number in a
+    // bearish/red tone, or a negative premium number in a bullish/green tone. The sibling generic
+    // `vectorBoardMeter` (vector-board-table-utils.ts) never has this bug — it colors its own
+    // progressPct branch off the same `pct`-derived tone it uses everywhere else; this
+    // Legacy-specific copy diverged by introducing the stock-derived `stockTone` and using it
+    // unconditionally. Fix: use the premium's own tone whenever `valueLabel` is showing the
+    // premium, falling back to `stockTone` only in the genuine stock-only case.
+    const activeTone = pct != null ? tone : stockTone;
     return {
       valueLabel: premiumLabel ?? formatPremiumPct(stockMove),
       fillPct: row.progressPct,
@@ -152,7 +170,7 @@ export function legacyBoardMeter(row: LegacyBoardTableRow): VectorBoardMeter | n
         pct != null
           ? `${row.progressPct}% to stock target`
           : `${row.progressPct}% stock → target (not option P&L)`,
-      tone: stockTone === "bull" ? "up" : stockTone === "bear" ? "down" : "flat",
+      tone: activeTone === "bull" ? "up" : activeTone === "bear" ? "down" : "flat",
     };
   }
 

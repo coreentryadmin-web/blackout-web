@@ -10763,3 +10763,27 @@ and `/play` are actually serving a real price again
   one). No live pre-fix capture was possible — forcing and measuring a real-browser infinite
   render loop isn't practical from this sandbox (no DOM/React-renderer test infra here), so this
   is a passive live-session check, not a forced repro.
+
+## WATCH LIST — 2026-11-09 (Legacy board "Target path" meter colored a live premium return by the stock's sign, `fix/vector-compare-sweep`) — re-check the Legacy desk's board table during live RTH
+
+- **What was broken**: `legacyBoardMeter()` (`legacy-board-table-utils.ts`), which feeds the
+  Legacy board's "Target path" column (`legacy-board-columns.tsx`), already preferred the real
+  live option-PREMIUM return for its displayed value whenever one existed, falling back to the
+  underlying stock's move only when it didn't — but colored that value's tone (up/down/flat)
+  off the STOCK's sign unconditionally, regardless of which number was actually shown. An
+  actively tracked OPEN Legacy row with both a live stock quote and a live option mark (the
+  common case) could show a positive premium return in a bearish/red tone, or a negative premium
+  return in a bullish/green tone, whenever the two disagreed in sign — routine, since an option's
+  premium moves on its own vol/skew/decay dynamics independent of the stock's tick.
+- **Fix**: the meter's tone now follows the same precedence its own value label already uses —
+  the premium's tone when a live option mark exists, the stock's tone only when it doesn't. RED
+  confirmed via `git stash` isolating the source change (new assertion fails pre-fix,
+  `'down' !== 'up'`), GREEN post-fix (19/19 in the touched suite, 1719/1719 across every sibling
+  `src/features/nighthawk/{lib,components}/*.test.ts` suite); `npx tsc --noEmit` clean.
+- **Specific thing to check once live**: open the Legacy board table during RTH and find any OPEN
+  row with both a live stock quote (visible stock price/change) and a live option mark (a real,
+  nonzero premium % in the "Premium vs entry" column) where the underlying's own move and the
+  premium's move disagree in sign — confirm the "Target path" meter's color now matches the
+  premium (the number it's actually showing), not the stock. No live pre-fix repro was possible
+  (needs that specific sign-disagreement live at the moment of inspection), so this is a passive
+  next-occurrence check.
