@@ -15,6 +15,7 @@ import {
   HELIX_DISCORD_MIN_PREMIUM,
   buildHelixBurstEmbed,
   helixDiscordLiveRthOnly,
+  resolveHelixDiscordDte,
 } from "./helix-discord-format.ts";
 
 const base = {
@@ -139,6 +140,56 @@ test("stacked hits digest lists per-hit ET timestamps", () => {
   assert.match(emb.description, /NVDA 140C/);
   assert.match(emb.description, /3 hits/);
   assert.match(emb.description, /ET · \$700K/);
+});
+
+// BUG FIX (sibling of the repo's `dteFromExpiry` HELIX-MAP.md §9.2 fix, previously-unmigrated):
+// resolveHelixDiscordDte's fallback (no `flow.dte`) used to re-derive DTE from the live clock
+// (`Math.ceil((expiryT20:00Z - now) / 1 day)`) instead of the shared ET-calendar-date-anchored
+// `dteFromExpiry` ingest already uses. A contract expiring TODAY, read at any point during RTH
+// (well before 20:00 UTC), is a positive sub-1-day gap, and `Math.ceil` of that is always 1 — a
+// genuine 0DTE read as 1DTE for the entire session.
+test("resolveHelixDiscordDte: a same-ET-day expiry is 0DTE at any point during RTH, not 1DTE", () => {
+  const rthNow = new Date("2026-08-04T14:32:00.000Z"); // 10:32am ET, same ET calendar day
+  const flowNoDte = { ...base, expiry: "2026-08-04", dte: undefined as unknown as number };
+  assert.equal(resolveHelixDiscordDte(flowNoDte, rthNow), 0);
+
+  // Same check close to the old UTC-20:00 boundary this bug was anchored to — still same ET day.
+  const lateRth = new Date("2026-08-04T19:55:00.000Z"); // 3:55pm ET
+  assert.equal(resolveHelixDiscordDte(flowNoDte, lateRth), 0);
+});
+
+test("stacked hits digest headline reads 0DTE (not 1DTE) for a contract expiring today, during RTH", () => {
+  const now = new Date("2026-08-04T14:32:00.000Z"); // 10:32am ET, same ET calendar day as expiry
+  const emb = buildHelixStackedHitsDigestEmbed({
+    windowMin: 15,
+    stacks: [
+      {
+        ticker: "SPY",
+        strike: 540,
+        option_type: "CALL",
+        expiry: "2026-08-04",
+        alert_count: 2,
+        total_premium: 1_400_000,
+        premiums: [700_000, 700_000],
+        trade_count: null,
+        repeated_hits: true,
+        same_strike_accumulation: true,
+        alert_rules: ["RepeatedHits"],
+        kind: "repeated_and_stacked",
+        recent_hit_count: 2,
+        recent_premium: 1_400_000,
+        hits_window_min: 15,
+        recent_hits: [
+          { at: "2026-08-04T14:18:11.000Z", premium: 700_000, fill_price: 4.2 },
+          { at: "2026-08-04T14:25:44.000Z", premium: 700_000, fill_price: 4.1 },
+        ],
+        avg_ask_pct: 68,
+      },
+    ],
+    now,
+  });
+  assert.match(emb.description, /SPY 540C.*0DTE/);
+  assert.doesNotMatch(emb.description, /1DTE/);
 });
 
 test("selectHelixDiscordStacks requires 2+ qualifying hits in window", () => {

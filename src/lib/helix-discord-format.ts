@@ -21,6 +21,7 @@ import { HELIX_STRIKE_HITS_WINDOW_MIN } from "@/features/helix/lib/helix-strike-
 import { signalWindowAgeMs } from "@/features/helix/lib/helix-signal-detection";
 import { buildHelixFlowDeepLink, helixDiscordFlowToDeepLink } from "@/lib/helix-flow-deep-link";
 import { flowContractKey } from "@/lib/helix/contract-identity";
+import { dteFromExpiry } from "@/lib/flow-dte";
 
 export const HELIX_DISCORD_MIN_PREMIUM = 500_000;
 export const HELIX_DISCORD_MAX_FILL = 10;
@@ -75,17 +76,26 @@ export type DiscordEmbed = {
 
 const APP_BASE = (process.env.NEXT_PUBLIC_SITE_URL || "https://blackouttrades.com").replace(/\/$/, "");
 
-export function dteFromExpiry(expiry: string, now = new Date()): number | null {
-  const exp = String(expiry || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(exp)) return null;
-  const ms = Date.parse(`${exp}T20:00:00.000Z`); // rough session-day boundary; filter only
-  if (!Number.isFinite(ms)) return null;
-  return Math.ceil((ms - now.getTime()) / 86_400_000);
-}
-
+// BUG FIX (HELIX Discord "0DTE" mislabeled "1DTE" during RTH, previously-unmigrated duplicate
+// of flow-dte.ts's HELIX-MAP.md §9.2 fix): this file used to define its OWN local `dteFromExpiry`
+// — `Math.ceil((Date.parse(expiry + "T20:00:00Z") - now.getTime()) / 86_400_000)` — a live-clock,
+// UTC-anchored derivation of exactly the defect class `@/lib/flow-dte.ts`'s canonical
+// `dteFromExpiry` was written to eliminate ("ONE DEFINITION, NOT TWO"). It was never migrated to
+// that shared helper, so a THIRD divergent derivation survived outside that file's own audit.
+// Concretely: for a contract expiring TODAY, at any point during the regular session before
+// 20:00 UTC (i.e. essentially all of RTH), `Date.parse(todayT20:00Z) - now.getTime()` is a
+// positive fraction strictly between 0 and 1 day, and `Math.ceil` of that is always 1 — a genuine
+// 0DTE contract reads "1DTE" for the entire trading day. `stackHeadline` below (feeding every
+// `buildHelixStackedHitsDigestEmbed` Repeat-Hits-stack headline) calls this directly with no
+// `flow.dte` fallback available at all (`FlowStrikeStack` carries no `dte` field), so every
+// stacked-hit digest on an expiring-today contract was mislabeled for the whole session — the
+// exact "near-dated" vs "0DTE" distinction these community alerts exist to highlight. Fixed by
+// importing the shared, ET-calendar-date-anchored `dteFromExpiry` (flow-dte.ts) that ingest
+// (unusual-whales.ts/flow-persist.ts/uw-socket.ts) already uses, instead of re-deriving it from
+// a live timestamp.
 export function resolveHelixDiscordDte(flow: HelixDiscordFlowInput, now = new Date()): number | null {
   if (flow.dte != null && Number.isFinite(Number(flow.dte))) return Math.floor(Number(flow.dte));
-  return dteFromExpiry(flow.expiry, now);
+  return dteFromExpiry(flow.expiry, now.getTime());
 }
 
 /** All three community gates. Missing fill/dte → reject (fail closed). */
@@ -410,7 +420,7 @@ export function buildHelixTopHitsDigestEmbed(input: {
 
 function stackHeadline(stack: FlowStrikeStack, now = new Date()): string {
   const side = String(stack.option_type || "").toUpperCase().startsWith("C") ? "C" : "P";
-  const dte = dteFromExpiry(stack.expiry, now);
+  const dte = dteFromExpiry(stack.expiry, now.getTime());
   const dteStr = dteLabel(dte);
   return `${stack.ticker} ${fmtStrike(stack.strike)}${side} ${fmtExpiry(stack.expiry)}${
     dteStr ? ` — ${dteStr}` : ""
