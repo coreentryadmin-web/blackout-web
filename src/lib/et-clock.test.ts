@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { etClock, etDateTimeShort } from "./et-clock";
+import { etClock, etDateShort, etDateTimeShort } from "./et-clock";
 
 /**
  * A markets desk quotes ONE clock: US/Eastern.
@@ -99,6 +99,27 @@ test("etDateTimeShort pins the LOCALE as well as the zone", () => {
   assert.equal(etDateTimeShort(EDT), "Aug 19, 2:30 PM");
   assert.equal(etDateTimeShort(EDT, { seconds: true }), "Aug 19, 2:30:05 PM");
   assert.equal(etDateTimeShort(EST), "Jan 14, 2:30 PM");
+});
+
+test("etDateShort renders the ET calendar date, not the viewer's — the DATE-half sibling of the etClock bug class", () => {
+  // 2026-08-19T02:00:00Z is 10:00 PM EDT on Aug 18 — still Aug 19 in UTC and in any timezone at
+  // or east of UTC. Any caller that formats this instant with a bare, timeZone-less
+  // `Date.prototype.toLocaleDateString()` (what `SignalAnalyticsPanel.formatDate` used to do)
+  // renders "Aug 19" whenever the host/viewer clock is at or ahead of UTC — wrong by a day
+  // against the market's own Aug 18 session. `etDateShort` must read Aug 18 regardless of host
+  // timezone, the same "a function of the instant alone" guarantee `etClock` already proves.
+  const nearMidnightEt = Date.parse("2026-08-19T02:00:00Z");
+  assert.equal(etDateShort(nearMidnightEt), "Aug 18");
+  assert.equal(etDateShort("2026-08-19T02:00:00Z"), "Aug 18");
+  assert.equal(etDateShort(new Date(nearMidnightEt)), "Aug 18");
+});
+
+test("etDateShort handles both sides of DST and rejects bad input the same way etClock does", () => {
+  assert.equal(etDateShort(EDT), "Aug 19");
+  assert.equal(etDateShort(EST), "Jan 14");
+  for (const bad of [null, undefined, "", "not-a-date", Number.NaN, Infinity]) {
+    assert.equal(etDateShort(bad as never), null, String(bad));
+  }
 });
 
 test("repeated calls reuse one formatter and stay stable", () => {
