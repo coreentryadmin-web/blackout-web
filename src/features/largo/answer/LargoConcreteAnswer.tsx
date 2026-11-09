@@ -10,6 +10,7 @@ import { splitHeadline } from "@/features/largo/answer/headline";
 import { parseEtStamp } from "@/lib/largo/temporal/bar-session-date";
 import { UnavailableChip } from "@/features/largo/answer/BieChips";
 import { BieSystemReadsPanel } from "@/features/largo/answer/BieSystemReadsPanel";
+import { BieGexShiftsPanel } from "@/features/largo/answer/BieGexShiftsPanel";
 
 // Accepts an ISO instant OR a Largo C1 ET stamp ("YYYY-MM-DD HH:mm ET" — e.g. swing play-briefs'
 // `envelope.asOf`). `new Date(iso)` returns Invalid Date on the ET-stamp shape, which silently
@@ -100,6 +101,17 @@ export function LargoConcreteAnswer({
   // the `gexShifts`/`unavailableSources` gaps fixed in this file earlier the same day.
   const systemReads = envelope?.systemReads;
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09): `envelope.gexShifts` is lifted STRUCTURALLY
+  // off the turn's own `get_gex_matrix_changes` tool result (see `gex-shift-extract.ts`'s own
+  // header) — never parsed back out of prose. `LargoDeskRead.tsx` (Deep dive) and, as of the fix
+  // on `BieAnswer.tsx` the same day, the not-rich-enough/no-envelope fallback renderer both render
+  // it via `BieGexShiftsPanel`. Concrete — the DEFAULT `answerMode` in `LargoAnswerMessage.tsx` —
+  // was the one remaining renderer that never read this field: a turn that called
+  // `get_gex_matrix_changes` but wrote no canonical section/level text (the tool result and the
+  // prose are extracted independently, per `answer-contract.ts`) silently dropped that real,
+  // already-fetched strike-level GEX-change table for the overwhelming majority of real answers.
+  const gexShifts = envelope?.gexShifts ?? [];
+
   return (
     <article className={clsx("largo-concrete-answer", className)}>
       {envelope?.asOf ? (
@@ -132,6 +144,7 @@ export function LargoConcreteAnswer({
       ) : null}
 
       <BieSystemReadsPanel systemReads={systemReads} />
+      {gexShifts.length > 0 ? <BieGexShiftsPanel shifts={gexShifts} /> : null}
 
       <LargoMessageBody
         content={bodyWithoutVerdict}
