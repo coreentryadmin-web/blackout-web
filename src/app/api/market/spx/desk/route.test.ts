@@ -37,3 +37,14 @@ test("spx/desk route: peek fast-path also requires source !== \"none\" (degraded
     "must reject a degraded pulse-only shell (source: \"none\") even when its merged price is nonzero"
   );
 });
+
+test("spx/desk route: ServerCacheTimeoutError returns degraded JSON, not 502", () => {
+  const src = readFileSync(join(process.cwd(), "src/app/api/market/spx/desk/route.ts"), "utf8");
+  assert.match(src, /ServerCacheTimeoutError/);
+  assert.match(src, /error instanceof ServerCacheTimeoutError/);
+  assert.doesNotMatch(
+    src,
+    /catch \(error\) \{[\s\S]*return NextResponse\.json\(\{ available: false, error: "Desk build failed" \}, \{ status: 502 \}\);\s*\n\}/,
+    "catch block must not only 502 — timeout path must degrade"
+  );
+});

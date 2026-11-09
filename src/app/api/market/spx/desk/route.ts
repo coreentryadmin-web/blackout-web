@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { loadSpxDesk, peekSpxDesk } from "@/features/spx/lib/spx-desk-loader";
+import {
+  loadSpxDesk,
+  loadSpxDeskPulse,
+  peekSpxDesk,
+} from "@/features/spx/lib/spx-desk-loader";
+import { deskShellFromPulse } from "@/features/spx/lib/spx-desk";
 import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
+import { ServerCacheTimeoutError } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -42,6 +48,28 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     console.error("[market/spx/desk]", error);
+    // Mirror /api/market/spx/play: a cold loadSpxDesk() over its maxBlockMs budget is a
+    // cache-timeout, not a crashed deploy. Returning 502 here failed deploy-smoke on prod
+    // (main@0dee31c5, run 42550161810) while /api/health and a sibling Clerk-authed desk read
+    // were 200 — only this path threw. Serve an honest degraded JSON shell instead.
+    if (error instanceof ServerCacheTimeoutError) {
+      const stale = await peekSpxDesk().catch(() => null);
+      if (stale) {
+        return NextResponse.json(
+          roundFloats({ ...stale, polled_at: stale.polled_at ?? stale.as_of }),
+          { headers: NO_STORE_HEADERS }
+        );
+      }
+      try {
+        const shell = deskShellFromPulse(await loadSpxDeskPulse());
+        return NextResponse.json(
+          roundFloats({ ...shell, polled_at: shell.polled_at ?? shell.as_of }),
+          { headers: NO_STORE_HEADERS }
+        );
+      } catch (inner) {
+        console.error("[market/spx/desk] timeout fallback", inner);
+      }
+    }
     return NextResponse.json({ available: false, error: "Desk build failed" }, { status: 502 });
   }
 }
