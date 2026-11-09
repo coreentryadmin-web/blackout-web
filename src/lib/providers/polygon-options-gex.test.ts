@@ -119,9 +119,9 @@ test("fetchHeatmapBandLoHi/Unfiltered/fetchPolygonOiByExpiry: a failed re-fetch 
   );
 
   const sites: Array<{ name: string; marker: string; sliceLen: number }> = [
-    { name: "fetchHeatmapBandLoHi", marker: "async function fetchHeatmapBandLoHi(", sliceLen: 2000 },
-    { name: "fetchHeatmapBandUnfiltered", marker: "async function fetchHeatmapBandUnfiltered(", sliceLen: 1200 },
-    { name: "fetchPolygonOiByExpiry", marker: "export async function fetchPolygonOiByExpiry(", sliceLen: 3000 },
+    { name: "fetchHeatmapBandLoHi", marker: "async function fetchHeatmapBandLoHi(", sliceLen: 2600 },
+    { name: "fetchHeatmapBandUnfiltered", marker: "async function fetchHeatmapBandUnfiltered(", sliceLen: 1700 },
+    { name: "fetchPolygonOiByExpiry", marker: "export async function fetchPolygonOiByExpiry(", sliceLen: 3200 },
   ];
 
   for (const { name, marker, sliceLen } of sites) {
