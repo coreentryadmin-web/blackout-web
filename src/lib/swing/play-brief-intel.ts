@@ -4082,6 +4082,23 @@ export function buildIntelSections(
     (!isFullFlattenForHoldPlan && (play.exitPolicy?.runner_fraction ?? 0) > 0);
   const holdPlanFolded = thesisHealthCoveredForHoldPlan && runnerFractionCoveredForHoldPlan;
 
+  // BUG FIX (Ask Largo standing mandate, 2026-11-09, eighth sibling fix to laneRankFolded/
+  // wallDynamicsFolded/vectorDeskFolded/levelsOnChartFolded/flowIntelFolded/macroTapeFolded/
+  // holdPlanFolded above): "GEX posture" (gexPostureSection) renders Net VEX/DEX/CHARM dollar
+  // figures whenever the matrix isn't stale and the field is non-null, but the narrative's only
+  // counterpart (dealerPostureLine) deliberately keeps VEX/DEX/CHARM as qualitative regime-read
+  // TEXT only — never their dollar amounts (unlike net_gex, whose own dollar figure IS in the
+  // narrative). `net_vex` is non-nullable whenever gex_positioning exists at all, so this almost
+  // always carries real, narratively-uncovered content. Deliberately does NOT also check
+  // gexMatrixStale here (unlike the VEX/DEX/CHARM lines' own `!stale` gate inside
+  // gexPostureSection): staleness alone would bias toward falsely folding the section's "may lag
+  // spot" caveat line in a stale-GEX/fresh-Vector combination, which has no narrative counterpart
+  // either — the null-only check stays on the safe-default side (keep, don't claim folded) in
+  // every case gexPostureSection itself would still render something.
+  const gexForFold = ctx.ecosystem?.gex_positioning;
+  const gexPostureFolded =
+    !gexForFold || (gexForFold.net_vex == null && gexForFold.net_dex == null && gexForFold.net_charm == null);
+
   return collapseRedundantIntelSections(out, {
     hasNarrative: Boolean(narrative),
     bucket,
@@ -4092,5 +4109,6 @@ export function buildIntelSections(
     flowIntelFolded,
     macroTapeFolded,
     holdPlanFolded,
+    gexPostureFolded,
   });
 }

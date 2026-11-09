@@ -13,20 +13,28 @@ test("collapseRedundantIntelSections: no-op without narrative", () => {
   assert.equal(out.length, 3);
 });
 
-test("collapseRedundantIntelSections: drops covered titles when narrative leads", () => {
+test("collapseRedundantIntelSections: drops covered titles when the predicate proves the narrative covered them", () => {
   const sections = [section("Trade manager read"), section("GEX posture"), section("Why this setup")];
-  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  // "GEX posture" is now a conditionally-covered title too (2026-11-09) — pass gexPostureFolded:
+  // true explicitly to prove dealerPostureLine actually carried the VEX/DEX/CHARM content for
+  // this test's data, same shape every other conditionally-covered title's "unconditional drop"
+  // test below uses.
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    gexPostureFolded: true,
+  });
   assert.ok(!out.some((s) => s.title === "GEX posture"));
   assert.ok(out.some((s) => s.title === "Why this setup"));
   const narrative = out.find((s) => s.title === "Trade manager read");
   assert.match(narrative!.body, /folded into Trade manager read/i);
 });
 
-// "Levels on chart" and "Hold plan" moved out of the generic unconditional-drop test above (Ask
-// Largo standing mandate, 2026-11-08) — both are now conditionally-covered titles, same shape as
-// "Lane rank"/"Wall dynamics"/"Vector desk" below. See their own dedicated test blocks further
-// down this file, and `NARRATIVE_COVERED_TITLES`'s doc comment (play-brief-intel-collapse.ts) for
-// why each one's coverage can't be assumed from static title membership alone.
+// Every title in NARRATIVE_COVERED_TITLES is now a conditionally-covered title (Ask Largo
+// standing mandate, 2026-11-08/09 — "GEX posture" was the last one, fixed 2026-11-09). See each
+// title's own dedicated test block further down this file, and `NARRATIVE_COVERED_TITLES`'s doc
+// comment (play-brief-intel-collapse.ts) for why none of their coverage can be assumed from
+// static title membership alone.
 
 test("collapseRedundantIntelSections: NEVER drops 'Book context' — no narrative bullet covers it since #4116", () => {
   const sections = [section("Trade manager read"), section("Book context"), section("Why this setup")];
@@ -78,10 +86,11 @@ test("collapseRedundantIntelSections: keeps 'Lane rank' and omits the fold-in cl
     hasNarrative: true,
     bucket: "open",
     laneRankFolded: false,
+    gexPostureFolded: true,
   });
   assert.ok(out.some((s) => s.title === "Lane rank"), "Lane rank must survive — nothing in the narrative covers it for this play");
-  // GEX posture is unconditionally covered (post-#5998/#5994) and must still collapse normally —
-  // this fix must not weaken the existing behavior for every OTHER title in the set.
+  // GEX posture's own predicate proves it covered here — this fix must not weaken the existing
+  // behavior for every OTHER title in the set.
   assert.ok(!out.some((s) => s.title === "GEX posture"));
   const narrative = out.find((s) => s.title === "Trade manager read");
   assert.match(narrative!.body, /folded into Trade manager read/i, "GEX posture alone still earns the note");
@@ -126,6 +135,7 @@ test("collapseRedundantIntelSections: keeps 'Wall dynamics' and omits the fold-i
     hasNarrative: true,
     bucket: "open",
     wallDynamicsFolded: false,
+    gexPostureFolded: true,
   });
   assert.ok(
     out.some((s) => s.title === "Wall dynamics"),
@@ -165,6 +175,7 @@ test("collapseRedundantIntelSections: keeps 'Vector desk' and omits the fold-in 
     hasNarrative: true,
     bucket: "open",
     vectorDeskFolded: false,
+    gexPostureFolded: true,
   });
   assert.ok(
     out.some((s) => s.title === "Vector desk"),
@@ -207,6 +218,7 @@ test("collapseRedundantIntelSections: keeps 'Levels on chart' and omits the fold
     hasNarrative: true,
     bucket: "open",
     levelsOnChartFolded: false,
+    gexPostureFolded: true,
   });
   assert.ok(
     out.some((s) => s.title === "Levels on chart"),
@@ -246,6 +258,7 @@ test("collapseRedundantIntelSections: keeps 'Flow & positioning' and omits the f
     hasNarrative: true,
     bucket: "open",
     flowIntelFolded: false,
+    gexPostureFolded: true,
   });
   assert.ok(out.some((s) => s.title === "Flow & positioning"), "Flow & positioning must survive — nothing in the narrative covers it for this play");
   assert.ok(!out.some((s) => s.title === "GEX posture"));
@@ -282,6 +295,7 @@ test("collapseRedundantIntelSections: keeps 'Macro tape' and omits the fold-in c
     hasNarrative: true,
     bucket: "open",
     macroTapeFolded: false,
+    gexPostureFolded: true,
   });
   assert.ok(out.some((s) => s.title === "Macro tape"), "Macro tape must survive — macroTapeCoaching stayed silent for this play");
   assert.ok(!out.some((s) => s.title === "GEX posture"));
@@ -318,6 +332,7 @@ test("collapseRedundantIntelSections: keeps 'Hold plan' and omits the fold-in cl
     hasNarrative: true,
     bucket: "open",
     holdPlanFolded: false,
+    gexPostureFolded: true,
   });
   assert.ok(out.some((s) => s.title === "Hold plan"), "Hold plan must survive — nothing in the narrative covers it for this play");
   assert.ok(!out.some((s) => s.title === "GEX posture"));
@@ -339,6 +354,52 @@ test("collapseRedundantIntelSections: still drops 'Hold plan' and claims the fol
     holdPlanFolded: true,
   });
   assert.ok(!out.some((s) => s.title === "Hold plan"), "thesisPillarCoaching really did fire — collapse it as usual");
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /folded into Trade manager read/i);
+});
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-09): sibling of the "Lane rank"/"Wall dynamics"/
+// "Vector desk"/"Levels on chart"/"Flow & positioning"/"Macro tape"/"Hold plan" fixes above —
+// "GEX posture" was the 8th title in NARRATIVE_COVERED_TITLES left with no opt-in flag.
+// `gexPostureSection` renders Net VEX/DEX/CHARM dollar figures whenever the matrix isn't stale,
+// but `dealerPostureLine` (the only narrative counterpart) deliberately keeps VEX/DEX/CHARM as
+// qualitative regime-read TEXT only — never a dollar figure.
+test("collapseRedundantIntelSections: keeps 'GEX posture' and omits the fold-in claim when gexPostureFolded is false (dealerPostureLine never carries the VEX/DEX/CHARM dollar figures)", () => {
+  const sections = [
+    section("Trade manager read"),
+    section("GEX posture"),
+    section("Wall dynamics"),
+    section("Why this setup"),
+  ];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    gexPostureFolded: false,
+    wallDynamicsFolded: true,
+  });
+  assert.ok(
+    out.some((s) => s.title === "GEX posture"),
+    "GEX posture must survive — its Net VEX/DEX/CHARM dollar figures have no narrative counterpart",
+  );
+  assert.ok(!out.some((s) => s.title === "Wall dynamics"));
+  const narrative = out.find((s) => s.title === "Trade manager read");
+  assert.match(narrative!.body, /for 1 section folded/i, "only Wall dynamics was actually dropped");
+});
+
+test("collapseRedundantIntelSections: omitting gexPostureFolded entirely defaults to the SAFE outcome (keep, no false claim) — same as explicit false", () => {
+  const sections = [section("Trade manager read"), section("GEX posture"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, { hasNarrative: true, bucket: "open" });
+  assert.ok(out.some((s) => s.title === "GEX posture"), "a caller that forgets to pass gexPostureFolded must never lose this section");
+});
+
+test("collapseRedundantIntelSections: still drops 'GEX posture' and claims the fold-in note when gexPostureFolded is true (no VEX/DEX/CHARM content to omit)", () => {
+  const sections = [section("Trade manager read"), section("GEX posture"), section("Why this setup")];
+  const out = collapseRedundantIntelSections(sections, {
+    hasNarrative: true,
+    bucket: "open",
+    gexPostureFolded: true,
+  });
+  assert.ok(!out.some((s) => s.title === "GEX posture"), "no real VEX/DEX/CHARM content existed to lose — collapse it as usual");
   const narrative = out.find((s) => s.title === "Trade manager read");
   assert.match(narrative!.body, /folded into Trade manager read/i);
 });
