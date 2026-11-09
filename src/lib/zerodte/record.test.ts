@@ -1317,3 +1317,29 @@ test("FINDINGS 2026-11-01: plan_pnl_pct and managed_pnl_pct agree on a negative-
   assert.equal(officialPlanPnlPct(crcl), asManagedPnlPct(crcl));
   assert.equal(rec.losses, 1, "a clamped-negative override must book as a loss, not the pre-clamp breakeven");
 });
+
+// BUG FIX (Ask Largo standing mandate, 2026-11-09): `round2` used plain `Math.round(n*100)/100`,
+// which ties toward +Infinity (`Math.round(-12.5) === -12` but `Math.round(12.5) === 13`). A
+// losing play's plan_pnl_pct/move_pct sitting exactly on a 2dp tie rounded to a SMALLER magnitude
+// than the identical-size winning mirror would. -0.125/+0.125 are exact binary fractions
+// (-1/8, 1/8) so *100 lands exactly on a +-12.5 tie, not merely close to one. Same bug class
+// fixed today in ~20 sibling files (board.ts's computeLedgerGrade, swing's own record.ts round2) —
+// this file was never touched by that wave.
+test("round2's sign-bias tie: a losing play's move_pct and plan_pnl_pct round to the SAME magnitude as their winning mirror", () => {
+  const lossRow = row({ ticker: "LOSS", plan_outcome: "stopped", plan_pnl_pct: -0.125, move_pct: -0.125 });
+  const lossRec = buildZeroDteRecord([lossRow], WINDOW);
+  const lossPlay = lossRec.plays[0]!;
+  // Pre-fix this was -0.12 (a SMALLER magnitude than the +0.125 mirror's 0.13) — the bug.
+  assert.equal(lossPlay.plan_pnl_pct, -0.13);
+  assert.equal(lossPlay.move_pct, -0.13);
+
+  const winRow = row({ ticker: "WIN", plan_outcome: "doubled", plan_pnl_pct: 0.125, move_pct: 0.125 });
+  const winRec = buildZeroDteRecord([winRow], WINDOW);
+  const winPlay = winRec.plays[0]!;
+  assert.equal(winPlay.plan_pnl_pct, 0.13);
+  assert.equal(winPlay.move_pct, 0.13);
+
+  // The whole point: equal-magnitude mirror-image moves must round to equal magnitudes.
+  assert.equal(Math.abs(lossPlay.plan_pnl_pct as number), Math.abs(winPlay.plan_pnl_pct as number));
+  assert.equal(Math.abs(lossPlay.move_pct as number), Math.abs(winPlay.move_pct as number));
+});

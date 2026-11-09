@@ -179,7 +179,14 @@ export type ZeroDteRecord = {
 };
 
 const round1 = (v: number): number => Math.round(v * 10) / 10;
-const round2 = (v: number): number => Math.round(v * 100) / 100;
+// BUG FIX (2026-11-09, Ask Largo/5-engine standing mandate): plain Math.round ties toward
+// +Infinity (Math.round(-0.125*100) === -12, but Math.round(0.125*100) === 13), so a losing
+// play's pnl_pct/avg_pnl_pct (every call site here feeds a signed percentage — plan_pnl_pct,
+// managed/reconstructed pnl, the per-bucket avg_pnl_pct aggregate, move_pct) silently understated
+// its magnitude at an exact rounding-tie boundary relative to its positive mirror. Same bug class
+// fixed today in ~20 sibling files (board.ts's computeLedgerGrade, fmt-money.ts's fmtPct,
+// swing's own record.ts round2, and others) — this file was never touched by that wave.
+const round2 = (v: number): number => Math.sign(v) * (Math.round(Math.abs(v) * 100) / 100);
 
 // ── WS-10: the OFFICIAL plan P&L is the CONSERVATIVE EXECUTABLE lane ─────────────────
 // The grader now writes TWO lanes: the mid grade in the `plan_pnl_pct`/`plan_outcome`
