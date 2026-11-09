@@ -5051,7 +5051,7 @@ export async function fetchPolygonIvTermStructure(
   if (page?.next_url) warnChainTruncated("fetchPolygonIvTermStructure", root, guard);
   if (midPaginationFetchFailed) {
     console.warn(
-      `[polygon-gex] fetchPolygonIvTermStructure(${root}) pagination fetch failed mid-chain — ` +
+      `[polygon-gex] fetchPolygonIvTermStructure(${logToken(root)}) pagination fetch failed mid-chain — ` +
         `term structure is incomplete, not caching.`
     );
   }
