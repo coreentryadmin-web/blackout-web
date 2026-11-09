@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { etClock } from "@/lib/et-clock";
+import { etClock, etDateShort } from "@/lib/et-clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,11 +137,13 @@ function formatHour(h: number): string {
 }
 
 function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  } catch {
-    return iso;
-  }
+  // BUG FIX (2026-11-09): this used to run `new Date(iso).toLocaleDateString(...)` with no
+  // `timeZone`, which renders the VIEWER's local calendar date. `formatTime` two lines below
+  // already renders the SAME table's timestamps ET-anchored via `etClock` — pairing a
+  // viewer-local date with an ET time for the same observation is the exact "two clocks on one
+  // screen" bug class `@/lib/et-clock`'s module doc describes, just on the date half instead of
+  // the time half. `etDateShort` is ET-anchored like `etClock`/`etDateTimeShort`.
+  return etDateShort(iso) ?? iso;
 }
 
 function formatTime(iso: string): string {

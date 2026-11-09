@@ -131,3 +131,36 @@ export function etDateTimeShort(
     return null;
   }
 }
+
+const dateOnlyCache = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * Short ET calendar date, no time ("Aug 19") — for labels (date-range headers, calendar axes)
+ * that need only the day, not the wall-clock minute.
+ *
+ * Sibling of `etDateTimeShort` above, split out because a caller formatting a bare timestamp
+ * with `Date.prototype.toLocaleDateString()` and no `timeZone` renders the VIEWER's calendar
+ * date, which can disagree with the ET date by one day for any instant close to ET midnight —
+ * the exact bug class `etClock`'s module header documents for TIME, just on the DATE half
+ * instead. Found live in `SignalAnalyticsPanel`'s "Date Range" label, which paired this same
+ * omission directly next to `etClock` (used correctly, two lines below) for the SAME table's
+ * timestamps — one column ET-anchored, the adjacent one viewer-local.
+ */
+export function etDateShort(at: number | string | Date | null | undefined): string | null {
+  const ms = toMs(at);
+  if (ms == null) return null;
+  let f = dateOnlyCache.get("default");
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone: ET_TIME_ZONE,
+      month: "short",
+      day: "numeric",
+    });
+    dateOnlyCache.set("default", f);
+  }
+  try {
+    return f.format(ms);
+  } catch {
+    return null;
+  }
+}
