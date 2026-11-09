@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach } from "node:test";
-import { mergeFlowIntoDesk, mergePulseIntoDesk, resetSpxDeskMergeCache } from "./spx-desk-merge";
+import {
+  mergeFlowIntoDesk,
+  mergePulseIntoDesk,
+  recalcGexWallDistances,
+  resetSpxDeskMergeCache,
+} from "./spx-desk-merge";
 import type { SpxDeskFlow, SpxDeskPayload, SpxDeskPulse } from "@/features/spx/lib/spx-desk";
 
 
@@ -524,5 +529,21 @@ describe("mergeFlowIntoDesk gamma flip truth", () => {
       flowStub({ gamma_flip: 7430, above_gamma_flip: false, gamma_regime: "short" })
     );
     assert.equal(merged.gamma_flip, 7430);
+  });
+});
+
+describe("recalcGexWallDistances signed rounding", () => {
+  it("mirror-image half-point ties round to the same magnitude (gamma-desk #7680 sibling)", () => {
+    const spot = 7542.375;
+    const walls = recalcGexWallDistances(
+      [
+        { strike: 7545, net_gex: 1, kind: "resistance", distance_pts: 0 },
+        { strike: 7539.75, net_gex: -1, kind: "support", distance_pts: 0 },
+      ],
+      spot
+    );
+    assert.equal(Math.abs(walls[0]!.distance_pts), Math.abs(walls[1]!.distance_pts));
+    assert.equal(walls[0]!.distance_pts, 2.63);
+    assert.equal(walls[1]!.distance_pts, -2.63);
   });
 });

@@ -17,7 +17,8 @@ export function recalcGexWallDistances(walls: GexWall[], spot: number): GexWall[
     // Recompute kind alongside distance so a price crossing flips support/resistance
     // (matches topGexWalls: strike <= spot is support, strike > spot is resistance).
     kind: w.strike > spot ? "resistance" : "support",
-    distance_pts: Math.round((w.strike - spot) * 100) / 100,
+    distance_pts:
+      (Math.sign(w.strike - spot) * Math.round(Math.abs(w.strike - spot) * 100)) / 100,
   }));
 }
 
