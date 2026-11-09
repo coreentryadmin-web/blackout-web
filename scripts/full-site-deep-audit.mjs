@@ -5,10 +5,11 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
-import { isApproxUsCashRth } from "./lib/gha-desk-smoke-eval.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
+import { evaluateCronWatchdogAudit } from "./audit/lib/watchdog-audit-eval.mjs";
+import { evaluateSpxDeskSmoke, isApproxUsCashRth } from "./lib/gha-desk-smoke-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -111,9 +112,21 @@ async function auditCrons() {
   ]);
 
   if (wd.status === 200) {
-    const keys = wd.json.problem_keys ?? [];
-    if (keys.length) for (const k of keys) fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`);
-    else ok("crons", "watchdog", `${wd.json.checked ?? "?"} jobs OK`);
+    const wdVerdict = evaluateCronWatchdogAudit(wd.json ?? {}, { inRth: inRthOpenWindow() });
+    for (const k of wdVerdict.failKeys) {
+      fail("crons", `STALE-RTH-${k}`, `Cron watchdog RTH stale: ${k}`, "P0");
+    }
+    for (const k of wdVerdict.warnKeys) {
+      ok("crons", `watchdog-off-hours-${k}`, `non-RTH stale ignored off-hours: ${k}`);
+    }
+    if (wdVerdict.nonRthProblems.length && inRthOpenWindow()) {
+      for (const k of wdVerdict.nonRthProblems) {
+        fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`, "P1");
+      }
+    }
+    if (!wdVerdict.failKeys.length && !(inRthOpenWindow() && wdVerdict.nonRthProblems.length)) {
+      ok("crons", "watchdog", wdVerdict.summary);
+    }
   }
 
   if (dc.status === 200) {
@@ -191,14 +204,17 @@ async function auditSpxDesk() {
   const bad = scanFinite(d).slice(0, 5);
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
+  const deskSpotVerdict = evaluateSpxDeskSmoke({ status: 200, body: d });
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) {
-    if (!isApproxUsCashRth()) {
-      ok("spx-desk", "spot", `off-hours (price=${spot ?? "—"}; live spot not required)`);
-    } else {
-      fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-    }
-  } else ok("spx-desk", "spot", String(spot));
+  if (deskSpotVerdict.outcome === "fail") {
+    fail("spx-desk", "SPOT", deskSpotVerdict.message, "P0");
+  } else {
+    ok(
+      "spx-desk",
+      "spot",
+      deskSpotVerdict.outcome === "warn" ? deskSpotVerdict.message : String(spot)
+    );
+  }
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
