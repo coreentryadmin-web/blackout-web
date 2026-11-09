@@ -1729,6 +1729,26 @@ export async function fetchUwSpotExposuresByStrike(ticker = "SPX", limit = 500) 
 }
 
 /**
+ * Same upstream call as `fetchUwSpotExposuresByStrike`, but ALSO reports whether the fetch ever
+ * got a confirmed answer — the same "did it answer" distinction `fetchUwDarkPool`'s
+ * `if (data == null) return null` and `fetchUwTickerFlowAlertsResult`'s `failed` flag already
+ * encode for their own upstreams. `uwGetSafe` resolves "UW not configured", a 403, the circuit
+ * breaker open with no stale cache, and exhausted retries to the IDENTICAL `null` as a
+ * genuinely-answered-but-empty page, and `extractRows(null)` is `[]` — so the plain
+ * `fetchUwSpotExposuresByStrike` above cannot tell "confirmed no exposures" from "never asked
+ * successfully". `polygon-options-gex.ts`'s chain-less negative cache (`markNoChainTicker`) needs
+ * exactly that distinction: it must only ever fire for a root CONFIRMED to carry no UW exposures
+ * either, never for one where this call simply failed (audit finding, 2026-11-09).
+ */
+export async function fetchUwSpotExposuresByStrikeResult(
+  ticker = "SPX",
+  limit = 500
+): Promise<{ rows: Record<string, unknown>[]; failed: boolean }> {
+  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/spot-exposures/strike`, { limit });
+  return { rows: extractRows(data), failed: data == null };
+}
+
+/**
  * Per-ticker flow, WITH the raw UW row alongside the parsed alert — GET /api/stock/{t}/flow-alerts
  *
  * `parseUwFlowAlert` deliberately narrows to the fields `MarketFlowAlert` declares, and the
