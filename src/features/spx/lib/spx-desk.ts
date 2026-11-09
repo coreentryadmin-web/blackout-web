@@ -2375,6 +2375,34 @@ export async function buildSpxDeskPulse(): Promise<SpxDeskPulse> {
         market_label: label,
       };
     }
+    // BUG FIX (2026-11-09, live repro — Ask Largo/5-engine standing mandate): `prior.pdc` above
+    // is exclusively anchored to I:SPX's own daily-bars endpoint (priorDayForPulseLane/
+    // fetchPriorDayCached/fetchTodaysOwnCloseIfSessionComplete), which is entitlement-blocked
+    // right alongside I:SPX's real-time snapshot (see spxPriceFromSpyProxy's own doc comment).
+    // When it is, this branch fell straight through to the empty closedPulse shell — even though
+    // buildSpxDesk() (the sibling primary lane) already got the identical SPY-proxy fallback for
+    // this exact condition earlier today. That fix alone did not close the live gap: whenever
+    // loadSpxDesk()'s cache loses its maxBlockMs race (spx-desk-loader.ts's
+    // `fallback: async () => deskShellFromPulse(await loadSpxDeskPulse())`), production is
+    // actually served through THIS unfixed pulse path, not buildSpxDesk()'s own — confirmed
+    // live: GET /api/market/spx/desk and /play kept serving price:0/available:false for 5+
+    // hours and 13+ deploy cycles after buildSpxDesk()'s fix had already deployed, because the
+    // fallback path never got it. Mirrors buildSpxDesk()'s exact fallback, lazily evaluated only
+    // once every I:SPX-anchored source above has already failed.
+    const spyProxyPrice = await spxPriceFromSpyProxy();
+    if (spyProxyPrice != null && spyProxyPrice > 0) {
+      return {
+        ...empty,
+        available: true,
+        price: spyProxyPrice,
+        prior_close: priorDayLevels.pdc,
+        pdh: priorDayLevels.pdh,
+        pdl: priorDayLevels.pdl,
+        market_open: false,
+        market_status: marketNow?.market ?? "closed",
+        market_label: label,
+      };
+    }
     const closedPulse: SpxDeskPulse = {
       ...empty,
       market_open: false,
@@ -2575,7 +2603,16 @@ export async function buildSpxDeskPulseMinimal(): Promise<SpxDeskPulse> {
     (async () => {
       const snapsRaw = await fetchPulseLaneSnapshots();
       const spxSnap = snapsRaw[SPX];
-      const price = spxSnap?.price ?? lastPulseForSignals?.price ?? prior.pdc ?? 0;
+      // BUG FIX (2026-11-09, live repro — Ask Largo/5-engine standing mandate): same gap as the
+      // off-hours branch of buildSpxDeskPulse above — when I:SPX's own sources are all
+      // unavailable (entitlement-blocked, see spxPriceFromSpyProxy's own doc comment), this cold-
+      // replica fast lane fell straight to 0 with no recovery, even though the SPY-proxy fallback
+      // already exists in this exact file for the identical condition. The outer Promise.race's
+      // own pulseTimeoutMs ceiling already bounds this branch's total latency, so adding one more
+      // lazily-evaluated fallback (only reached when every faster source has already failed)
+      // cannot regress the sub-500ms intent: on timeout the race still resolves to `empty`.
+      const price =
+        spxSnap?.price ?? lastPulseForSignals?.price ?? prior.pdc ?? (await spxPriceFromSpyProxy()) ?? 0;
       if (!(price > 0)) return empty;
       const structure = cachedPulseStructure;
       return {

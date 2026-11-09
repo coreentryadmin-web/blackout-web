@@ -231,7 +231,7 @@ test("buildSpxDeskPulseMinimal: price chain includes prior.pdc", () => {
   const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
   const minimalIdx = src.indexOf("export async function buildSpxDeskPulseMinimal");
   const priceLine = src.slice(minimalIdx).match(
-    /const price = spxSnap\?\.price \?\? lastPulseForSignals\?\.price \?\? prior\.pdc \?\? 0;/
+    /const price =\s*\n\s*spxSnap\?\.price \?\? lastPulseForSignals\?\.price \?\? prior\.pdc \?\? \(await spxPriceFromSpyProxy\(\)\) \?\? 0;/
   );
   assert.ok(priceLine, "minimal pulse must fall back to prior.pdc on cold cache");
 });
@@ -384,5 +384,45 @@ test("buildSpxDesk: vix_change_pct is DERIVED from priorVix.pdc (its own daily-b
     body,
     /vix_change_pct: vixSnap\?\.change_pct \?\? intel\?\.vix_change_pct \?\? null,/,
     "must not regress back to transporting Polygon's raw (possibly fabricated-0) change_pct verbatim"
+  );
+});
+
+// BUG FIX (2026-11-09, live repro, Ask Largo/5-engine standing mandate): buildSpxDesk() got the
+// SPY-proxy fallback (test above, "buildSpxDesk: price chain has a SPY-proxy last resort...")
+// but GET /api/market/spx/desk and /play kept serving the full empty shell (price:0,
+// available:false) for 5+ hours and 13+ deploy cycles after that fix deployed. Root cause: when
+// loadSpxDesk()'s cache loses its maxBlockMs race, spx-desk-loader.ts's own
+// `fallback: async () => deskShellFromPulse(await loadSpxDeskPulse())` serves the pulse lane
+// INSTEAD of buildSpxDesk() — and buildSpxDeskPulse()'s off-hours branch is anchored entirely
+// to I:SPX's own daily-bars endpoint (priorDayForPulseLane/fetchPriorDayCached/
+// fetchTodaysOwnCloseIfSessionComplete), with no equivalent SPY-proxy fallback, so it fell
+// through to the empty closedPulse shell under the exact same I:SPX entitlement-block condition
+// buildSpxDesk()'s fix was supposed to have already closed. Confirmed live 2026-11-09: 10+
+// consecutive polls against GET /api/market/spx/desk (fresh as_of each time, ruling out a
+// stale cache) all returned the byte-identical empty shell well after the fix's deploy
+// completed, while raw SPY aggs stayed healthy on the same production key throughout.
+test("buildSpxDeskPulse: off-hours branch has a SPY-proxy last resort before falling to the empty closedPulse shell (2026-11-09 fix)", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  assert.match(
+    src,
+    /if \(!rthOpen && !premarketPlan\) \{[\s\S]*const spyProxyPrice = await spxPriceFromSpyProxy\(\);\s*\n\s*if \(spyProxyPrice != null && spyProxyPrice > 0\) \{\s*\n\s*return \{\s*\n\s*\.\.\.empty,\s*\n\s*available: true,\s*\n\s*price: spyProxyPrice,[\s\S]*?\}\s*\n\s*const closedPulse: SpxDeskPulse = \{/,
+    "the off-hours branch must try spxPriceFromSpyProxy() as a last resort, returning a real available:true price, before falling through to the empty closedPulse shell"
+  );
+});
+
+test("buildSpxDeskPulseMinimal: race branch has a SPY-proxy last resort before falling to 0 (2026-11-09 fix)", () => {
+  const src = readFileSync(join(process.cwd(), "src/features/spx/lib/spx-desk.ts"), "utf8");
+  const minimalIdx = src.indexOf("export async function buildSpxDeskPulseMinimal");
+  assert.ok(minimalIdx >= 0, "could not locate buildSpxDeskPulseMinimal");
+  const body = src.slice(minimalIdx);
+  assert.match(
+    body,
+    /const price =\s*\n\s*spxSnap\?\.price \?\? lastPulseForSignals\?\.price \?\? prior\.pdc \?\? \(await spxPriceFromSpyProxy\(\)\) \?\? 0;/,
+    "the cold-replica race branch's price chain must include the SPY-proxy fallback before 0, mirroring buildSpxDesk's own chain"
+  );
+  assert.doesNotMatch(
+    body,
+    /const price = spxSnap\?\.price \?\? lastPulseForSignals\?\.price \?\? prior\.pdc \?\? 0;/,
+    "must not regress back to the old chain with no SPY-proxy fallback — that is the exact bug this test guards against"
   );
 });
