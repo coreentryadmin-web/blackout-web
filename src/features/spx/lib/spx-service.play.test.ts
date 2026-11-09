@@ -119,6 +119,65 @@ test("GET /api/market/spx/play's catch block derives a real session_phase from a
   assert.match(route, /currentSessionPhase\(deskPeek\.merged\)/);
 });
 
+test("GET /api/market/spx/play's catch block applies the honest degraded override for ANY caught error, not just ServerCacheTimeoutError (2026-11-09 fix)", () => {
+  // BUG (live repro 2026-11-09T15:35:46-48Z, Ask Largo/5-engine standing mandate): the
+  // 2026-10-16/10-21/10-26 fixes above all gated their honest override on
+  // `error instanceof ServerCacheTimeoutError` specifically. That class is thrown ONLY when
+  // withServerCache's own maxBlockMs/fallback race (server-cache.ts) is fully exhausted with
+  // nothing usable to serve — a TIMING fact. It is NOT what reaches this catch block when
+  // getSpxPlayState()'s eval chain throws a real error FAST (e.g. a provider fetch rejecting on
+  // a 403 well under playMemberReadMaxBlockMs()'s 800ms budget — see CLAUDE.md's 2026-11-07/08
+  // notes on the live Polygon/Massive entitlement outage): that raw error wins
+  // withServerCache's internal Promise.race before the ServerCacheTimeoutError path ever
+  // engages, so `instanceof ServerCacheTimeoutError` is false and this route used to fall
+  // straight through to degradedPlayPayload()'s bare "Desk warming"/session_phase:"closed"
+  // defaults — the exact same false "desk is cold/closed" claim the three prior fixes removed,
+  // reachable through a gap in error TYPE rather than error TIMING. Confirmed live:
+  // GET /api/market/spx/play returned those bare defaults while a parallel
+  // GET /api/market/spx/desk call at the same instant reported market_open:true/"RTH OPEN"/a
+  // real price. The fix: compute `deskPeek`/`extras` unconditionally (matching
+  // spxPlayReadDegraded()'s already-unconditional sibling in spx-service.ts) instead of gating
+  // them on one named error subclass — reaching this catch block always means "nothing was
+  // computed on this path," never "the desk/session is closed," regardless of WHY.
+  const route = readFileSync(join(ROOT, "src/app/api/market/spx/play/route.ts"), "utf8");
+  const catchBlock = route.match(/\} catch \(error\) \{[\s\S]*$/);
+  assert.ok(catchBlock, "GET's catch block present");
+  const body = catchBlock![0];
+
+  // The OLD gated form must be gone — this is the entire bug. A regression that reintroduces a
+  // ternary on `instanceof ServerCacheTimeoutError` around the peek/extras computation would
+  // silently reopen the exact live gap this test guards against, even while still matching the
+  // other (pre-existing, "does this string appear anywhere") ServerCacheTimeoutError assertions
+  // elsewhere in this file.
+  assert.doesNotMatch(
+    body,
+    /instanceof ServerCacheTimeoutError[\s\S]{0,40}\?\s*await peekMergedSpxDesk/,
+    "peekMergedSpxDesk() must not be gated on error instanceof ServerCacheTimeoutError"
+  );
+  assert.doesNotMatch(
+    body,
+    /const extras =[\s\S]{0,40}instanceof ServerCacheTimeoutError/,
+    "extras must not be computed via a ternary keyed on error instanceof ServerCacheTimeoutError"
+  );
+
+  // The NEW unconditional form must be present.
+  assert.match(
+    body,
+    /const deskPeek = await peekMergedSpxDesk\(\)\.catch\(\(\) => null\);/,
+    "deskPeek must be peeked unconditionally, for every caught error"
+  );
+  assert.match(
+    body,
+    /const extras = \{\s*\n\s*\.\.\.degradedPlayCatchingUpMessage\(\),/,
+    "extras must unconditionally spread degradedPlayCatchingUpMessage(), for every caught error"
+  );
+
+  // ServerCacheTimeoutError may still be referenced for diagnostic/log purposes (CloudWatch
+  // triage) — this file's own earlier test still requires the string to appear somewhere — but
+  // it must no longer gate whether the honest override is applied.
+  assert.match(route, /instanceof ServerCacheTimeoutError/);
+});
+
 test("evaluateSpxPlayState skips buildPlayTechnicals/refreshOrBreakMemory/resolveGuardedPlaybookMatch when the market is closed and no play is open (2026-10-17 fix, updated 2026-10-18)", () => {
   // MEASURED LIVE: buildPlayTechnicals makes real Polygon network calls on a cold per-process
   // cache, which alone can exceed playMemberReadMaxBlockMs()'s 800ms budget — 5/5 live
