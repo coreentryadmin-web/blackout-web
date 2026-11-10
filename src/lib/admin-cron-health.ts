@@ -33,6 +33,7 @@ import {
 } from "@/lib/swing/discovery-claim";
 import { phaseRunKey } from "@/lib/swing/scan-cadence";
 import type { SwingDiscoveryPhase } from "@/lib/swing/discovery";
+import { swingDiscoveryHandshakeStaleMin } from "@/lib/swing/discovery-cron-health";
 import { todayEt } from "@/lib/et-date";
 
 const SWING_DISCOVERY_PHASES: readonly SwingDiscoveryPhase[] = [
@@ -248,6 +249,9 @@ export function effectiveStaleMinutes(
   job: CronJobDefinition,
   now: Date = new Date()
 ): { effective: number; multiplier: number } {
+  if (job.key === "swing-discovery") {
+    return { effective: swingDiscoveryHandshakeStaleMin(), multiplier: 1 };
+  }
   const etDate = formatEtDate(now);
   const tradingDay = isTradingDayEt(etDate);
   if (job.weekdays_only && !tradingDay) {
@@ -718,9 +722,11 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   await Promise.all(
     jobs.map(async (health, index) => {
       const handshakeProblem =
-        health.market_hours_stale ||
-        health.status === "stale" ||
-        (health.key === "swing-discovery" && health.status === "failed");
+        health.key === "swing-discovery"
+          ? health.status !== "healthy"
+          : health.market_hours_stale ||
+            health.status === "stale" ||
+            health.status === "failed";
       if (!handshakeProblem) return;
       if (!TARGET_FRESH_OVERRIDE_KEYS.has(health.key)) return;
       const { probeWriterTargetFresh } = await import("@/lib/cron-writer-target-fresh");
