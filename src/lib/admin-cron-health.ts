@@ -21,7 +21,11 @@ import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
-import { swingDiscoveryHandshakeStaleMin } from "@/lib/swing/discovery-cron-health";
+import {
+  swingDiscoveryHandshakeStaleMin,
+  swingDiscoveryPostCloseSnapshotSatisfied,
+} from "@/lib/swing/discovery-cron-health";
+import { readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -475,6 +479,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     await sharedCacheGet("zerodte-warm:running").catch(() => null)
   );
   const swingDiscoveryInFlight = await isSwingDiscoveryScanInFlight();
+  const swingServingSnapshot = await readSwingServingSnapshot().catch(() => null);
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
@@ -604,6 +609,26 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
           "Phase scan in flight (running claim held) — prior cron handshake not authoritative",
         meta: { ...(health.meta ?? {}), swing_discovery_in_flight: true },
       };
+    }
+
+    if (job.key === "swing-discovery" && health.status === "failed") {
+      const failedPhase =
+        typeof (health.meta as { phase?: unknown } | undefined)?.phase === "string"
+          ? (health.meta as { phase: string }).phase
+          : null;
+      if (
+        failedPhase &&
+        failedPhase !== "POST_CLOSE" &&
+        swingDiscoveryPostCloseSnapshotSatisfied(swingServingSnapshot, new Date())
+      ) {
+        return {
+          ...health,
+          status: "warning" as const,
+          market_hours_stale: false,
+          status_label: `Phase ${failedPhase} handshake failed — POST_CLOSE serving snapshot satisfied (non-primary)`,
+          meta: { ...(health.meta ?? {}), swing_post_close_snapshot_ok: true },
+        };
+      }
     }
 
     if (

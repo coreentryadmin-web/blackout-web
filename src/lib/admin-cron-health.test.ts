@@ -352,6 +352,12 @@ test("buildCronHealthSnapshot sources its runs_24h aggregate from the time-bound
 // nothing read it until this fix. Unlike spx-evaluate's heartbeat cross-check (which only
 // escalates when the cron_job_runs handshake ALSO looks stale), zerodte-warm's must not gate on
 // that handshake first, since that signal is the known-unreliable one here.
+test("buildCronHealthSnapshot downgrades non-POST_CLOSE swing-discovery failures when POST_CLOSE snapshot satisfied", () => {
+  const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
+  assert.match(src, /swingDiscoveryPostCloseSnapshotSatisfied/);
+  assert.match(src, /POST_CLOSE serving snapshot satisfied \(non-primary\)/);
+});
+
 test("buildCronHealthSnapshot can override swing-discovery failed handshakes when serving snapshot probe is fresh", () => {
   const src = readFileSync(fileURLToPath(new URL("./admin-cron-health.ts", import.meta.url)), "utf8");
   assert.match(src, /"swing-discovery"/);

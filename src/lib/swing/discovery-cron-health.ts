@@ -74,6 +74,28 @@ export function swingDiscoveryPhasesEndedBefore(now: Date, sessionDay: string): 
 export type SwingDiscoveryServingProbe = { fresh: boolean; detail: string };
 
 /**
+ * POST_CLOSE is the shipped primary phase — secondary phase handshake failures (OVERNIGHT, MIDDAY, …)
+ * must not page cron-audit when today's serving snapshot already satisfies the POST_CLOSE floor.
+ */
+export function swingDiscoveryPostCloseSnapshotSatisfied(
+  snapshot: SwingServingSnapshot | null,
+  now = new Date()
+): boolean {
+  if (!snapshot?.sessionDay || !snapshot.asOf) return false;
+  const sessionDay = todayEt(now);
+  if (snapshot.sessionDay !== sessionDay) return false;
+  const postClose = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE");
+  if (!postClose) return false;
+  const asOfMs = new Date(snapshot.asOf).getTime();
+  if (!Number.isFinite(asOfMs)) return false;
+  const floorMs = etYmdToUtcMs(sessionDay, postClose.startMin);
+  if (asOfMs + 60_000 < floorMs) return false;
+  const ageMin = ageMinFromIso(snapshot.asOf, now.getTime());
+  const intraDayCeilingMin = 16 * 60;
+  return ageMin != null && ageMin <= intraDayCeilingMin;
+}
+
+/**
  * True when the persisted serving snapshot proves discovery ran for the session the clock expects.
  * Used to suppress handshake-only staleness on the admin board / cron watchdog (same pattern as
  * zerodte-warm's scanner heartbeat probe).
