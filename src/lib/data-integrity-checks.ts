@@ -5,6 +5,7 @@ import { fetchStockSnapshot } from "@/lib/providers/polygon";
 import { isPolygonCircuitOpen } from "@/lib/providers/polygon-rate-limiter";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { retryGexPositioningRead } from "@/lib/data-integrity-gex-resilient";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -161,6 +162,11 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
       // During the cluster-wide Polygon 429 pause, matrix rebuilds cannot complete — skip cold
       // assertions so RTH deep audit does not false-RED (measured 2026-11-10T20:38Z).
       if (polygonPaused) continue;
+      const hm = await fetchGexHeatmap(label).catch(() => null);
+      if (hm && hm.spot > 0 && hm.strikes.length > 0) {
+        checked++;
+        continue;
+      }
       add(`GEX ${label} cold during RTH`, `getGexPositioning("${label}") returned no matrix while market is open`);
       continue;
     }

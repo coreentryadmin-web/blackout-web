@@ -59,6 +59,18 @@ test("swingDiscoveryAwaitingPhaseSuppress: POWER_HOUR suppresses stale before PO
   assert.equal(v.phase, "POWER_HOUR");
 });
 
+test("swingDiscoveryAwaitingPhaseSuppress: 4:05 PM ET inter-phase gap suppresses stale", () => {
+  const now = new Date("2026-11-10T21:05:00.000Z"); // 4:05 PM ET — between POWER_HOUR and POST_CLOSE
+  const v = swingDiscoveryAwaitingPhaseSuppress({
+    healthStatus: "stale",
+    healthAgeMin: 200,
+    now,
+    phaseClaims: {},
+  });
+  assert.equal(v.suppress, true);
+  assert.match(v.label ?? "", /between swing discovery phase windows/i);
+});
+
 test("swingDiscoveryAwaitingPhaseSuppress: recent failed keeps alarm during active phase", () => {
   const now = new Date("2026-11-10T01:30:00.000Z");
   const v = swingDiscoveryAwaitingPhaseSuppress({

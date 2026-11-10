@@ -55,6 +55,21 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
     return { suppress: false };
   }
 
+  const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
+  const mins = etMinutesOfDay(now.getTime());
+  const tradingDay = isTradingDayEt(formatEtDate(now));
+  if (
+    tradingDay &&
+    mins < postCloseWindow.startMin &&
+    !resolveScanPhase(now.getTime()) &&
+    healthStatus === "stale"
+  ) {
+    return {
+      suppress: true,
+      label: "Idle (between swing discovery phase windows)",
+    };
+  }
+
   const active = resolveScanPhase(now.getTime());
   if (!active) return { suppress: false };
   if (phaseClaims[active.phase] === "done") return { suppress: false };
