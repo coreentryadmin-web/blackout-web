@@ -52,3 +52,8 @@ test("full-site-deep-audit cron watchdog fails only on RTH stale during session"
   assert.match(src, /evaluateCronWatchdogAudit/);
   assert.match(src, /STALE-RTH-/);
 });
+
+test("full-site-deep-audit re-verifies data-integrity GEX-cold via heatmap API", () => {
+  assert.match(src, /returned no matrix while market is open/i);
+  assert.match(src, /heatmap API confirms live matrix/);
+});

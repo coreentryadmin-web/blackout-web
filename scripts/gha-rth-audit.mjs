@@ -207,6 +207,19 @@ async function cronHttpChecks() {
         console.log(`  ✗ ${label} → ${json.flags.length} flags`);
         for (const f of json.flags.slice(0, 5)) console.log(`      [${f.layer}/${f.metric}] ${f.detail}`);
       } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
+        const onlyGexCold = (json.issues ?? []).every((i) =>
+          /returned no matrix while market is open/i.test(`${i.title ?? ""} ${i.detail ?? ""}`)
+        );
+        if (onlyGexCold) {
+          await sleep(1500);
+          const retry = await fetch(`${BASE}${path}`, { headers: H });
+          const retryJson = await retry.json().catch(() => ({}));
+          const retryN = retryJson.discrepancies ?? retryJson.issues?.length ?? 0;
+          if (retry.status === 200 && retryN === 0) {
+            console.log(`  ✓ ${label} → discrepancies cleared on retry (GEX cache replica race)`);
+            continue;
+          }
+        }
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
       } else if (label === "cron-watchdog") {

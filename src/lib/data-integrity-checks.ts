@@ -68,10 +68,27 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // Pull the same numbers each tool consumes — desk (SPX Slayer), the canonical GEX
   // matrix for SPX + SPY (Heat Maps / Largo / Night's Watch all read this), and the
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
+  //
+  // One-shot getGexPositioning on a single ECS task can miss a hot Redis key during a
+  // replica rollover or brief cache gap while another task still serves live matrices —
+  // retry briefly before C6 flags a cold matrix (avoids false P0 in data-integrity / RTH audit).
+  const GEX_READ_ATTEMPTS = 3;
+  const GEX_READ_RETRY_MS = 400;
+  const readGex = async (label: "SPX" | "SPY") => {
+    for (let attempt = 0; attempt < GEX_READ_ATTEMPTS; attempt++) {
+      const pos = await getGexPositioning(label).catch(() => null);
+      if (pos) return pos;
+      if (attempt + 1 < GEX_READ_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, GEX_READ_RETRY_MS));
+      }
+    }
+    return null;
+  };
+
   const [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
+    readGex("SPX"),
+    readGex("SPY"),
   ]);
 
   if (!marketOpen) {

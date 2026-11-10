@@ -55,6 +55,17 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
     return { suppress: false };
   }
 
+  // Intraday + overnight: inside an active phase window before the idempotent claim lands,
+  // cron_job_runs handshake age is misleading (wide-band EventBridge fires, not a heartbeat).
+  const activeNow = resolveScanPhase(now.getTime());
+  if (activeNow && phaseClaims[activeNow.phase] !== "done") {
+    return {
+      suppress: true,
+      phase: activeNow.phase,
+      label: `Awaiting ${activeNow.phase} scan (${activeNow.label})`,
+    };
+  }
+
   const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
   const mins = etMinutesOfDay(now.getTime());
   const postCloseSatisfied =

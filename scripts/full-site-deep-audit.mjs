@@ -136,9 +136,42 @@ async function auditCrons() {
   }
 
   if (di.status === 200) {
-    const n = di.json.discrepancies ?? di.json.issues?.length ?? 0;
-    if (n > 0) for (const i of (di.json.issues ?? []).slice(0, 10)) fail("integrity", "cross-tool", i.detail ?? i.title, "P0");
-    else ok("integrity", "cross-tool", di.json.market_open ? `${di.json.checked ?? 0} checks, 0 discrepancies` : "market closed — checks skipped (by design)");
+    const issues = (di.json.issues ?? []).slice(0, 10);
+    const n = di.json.discrepancies ?? issues.length ?? 0;
+    const gexColdDetail = /returned no matrix while market is open/i;
+    const gexColdTicker = (i) => {
+      const blob = `${i.title ?? ""} ${i.detail ?? ""}`;
+      if (/SPY/i.test(blob)) return "SPY";
+      if (/SPX/i.test(blob)) return "SPX";
+      return null;
+    };
+    if (n > 0) {
+      for (const i of issues) {
+        if (gexColdDetail.test(i.detail ?? i.title ?? "")) {
+          const ticker = gexColdTicker(i);
+          if (ticker) {
+            const { status, json: hm } = await getJson(
+              `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`
+            );
+            if (status === 200 && hm?.spot > 0 && (hm?.strikes?.length ?? 0) > 0) {
+              ok(
+                "integrity",
+                "cross-tool",
+                `data-integrity cold ${ticker} on one task — heatmap API confirms live matrix (replica/cache race)`
+              );
+              continue;
+            }
+          }
+        }
+        fail("integrity", "cross-tool", i.detail ?? i.title, "P0");
+      }
+    } else {
+      ok(
+        "integrity",
+        "cross-tool",
+        di.json.market_open ? `${di.json.checked ?? 0} checks, 0 discrepancies` : "market closed — checks skipped (by design)"
+      );
+    }
   }
 }
 
