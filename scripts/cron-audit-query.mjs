@@ -16,6 +16,8 @@ import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { shouldRetryWatchdogFetch } from "./audit/lib/ops-collect-scope.mjs";
+import { evaluateCronWatchdogAudit } from "./audit/lib/watchdog-audit-eval.mjs";
+import { inRthOpenWindow } from "./gha-et-window.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -60,14 +62,21 @@ async function auditViaWatchdog() {
     console.error(`[cron-audit] watchdog HTTP ${res?.status ?? 0}`);
     process.exit(1);
   }
-  const problems = [
-    ...new Set([...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])]),
-  ].filter((key) => !isXMarketingCronSuppressed(key));
+  const filteredBody = {
+    ...body,
+    problem_keys: (body.problem_keys ?? []).filter((key) => !isXMarketingCronSuppressed(key)),
+    rth_stale_keys: (body.rth_stale_keys ?? []).filter((key) => !isXMarketingCronSuppressed(key)),
+  };
+  const inRth = inRthOpenWindow();
+  const verdict = evaluateCronWatchdogAudit(filteredBody, { inRth });
+  const telemetry = [...new Set([...verdict.failKeys, ...verdict.warnKeys, ...verdict.nonRthProblems])];
   console.log("\n=== CRON AUDIT (HTTP watchdog fallback) ===\n");
   console.log(`checked: ${body.checked ?? "?"}`);
-  console.log(`problems: ${problems.length ? problems.join(", ") : "(none)"}`);
+  console.log(`rth_window: ${inRth ? "open" : "closed/off-hours"}`);
+  console.log(`problems: ${telemetry.length ? telemetry.join(", ") : "(none)"}`);
+  console.log(`verdict: ${verdict.summary}`);
   console.log(`error_spike: ${body.error_spike ?? "none"} (${body.error_count ?? 0} in ${body.error_window_min ?? "?"}m)`);
-  if (body.error_spike === "critical" || problems.length > 0) {
+  if (verdict.shouldFail) {
     process.exit(1);
   }
   console.log("\nGREEN — cron watchdog reports healthy.\n");
