@@ -3,6 +3,8 @@ import "server-only";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { isPolygonCircuitOpen } from "@/lib/providers/polygon-rate-limiter";
+import { shouldFlagGexColdDuringRth } from "@/lib/data-integrity-gex-freshness";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -80,6 +82,22 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
     return { marketOpen: false, checked: 0, issues };
   }
 
+  // One guarded re-read when either matrix is cold — GHA deep audit and heatmap-warm can
+  // interleave with a short circuit-pause blip; a single retry avoids a false P0 when the
+  // very next tick would have succeeded (measured 2026-11-10 run 42897223779: heatmaps GREEN,
+  // data-integrity cold on the same pass).
+  if (!gexSpx || !gexSpy) {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const [retrySpx, retrySpy] = await Promise.all([
+      gexSpx ? Promise.resolve(gexSpx) : getGexPositioning("SPX").catch(() => null),
+      gexSpy ? Promise.resolve(gexSpy) : getGexPositioning("SPY").catch(() => null),
+    ]);
+    if (!gexSpx) gexSpx = retrySpx;
+    if (!gexSpy) gexSpy = retrySpy;
+  }
+
+  const polygonCircuitOpen = isPolygonCircuitOpen();
+
   // C1 — desk internal consistency: spx_change_pct must reconstruct from price ÷ prior_close.
   if (merged.available && merged.price > 0 && merged.prior_close != null && merged.prior_close > 0) {
     const servedChg = merged.spx_change_pct;
@@ -154,10 +172,11 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // (or cold) SPX/SPY matrix during the session is a real stall, not a warm-up gap.
   const now = Date.now();
   for (const [label, pos] of [["SPX", gexSpx], ["SPY", gexSpy]] as const) {
-    if (!pos) {
+    if (shouldFlagGexColdDuringRth(pos, polygonCircuitOpen)) {
       add(`GEX ${label} cold during RTH`, `getGexPositioning("${label}") returned no matrix while market is open`);
       continue;
     }
+    if (!pos) continue;
     checked++;
     const ageMin = (now - new Date(pos.asof).getTime()) / 60000;
     if (Number.isFinite(ageMin) && ageMin > 15) {
