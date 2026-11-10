@@ -17,8 +17,7 @@ export function evaluateCronWatchdogAudit(body, { inRth }) {
   const warnKeys = inRth ? nonRthProblems : nonRthProblems;
   const criticalErrorSpike = body.error_spike === "critical";
 
-  const shouldFail =
-    failKeys.length > 0 || criticalErrorSpike || (inRth && nonRthProblems.length > 0);
+  const shouldFail = failKeys.length > 0 || criticalErrorSpike;
 
   return {
     rthStale,

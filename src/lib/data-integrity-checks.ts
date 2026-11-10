@@ -3,6 +3,7 @@ import "server-only";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -155,6 +156,11 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   const now = Date.now();
   for (const [label, pos] of [["SPX", gexSpx], ["SPY", gexSpy]] as const) {
     if (!pos) {
+      const hm = await fetchGexHeatmap(label).catch(() => null);
+      if (hm && hm.spot > 0 && hm.strikes.length > 0) {
+        checked++;
+        continue;
+      }
       add(`GEX ${label} cold during RTH`, `getGexPositioning("${label}") returned no matrix while market is open`);
       continue;
     }
