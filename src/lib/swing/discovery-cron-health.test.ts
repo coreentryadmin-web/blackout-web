@@ -36,7 +36,7 @@ test("swingDiscoveryAwaitingPhaseSuppress: OVERNIGHT after POST_CLOSE done suppr
   assert.match(v.label ?? "", /OVERNIGHT/i);
 });
 
-test("swingDiscoveryAwaitingPhaseSuppress: POST_CLOSE ended without done claim does not suppress", () => {
+test("swingDiscoveryAwaitingPhaseSuppress: OVERNIGHT without POST_CLOSE done does not suppress", () => {
   const now = new Date("2026-11-10T01:30:00.000Z");
   const v = swingDiscoveryAwaitingPhaseSuppress({
     healthStatus: "stale",
@@ -45,6 +45,18 @@ test("swingDiscoveryAwaitingPhaseSuppress: POST_CLOSE ended without done claim d
     phaseClaims: {},
   });
   assert.equal(v.suppress, false);
+});
+
+test("swingDiscoveryAwaitingPhaseSuppress: POWER_HOUR before same-day POST_CLOSE suppresses stale handshake", () => {
+  const now = new Date("2026-11-10T20:38:00.000Z"); // 15:38 ET (EST)
+  const v = swingDiscoveryAwaitingPhaseSuppress({
+    healthStatus: "stale",
+    healthAgeMin: 180,
+    now,
+    phaseClaims: {},
+  });
+  assert.equal(v.suppress, true);
+  assert.equal(v.phase, "POWER_HOUR");
 });
 
 test("swingDiscoveryAwaitingPhaseSuppress: recent failed keeps alarm during active phase", () => {

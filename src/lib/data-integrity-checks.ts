@@ -49,6 +49,21 @@ export type DataIntegrityResult = {
   issues: SpxAdminIssue[];
 };
 
+const GEX_POSITIONING_RTH_ATTEMPTS = 3;
+const GEX_POSITIONING_RETRY_MS = 2_500;
+
+async function getGexPositioningWithRthRetry(ticker: string): Promise<Awaited<ReturnType<typeof getGexPositioning>>> {
+  let last: Awaited<ReturnType<typeof getGexPositioning>> = null;
+  for (let attempt = 0; attempt < GEX_POSITIONING_RTH_ATTEMPTS; attempt++) {
+    last = await getGexPositioning(ticker).catch(() => null);
+    if (last) return last;
+    if (attempt + 1 < GEX_POSITIONING_RTH_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, GEX_POSITIONING_RETRY_MS));
+    }
+  }
+  return last;
+}
+
 /**
  * Run the cross-tool numeric-consistency sweep. Returns the set of discrepancy
  * issues (empty when everything agrees, or when the market is closed). Never throws
@@ -70,8 +85,8 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
   const [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
+    getGexPositioningWithRthRetry("SPX"),
+    getGexPositioningWithRthRetry("SPY"),
   ]);
 
   if (!marketOpen) {

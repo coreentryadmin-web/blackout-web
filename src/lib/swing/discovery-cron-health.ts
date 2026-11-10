@@ -55,17 +55,23 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
     return { suppress: false };
   }
 
-  const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
-  const mins = etMinutesOfDay(now.getTime());
-  const postCloseSatisfied =
-    phaseClaims.POST_CLOSE === "done" ||
-    (mins >= postCloseWindow.startMin && mins < postCloseWindow.endMin);
-  if (!postCloseSatisfied) return { suppress: false };
-
   const active = resolveScanPhase(now.getTime());
   if (!active) return { suppress: false };
   if (phaseClaims[active.phase] === "done") return { suppress: false };
 
+  // OVERNIGHT is only meaningful once POST_CLOSE for this session has finished (or is running now).
+  if (active.phase === "OVERNIGHT") {
+    const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
+    const mins = etMinutesOfDay(now.getTime());
+    const postCloseSatisfied =
+      phaseClaims.POST_CLOSE === "done" ||
+      (mins >= postCloseWindow.startMin && mins < postCloseWindow.endMin);
+    if (!postCloseSatisfied) return { suppress: false };
+  }
+
+  // Intraday phases (PRE_OPEN/MIDDAY/POWER_HOUR) and in-window POST_CLOSE: the cron handshake
+  // stays stale until the phase tick claims — do not require today's POST_CLOSE first (POWER_HOUR
+  // at 3:38 PM legitimately precedes the evening POST_CLOSE run).
   return {
     suppress: true,
     phase: active.phase,
