@@ -55,8 +55,19 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
     return { suppress: false };
   }
 
+  const sessionDay = formatEtDate(now);
   const active = resolveScanPhase(now.getTime());
-  if (!active) return { suppress: false };
+
+  if (!active) {
+    if (isTradingDayEt(sessionDay)) {
+      return {
+        suppress: true,
+        label: "Idle (inter-phase gap — discovery not scheduled)",
+      };
+    }
+    return { suppress: false };
+  }
+
   if (phaseClaims[active.phase] === "done") return { suppress: false };
 
   // Intraday phases (PRE_OPEN/MIDDAY/POWER_HOUR/POST_CLOSE) gate on their own window only.
