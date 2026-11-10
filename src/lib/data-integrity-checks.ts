@@ -2,6 +2,7 @@ import "server-only";
 
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
+import { isPolygonCircuitOpen } from "@/lib/providers/polygon-rate-limiter";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
@@ -153,8 +154,12 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // C6 — heatmap freshness during RTH. Heat Maps Warm runs every ~30s, so a >15-min-old
   // (or cold) SPX/SPY matrix during the session is a real stall, not a warm-up gap.
   const now = Date.now();
+  const polygonPaused = isPolygonCircuitOpen();
   for (const [label, pos] of [["SPX", gexSpx], ["SPY", gexSpy]] as const) {
     if (!pos) {
+      // During the cluster-wide Polygon 429 pause, matrix rebuilds cannot complete — skip cold
+      // assertions so RTH deep audit does not false-RED (measured 2026-11-10T20:38Z).
+      if (polygonPaused) continue;
       add(`GEX ${label} cold during RTH`, `getGexPositioning("${label}") returned no matrix while market is open`);
       continue;
     }
