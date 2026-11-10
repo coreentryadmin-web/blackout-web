@@ -68,11 +68,23 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // Pull the same numbers each tool consumes — desk (SPX Slayer), the canonical GEX
   // matrix for SPX + SPY (Heat Maps / Largo / Night's Watch all read this), and the
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
-  const [spySnap, gexSpx, gexSpy] = await Promise.all([
+  let [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
     getGexPositioning("SPX").catch(() => null),
     getGexPositioning("SPY").catch(() => null),
   ]);
+
+  // Matrix cache can read cold across concurrent heatmap-warm ticks during RTH — one short retry
+  // before flagging C6 avoids audit false positives while the shared cache turns over.
+  if (marketOpen && (!gexSpx || !gexSpy)) {
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    const [retrySpx, retrySpy] = await Promise.all([
+      gexSpx ? Promise.resolve(gexSpx) : getGexPositioning("SPX").catch(() => null),
+      gexSpy ? Promise.resolve(gexSpy) : getGexPositioning("SPY").catch(() => null),
+    ]);
+    gexSpx = retrySpx;
+    gexSpy = retrySpy;
+  }
 
   if (!marketOpen) {
     // Market closed → numbers legitimately stale; nothing to validate. Empty issue

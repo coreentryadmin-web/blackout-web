@@ -206,9 +206,28 @@ async function cronHttpChecks() {
         failures.push(`${label}: ${json.flags.length} flags`);
         console.log(`  ✗ ${label} → ${json.flags.length} flags`);
         for (const f of json.flags.slice(0, 5)) console.log(`      [${f.layer}/${f.metric}] ${f.detail}`);
-      } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
-        failures.push(`${label}: discrepancies`);
-        console.log(`  ✗ ${label} → discrepancies`);
+      } else if (label === "data-integrity") {
+        let discrepancies = json.discrepancies ?? json.issues?.length ?? 0;
+        let issues = json.issues ?? [];
+        if (discrepancies > 0) {
+          await sleep(3_000);
+          const retry = await fetch(`${BASE}${path}`, { headers: H });
+          const retryJson = await retry.json().catch(() => ({}));
+          if (retry.status === 200) {
+            discrepancies = retryJson.discrepancies ?? retryJson.issues?.length ?? 0;
+            issues = retryJson.issues ?? [];
+            json = retryJson;
+          }
+        }
+        if (discrepancies > 0) {
+          failures.push(`${label}: discrepancies`);
+          console.log(`  ✗ ${label} → discrepancies`);
+          for (const i of issues.slice(0, 5)) {
+            console.log(`      ${i.title ?? i.detail ?? JSON.stringify(i)}`);
+          }
+        } else {
+          console.log(`  ✓ ${label} → ok`);
+        }
       } else if (label === "cron-watchdog") {
         const wdVerdict = evaluateCronWatchdogAudit(json, { inRth: rthOpen });
         if (wdVerdict.shouldFail) {

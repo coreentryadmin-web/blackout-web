@@ -13,6 +13,17 @@ test("evaluateCronWatchdogAudit: off-hours swing-discovery problem does not fail
   assert.deepEqual(v.warnKeys, ["swing-discovery"]);
 });
 
+test("evaluateCronWatchdogAudit: in-RTH swing-discovery problem is warn-only (phase-anchored)", () => {
+  const v = evaluateCronWatchdogAudit(
+    { problem_keys: ["swing-discovery"], rth_stale_keys: [], problems: 1 },
+    { inRth: true }
+  );
+  assert.equal(v.shouldFail, false);
+  assert.deepEqual(v.failKeys, []);
+  assert.deepEqual(v.warnKeys, ["swing-discovery"]);
+  assert.deepEqual(v.phaseAnchoredProblems, ["swing-discovery"]);
+});
+
 test("evaluateCronWatchdogAudit: RTH stale keys fail", () => {
   const v = evaluateCronWatchdogAudit(
     { problem_keys: ["zerodte-warm"], rth_stale_keys: ["zerodte-warm"] },

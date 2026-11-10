@@ -117,7 +117,11 @@ async function auditCrons() {
       fail("crons", `STALE-RTH-${k}`, `Cron watchdog RTH stale: ${k}`, "P0");
     }
     for (const k of wdVerdict.warnKeys) {
-      ok("crons", `watchdog-off-hours-${k}`, `non-RTH stale ignored off-hours: ${k}`);
+      ok(
+        "crons",
+        `watchdog-warn-${k}`,
+        inRthOpenWindow() ? `phase-anchored watchdog warn: ${k}` : `non-RTH stale ignored off-hours: ${k}`
+      );
     }
     if (wdVerdict.nonRthProblems.length && inRthOpenWindow()) {
       for (const k of wdVerdict.nonRthProblems) {
