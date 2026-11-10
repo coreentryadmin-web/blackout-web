@@ -16,6 +16,8 @@ import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { shouldRetryWatchdogFetch } from "./audit/lib/ops-collect-scope.mjs";
+import { cronAuditFailKeys } from "./lib/cron-audit-watchdog-eval.mjs";
+import { inRthOpenWindow } from "./gha-et-window.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -60,14 +62,22 @@ async function auditViaWatchdog() {
     console.error(`[cron-audit] watchdog HTTP ${res?.status ?? 0}`);
     process.exit(1);
   }
-  const problems = [
+  const allProblems = [
     ...new Set([...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])]),
   ].filter((key) => !isXMarketingCronSuppressed(key));
+  const failProblems = cronAuditFailKeys(body, { inRth: inRthOpenWindow() }).filter(
+    (key) => !isXMarketingCronSuppressed(key)
+  );
   console.log("\n=== CRON AUDIT (HTTP watchdog fallback) ===\n");
   console.log(`checked: ${body.checked ?? "?"}`);
-  console.log(`problems: ${problems.length ? problems.join(", ") : "(none)"}`);
+  console.log(`problems: ${allProblems.length ? allProblems.join(", ") : "(none)"}`);
+  if (allProblems.length && !failProblems.length) {
+    console.log(
+      `ci_gate: off-hours — not failing on handshake-only stale (${allProblems.join(", ")}); rth_stale would still fail`
+    );
+  }
   console.log(`error_spike: ${body.error_spike ?? "none"} (${body.error_count ?? 0} in ${body.error_window_min ?? "?"}m)`);
-  if (body.error_spike === "critical" || problems.length > 0) {
+  if (body.error_spike === "critical" || failProblems.length > 0) {
     process.exit(1);
   }
   console.log("\nGREEN — cron watchdog reports healthy.\n");

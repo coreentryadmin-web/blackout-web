@@ -401,6 +401,26 @@ test("buildCronHealthSnapshot suppresses nighthawk-backfill-repair stale/failed 
   );
 });
 
+test("swing-discovery: stale suppressed in ET gap between phase windows", () => {
+  const gap = new Date("2026-11-10T09:00:00.000Z"); // 4:00 AM ET
+  const health = evaluateJob(
+    jobDef({ key: "swing-discovery", stale_after_min: 36 * 60, weekdays_only: true }),
+    {
+      id: 1,
+      job_key: "swing-discovery",
+      status: "ok",
+      started_at: "2026-11-04T22:00:00.000Z",
+      duration_ms: 10,
+      message: "post-close",
+      meta_json: null,
+    },
+    [],
+    gap
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /between swing discovery phase/i);
+});
+
 test("weekday scheduled post-close crons: failed suppressed Mon morning before evening fire (cron-audit query)", () => {
   const now = new Date("2026-11-09T15:55:00.000Z"); // Mon 10:55 AM ET
   const cases: Array<{ key: string; schedule_cron_utc: string }> = [

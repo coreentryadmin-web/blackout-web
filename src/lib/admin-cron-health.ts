@@ -22,6 +22,8 @@ import {
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
 import { swingDiscoveryHandshakeStaleMin } from "@/lib/swing/discovery-cron-health";
+import { resolveScanPhase } from "@/lib/swing/scan-cadence";
+import { swingDiscoveryHandshakeStaleMin } from "@/lib/swing/discovery-cron-health";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -412,6 +414,16 @@ export function evaluateJob(
   if (nonTradingScheduledIdle && (status === "stale" || status === "failed")) {
     status = "healthy";
     statusLabel = "Idle (non-trading day — outside weekday schedule)";
+    marketHoursStale = false;
+  }
+
+  if (
+    job.key === "swing-discovery" &&
+    resolveScanPhase(now.getTime()) === null &&
+    (status === "stale" || status === "failed")
+  ) {
+    status = "healthy";
+    statusLabel = "Idle (between swing discovery phase windows)";
     marketHoursStale = false;
   }
 
