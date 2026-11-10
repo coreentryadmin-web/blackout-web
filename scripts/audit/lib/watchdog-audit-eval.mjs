@@ -17,8 +17,9 @@ export function evaluateCronWatchdogAudit(body, { inRth }) {
   const warnKeys = inRth ? nonRthProblems : nonRthProblems;
   const criticalErrorSpike = body.error_spike === "critical";
 
-  const shouldFail =
-    failKeys.length > 0 || criticalErrorSpike || (inRth && nonRthProblems.length > 0);
+  // ops-collect pages non-RTH stale keys as P1 even during RTH (swing-discovery phase gaps).
+  // Only market_hours_stale (rth_stale_keys) and critical error spikes are P0 for CI gates.
+  const shouldFail = failKeys.length > 0 || criticalErrorSpike;
 
   return {
     rthStale,
@@ -34,7 +35,7 @@ export function evaluateCronWatchdogAudit(body, { inRth }) {
           ? `error_spike=${body.error_spike}`
           : nonRthProblems.length > 0
             ? inRth
-              ? `problems: ${nonRthProblems.join(", ")}`
+              ? `P1 problems (not failing run): ${nonRthProblems.join(", ")}`
               : `off-hours problems (ignored): ${nonRthProblems.join(", ")}`
             : "ok",
   };

@@ -68,10 +68,23 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // Pull the same numbers each tool consumes — desk (SPX Slayer), the canonical GEX
   // matrix for SPX + SPY (Heat Maps / Largo / Night's Watch all read this), and the
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
+  const gexRthAttempts = 3;
+  const gexRthRetryMs = 400;
+  async function readGexPositioningWithRetry(label: string) {
+    for (let attempt = 0; attempt < gexRthAttempts; attempt++) {
+      const pos = await getGexPositioning(label).catch(() => null);
+      if (pos) return pos;
+      if (attempt + 1 < gexRthAttempts) {
+        await new Promise((r) => setTimeout(r, gexRthRetryMs));
+      }
+    }
+    return null;
+  }
+
   const [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
+    readGexPositioningWithRetry("SPX"),
+    readGexPositioningWithRetry("SPY"),
   ]);
 
   if (!marketOpen) {
