@@ -3,6 +3,7 @@ import "server-only";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { retryGexPositioningRead } from "@/lib/data-integrity-gex-resilient";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -70,8 +71,8 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
   const [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
+    retryGexPositioningRead("SPX", (t) => getGexPositioning(t).catch(() => null)),
+    retryGexPositioningRead("SPY", (t) => getGexPositioning(t).catch(() => null)),
   ]);
 
   if (!marketOpen) {
