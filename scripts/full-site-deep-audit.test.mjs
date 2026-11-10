@@ -52,3 +52,8 @@ test("full-site-deep-audit cron watchdog fails only on RTH stale during session"
   assert.match(src, /evaluateCronWatchdogAudit/);
   assert.match(src, /STALE-RTH-/);
 });
+
+test("full-site-deep-audit warms GEX before integrity during RTH", () => {
+  assert.match(src, /warmupGexCachesBeforeIntegrity/);
+  assert.match(src, /prefetch before integrity/);
+});

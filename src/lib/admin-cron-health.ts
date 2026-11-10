@@ -22,9 +22,11 @@ import {
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
 import {
+  probeSwingDiscoveryServingSnapshot,
   swingDiscoveryAwaitingPhaseSuppress,
   swingDiscoveryHandshakeStaleMin,
 } from "@/lib/swing/discovery-cron-health";
+import { readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -514,6 +516,8 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   );
   const swingDiscoveryInFlight = await isSwingDiscoveryScanInFlight();
   const swingDiscoveryPhaseClaims = await loadSwingDiscoveryPhaseClaims(todayEt());
+  const swingServingSnapshot = await readSwingServingSnapshot().catch(() => null);
+  const swingServingProbe = probeSwingDiscoveryServingSnapshot(swingServingSnapshot, new Date());
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
@@ -655,6 +659,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
         now: new Date(),
         phaseClaims: swingDiscoveryPhaseClaims,
         scanInFlight: swingDiscoveryInFlight,
+        servingProbeFresh: swingServingProbe.fresh,
       });
       if (suppress.suppress && suppress.label) {
         return {

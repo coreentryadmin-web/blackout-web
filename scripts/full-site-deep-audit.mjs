@@ -99,6 +99,17 @@ function scanFinite(obj, path = "", out = []) {
   return out;
 }
 
+// ── 0. Warm shared GEX Redis before integrity cron (same cluster the cron reads). ─
+async function warmupGexCachesBeforeIntegrity() {
+  if (!CRON || !inRthOpenWindow()) return;
+  for (const ticker of ["SPX", "SPY"]) {
+    const { status } = await getJson(`/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`);
+    if (status === 200) ok("warmup", `gex-${ticker}`, "prefetch before integrity");
+    else ok("warmup", `gex-${ticker}`, `prefetch HTTP ${status} (integrity may still pass on retry)`);
+  }
+  await sleep(1500);
+}
+
 // ── 1. Cron plane + automated validators ─────────────────────────────────────
 async function auditCrons() {
   if (!CRON) {
@@ -437,7 +448,11 @@ async function auditPublicMarket() {
     "/api/market/spx/outcomes",
   ];
   for (const path of routes) {
-    const { status, json } = await getJson(path);
+    let { status, json } = await getJson(path);
+    for (let attempt = 1; attempt < 3 && status >= 502 && status <= 504; attempt++) {
+      await sleep(1200 * attempt);
+      ({ status, json } = await getJson(path));
+    }
     if (status === 401 || status === 403) {
       ok("public", path, `HTTP ${status} (gated)`);
       continue;
@@ -549,6 +564,7 @@ console.log(`Target: ${BASE}`);
 console.log(`CRON: ${CRON ? "yes" : "NO"}`);
 console.log(`Polygon oracle: ${POLY_KEY ? "yes" : "no"}\n`);
 
+await warmupGexCachesBeforeIntegrity();
 await auditCrons();
 await auditTrackRecord();
 await auditSpxDesk();

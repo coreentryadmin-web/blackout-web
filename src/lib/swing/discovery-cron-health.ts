@@ -43,8 +43,10 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
   now: Date;
   phaseClaims: Partial<Record<SwingDiscoveryPhase, string>>;
   scanInFlight?: boolean;
+  /** When the serving snapshot is intraday-fresh, a stale cron_job_runs row mid-phase is handshake lag. */
+  servingProbeFresh?: boolean;
 }): { suppress: boolean; label?: string; phase?: SwingDiscoveryPhase } {
-  const { healthStatus, healthAgeMin, now, phaseClaims, scanInFlight } = args;
+  const { healthStatus, healthAgeMin, now, phaseClaims, scanInFlight, servingProbeFresh } = args;
   if (healthStatus !== "stale" && healthStatus !== "failed") return { suppress: false };
   if (scanInFlight) return { suppress: false };
   if (
@@ -53,6 +55,20 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
     healthAgeMin < SWING_DISCOVERY_RECENT_FAIL_GRACE_MIN
   ) {
     return { suppress: false };
+  }
+
+  const activeIntraday = resolveScanPhase(now.getTime());
+  if (
+    activeIntraday &&
+    phaseClaims[activeIntraday.phase] !== "done" &&
+    servingProbeFresh &&
+    healthStatus === "stale"
+  ) {
+    return {
+      suppress: true,
+      phase: activeIntraday.phase,
+      label: `Serving snapshot fresh — awaiting ${activeIntraday.phase} cron handshake (${activeIntraday.label})`,
+    };
   }
 
   const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
