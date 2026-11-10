@@ -70,6 +70,18 @@ test("swingDiscoveryAwaitingPhaseSuppress: recent failed keeps alarm during acti
   assert.equal(v.suppress, false);
 });
 
+test("swingDiscoveryAwaitingPhaseSuppress: inter-phase gap on trading day suppresses stale handshake", () => {
+  const now = new Date("2026-11-10T19:38:00.000Z"); // 14:38 ET Mon
+  const v = swingDiscoveryAwaitingPhaseSuppress({
+    healthStatus: "failed",
+    healthAgeMin: 120,
+    now,
+    phaseClaims: {},
+  });
+  assert.equal(v.suppress, true);
+  assert.match(v.label ?? "", /inter-phase gap/i);
+});
+
 test("probeSwingDiscoveryServingSnapshot: fresh when snapshot matches today after PRE_OPEN", () => {
   const now = new Date("2026-10-22T16:30:00.000Z"); // 12:30 ET Wed — MIDDAY
   const snap: SwingServingSnapshot = {
