@@ -17,7 +17,7 @@ import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { shouldRetryWatchdogFetch } from "./audit/lib/ops-collect-scope.mjs";
 import { evaluateCronWatchdogAudit } from "./audit/lib/watchdog-audit-eval.mjs";
-import { inRthOpenWindow } from "./gha-et-window.mjs";
+import { etParts, inRthOpenWindow } from "./gha-et-window.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -62,12 +62,13 @@ async function auditViaWatchdog() {
     console.error(`[cron-audit] watchdog HTTP ${res?.status ?? 0}`);
     process.exit(1);
   }
+  const rthOpen = inRthOpenWindow();
   const filteredBody = {
     ...body,
     problem_keys: (body.problem_keys ?? []).filter((key) => !isXMarketingCronSuppressed(key)),
     rth_stale_keys: (body.rth_stale_keys ?? []).filter((key) => !isXMarketingCronSuppressed(key)),
   };
-  const verdict = evaluateCronWatchdogAudit(filteredBody, { inRth: inRthOpenWindow() });
+  const verdict = evaluateCronWatchdogAudit(filteredBody, { inRth: rthOpen });
   const problemLine = verdict.failKeys.length
     ? verdict.failKeys.join(", ")
     : verdict.warnKeys.length
@@ -75,6 +76,7 @@ async function auditViaWatchdog() {
       : "(none)";
   console.log("\n=== CRON AUDIT (HTTP watchdog fallback) ===\n");
   console.log(`checked: ${body.checked ?? "?"}`);
+  console.log(`session: ${etParts().label} · RTH ${rthOpen ? "open" : "closed"}`);
   console.log(`problems: ${problemLine}`);
   console.log(`error_spike: ${body.error_spike ?? "none"} (${body.error_count ?? 0} in ${body.error_window_min ?? "?"}m)`);
   if (verdict.shouldFail) {
