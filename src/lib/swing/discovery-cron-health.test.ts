@@ -4,6 +4,7 @@ import test from "node:test";
 import { SWING_SCAN_PHASES } from "@/lib/swing/scan-cadence";
 import {
   probeSwingDiscoveryServingSnapshot,
+  swingDiscoveryAwaitingPhaseSuppress,
   swingDiscoveryHandshakeStaleMin,
   swingDiscoveryPhasesEndedBefore,
   worstOrdinarySwingDiscoveryGapMin,
@@ -21,6 +22,40 @@ test("worstOrdinarySwingDiscoveryGapMin matches serving-lane regression math", (
 
 test("swingDiscoveryHandshakeStaleMin exceeds the 36h registry default", () => {
   assert.ok(swingDiscoveryHandshakeStaleMin() > 36 * 60);
+});
+
+test("swingDiscoveryAwaitingPhaseSuppress: OVERNIGHT after POST_CLOSE done suppresses stale handshake", () => {
+  const now = new Date("2026-11-10T01:30:00.000Z"); // 20:30 ET Mon
+  const v = swingDiscoveryAwaitingPhaseSuppress({
+    healthStatus: "stale",
+    healthAgeMin: 400,
+    now,
+    phaseClaims: { POST_CLOSE: "done" },
+  });
+  assert.equal(v.suppress, true);
+  assert.match(v.label ?? "", /OVERNIGHT/i);
+});
+
+test("swingDiscoveryAwaitingPhaseSuppress: POST_CLOSE ended without done claim does not suppress", () => {
+  const now = new Date("2026-11-10T01:30:00.000Z");
+  const v = swingDiscoveryAwaitingPhaseSuppress({
+    healthStatus: "stale",
+    healthAgeMin: 400,
+    now,
+    phaseClaims: {},
+  });
+  assert.equal(v.suppress, false);
+});
+
+test("swingDiscoveryAwaitingPhaseSuppress: recent failed keeps alarm during active phase", () => {
+  const now = new Date("2026-11-10T01:30:00.000Z");
+  const v = swingDiscoveryAwaitingPhaseSuppress({
+    healthStatus: "failed",
+    healthAgeMin: 12,
+    now,
+    phaseClaims: { POST_CLOSE: "done" },
+  });
+  assert.equal(v.suppress, false);
 });
 
 test("probeSwingDiscoveryServingSnapshot: fresh when snapshot matches today after PRE_OPEN", () => {
