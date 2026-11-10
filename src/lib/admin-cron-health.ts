@@ -262,6 +262,22 @@ export function effectiveStaleMinutes(
   return { effective: job.stale_after_min, multiplier: 1 };
 }
 
+/** Phase-idempotent swing-discovery can log a trailing failed handshake after an ok POST_CLOSE in the same 24h. */
+function swingDiscoveryRecentOkWithin(
+  runs24h: CronJobRunRow[],
+  staleThreshold: number,
+  now: Date
+): number | null {
+  let bestAge: number | null = null;
+  for (const r of runs24h) {
+    if (r.status !== "ok") continue;
+    const age = ageMinFromIso(r.started_at, now.getTime());
+    if (age == null || age > staleThreshold) continue;
+    if (bestAge == null || age < bestAge) bestAge = age;
+  }
+  return bestAge;
+}
+
 /**
  * Exported for the unit test, and taking an injectable `now` for the same reason: every branch here
  * turns on where the clock is relative to the market session, so a test that used the real clock
@@ -359,9 +375,16 @@ export function evaluateJob(
   let statusLabel = "OK";
 
   if (last.status === "failed") {
-    // Between scheduled fires (e.g. Monday morning before the post-close band), a Friday failed
-    // handshake must not fail cron-audit-query all day — same ops #1983 shape as stale suppression.
-    if (offScheduleGap || awaitingDualBand) {
+    const swingOkAge =
+      job.key === "swing-discovery"
+        ? swingDiscoveryRecentOkWithin(runs24h, staleThreshold, now)
+        : null;
+    if (swingOkAge != null) {
+      status = "warning";
+      statusLabel = `Last handshake failed; latest ok run ${Math.round(swingOkAge)}m ago`;
+    } else if (offScheduleGap || awaitingDualBand) {
+      // Between scheduled fires (e.g. Monday morning before the post-close band), a Friday failed
+      // handshake must not fail cron-audit-query all day — same ops #1983 shape as stale suppression.
       status = "healthy";
       statusLabel = awaitingDualBand
         ? "Idle (awaiting in-window UTC band; last run failed)"
