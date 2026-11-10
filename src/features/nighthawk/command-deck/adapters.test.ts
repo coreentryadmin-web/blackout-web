@@ -1763,6 +1763,72 @@ test("horizon adapter: committed row missing liveSpot/entryTriggerUnderlyingPx f
   assert.equal(entryGeometry!.currentLabel, "n/a");
 });
 
+// BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, task #100, live repro
+// SWING:MRVL positionId 70): liveEntryStatus (wired by #5336, directly above) feeds the SAME
+// live price-vs-trigger geometry into entryGeometryScore (thesis-health.ts) that #5336 was built to
+// unlock -- but, until this fix, entryGeometryScore still scored/labeled that geometry with the
+// pre-entry WATCH-stage valence, producing a direct contradiction for an already-winning committed
+// position. Real shape: SHORT, entryTriggerUnderlyingPx 179.99, liveSpot 137.70 (price fell ~23.5%,
+// hugely FAVORABLE for a short), livePnlPct +221.3% -- the best-performing leg in the book.
+test("horizon adapter: committed SHORT far past its entry trigger in its OWN favorable direction (live MRVL repro, +221.3% P&L) must not render 'chase risk' / the worst entry-geometry score", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "mrvl",
+    direction: "SHORT",
+    horizon: "SWING",
+    score: 78,
+    status: "COMMIT",
+    liveStatus: "OPEN",
+    contract: { strike: 140, right: "P", expiry: "2026-12-19", dte: 35, mid: 9.0 },
+    entryPremium: 2.8,
+    livePnlPct: 221.3,
+    entryTriggerUnderlyingPx: 179.99,
+    liveSpot: 137.7,
+  });
+  assert.ok(play.thesisHealth);
+  const entryGeometry = play.thesisHealth!.pillars.find((p) => p.label === "Entry geometry");
+  assert.ok(entryGeometry, "entry geometry pillar must be present");
+  assert.notEqual(
+    entryGeometry!.currentLabel,
+    "chase risk",
+    "a position up +221.3% must not be framed as a pre-entry chase risk",
+  );
+  // Must not be the worst-scoring bucket for a position that has worked out best in the book.
+  assert.ok(entryGeometry!.currentScore >= 0.5, `expected a favorable score, got ${entryGeometry!.currentScore}`);
+});
+
+// Sibling live repro, SWING:PLTR positionId 74: SHORT, entryTriggerUnderlyingPx 155.49, liveSpot
+// 159.76 (price rose moderately ADVERSE for a short, approaching invalidationUnderlyingPx 163.02),
+// already TAKE_PARTIAL (partially trimmed). Pre-fix this rendered "pre-trigger" -- as if the
+// position had not even entered yet -- at a mediocre-but-not-worst score, while the same brief's
+// "What to watch" section says "Thesis intact."
+test("horizon adapter: committed SHORT reversed back through its own entry trigger toward invalidation (live PLTR repro, already trimmed) must not render 'pre-trigger' / a mediocre entry-geometry score", () => {
+  const play = terminalPlayFromHorizon({
+    ticker: "pltr",
+    direction: "SHORT",
+    horizon: "SWING",
+    score: 78,
+    status: "COMMIT",
+    liveStatus: "TRIM",
+    manageAction: "TAKE_PARTIAL",
+    contract: { strike: 150, right: "P", expiry: "2026-12-19", dte: 35, mid: 6.0 },
+    entryPremium: 7.0,
+    livePnlPct: -8.4,
+    entryTriggerUnderlyingPx: 155.49,
+    invalidationUnderlyingPx: 163.02,
+    liveSpot: 159.76,
+  });
+  assert.ok(play.thesisHealth);
+  const entryGeometry = play.thesisHealth!.pillars.find((p) => p.label === "Entry geometry");
+  assert.ok(entryGeometry, "entry geometry pillar must be present");
+  assert.notEqual(
+    entryGeometry!.currentLabel,
+    "pre-trigger",
+    "an already-committed, already-trimmed position must not be framed as 'hasn't triggered yet'",
+  );
+  // Must be the WORST-scoring bucket (adverse, reversed back through entry) now, not a mid-decent one.
+  assert.ok(entryGeometry!.currentScore <= 0.5, `expected an adverse score, got ${entryGeometry!.currentScore}`);
+});
+
 test("legacy adapter: UNVERIFIED morning status → WATCH + unknown thesis", () => {
   const p = terminalPlayFromEdition({
     ticker: "NVDA",

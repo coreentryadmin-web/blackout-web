@@ -7,6 +7,7 @@ import {
   thesisHealthUnchangedSinceCommit,
   uncalibratedThesisPillars,
 } from "./thesis-health.ts";
+import type { SwingEntryState } from "./taxonomy.ts";
 
 describe("computeSwingThesisHealth", () => {
   test("returns null for WATCH rows", () => {
@@ -799,6 +800,103 @@ describe("computeSwingThesisHealth", () => {
         thesisHealthUnchangedSinceCommit(h!),
         false,
         "a real giveback happened even though the other 4 pillars never flagged it -- must not read as unchanged",
+      );
+    });
+  });
+
+  // BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, task #100): entryGeometryScore
+  // is ONLY ever invoked here, from computeSwingThesisHealth, which itself only runs for already-
+  // committed (OPEN/HOLD/TRIM) positions -- SwingEntryState's four geometric buckets are
+  // direction-mirrored, so EXTENDED_CHASE always means price moved FURTHER in the position's own
+  // favorable direction past its entry trigger, and PRE_TRIGGER always means price sits on the
+  // WRONG side of the trigger (i.e. has reversed back through the entry level, adverse) -- once a
+  // position is already committed, not before. The OLD mapping re-used the pre-entry WATCH-stage
+  // score ordering unchanged (EXTENDED_CHASE worst/"chase risk", PRE_TRIGGER mid-decent/"pre-trigger"),
+  // which is backwards for a committed row.
+  describe("entryGeometryScore: post-entry favorability (live repros SWING:MRVL positionId 70, SWING:PLTR positionId 74)", () => {
+    // `entryGeometryScore` itself is file-private -- this reads its mapping back out through the one
+    // real production call site (`computeSwingThesisHealth`) instead of exporting an internal
+    // implementation detail just for the test.
+    const entryGeometryCurrentScore = (entryStatus: SwingEntryState): number => {
+      const h = computeSwingThesisHealth({
+        direction: "SHORT",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus,
+        computedAtEt: "14:00 ET",
+      });
+      return h!.pillars.find((p) => p.id === "momentum")!.currentScore;
+    };
+
+    test("EXTENDED_CHASE (live MRVL shape: SHORT, price fell far past entry, livePnlPct +221.3%, the best-performing leg in the book) scores BEST, not worst, and is not labeled 'chase risk'", () => {
+      const h = computeSwingThesisHealth({
+        direction: "SHORT",
+        status: "OPEN",
+        setupState: "TRIGGERED",
+        entryStatus: "EXTENDED_CHASE",
+        signalKinds: ["FLOW"],
+        regime: "momentum short",
+        dte: 10,
+        subLane: "STANDARD",
+        pnlPct: 221.3,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      const entry = h!.pillars.find((p) => p.id === "momentum")!;
+      assert.ok(entry, "entry_geometry pillar must be present");
+      assert.notEqual(entry.currentLabel, "chase risk", "must not render the pre-entry 'chase risk' framing for an already-winning committed position");
+      assert.notEqual(entry.currentLabel, "n/a");
+      // EXTENDED_CHASE must now be the single BEST-scoring reachable bucket -- strictly higher than
+      // AT_TRIGGER (neutral) and PRE_TRIGGER (adverse), the exact inversion of the pre-fix ordering.
+      const neutral = entryGeometryCurrentScore("AT_TRIGGER");
+      const adverse = entryGeometryCurrentScore("PRE_TRIGGER");
+      assert.ok(entry.currentScore > neutral, "a favorable EXTENDED_CHASE must outscore the neutral AT_TRIGGER bucket");
+      assert.ok(entry.currentScore > adverse, "a favorable EXTENDED_CHASE must outscore the adverse PRE_TRIGGER bucket");
+    });
+
+    test("PRE_TRIGGER (live PLTR shape: SHORT, price reversed past entry toward invalidation, already TAKE_PARTIAL) scores WORST, not mid-decent, and is not labeled 'pre-trigger' (which implies not yet entered)", () => {
+      const h = computeSwingThesisHealth({
+        direction: "SHORT",
+        status: "TRIM",
+        setupState: "TRIGGERED",
+        entryStatus: "PRE_TRIGGER",
+        signalKinds: ["FLOW"],
+        regime: "momentum short",
+        dte: 10,
+        subLane: "STANDARD",
+        manageAction: "TAKE_PARTIAL",
+        pnlPct: -8.4,
+        computedAtEt: "14:00 ET",
+      });
+      assert.ok(h);
+      const entry = h!.pillars.find((p) => p.id === "momentum")!;
+      assert.ok(entry, "entry_geometry pillar must be present");
+      assert.notEqual(entry.currentLabel, "pre-trigger", "must not render a 'hasn't triggered yet' framing for an already-committed, already-trimmed position");
+      assert.notEqual(entry.currentLabel, "n/a");
+      // PRE_TRIGGER must now be the single WORST-scoring reachable bucket.
+      const neutral = entryGeometryCurrentScore("AT_TRIGGER");
+      const favorable = entryGeometryCurrentScore("EXTENDED_CHASE");
+      assert.ok(entry.currentScore < neutral, "an adverse PRE_TRIGGER must score below the neutral AT_TRIGGER bucket");
+      assert.ok(entry.currentScore < favorable, "an adverse PRE_TRIGGER must score below the favorable EXTENDED_CHASE bucket");
+    });
+
+    test("the full geometric ordering is EXTENDED_CHASE > AT_TRIGGER > PULLBACK_TO_ENTRY > PRE_TRIGGER (favorable to adverse), monotonic", () => {
+      const favorable = entryGeometryCurrentScore("EXTENDED_CHASE");
+      const neutral = entryGeometryCurrentScore("AT_TRIGGER");
+      const mildAdverse = entryGeometryCurrentScore("PULLBACK_TO_ENTRY");
+      const adverse = entryGeometryCurrentScore("PRE_TRIGGER");
+      assert.ok(favorable > neutral);
+      assert.ok(neutral > mildAdverse);
+      assert.ok(mildAdverse > adverse);
+    });
+
+    test("WATCH-stage SwingEntryState semantics (entry-model.ts's deriveEntryState) are completely untouched by this fix -- this pillar's score mapping is local to thesis-health.ts and has no bearing on the pre-entry taxonomy", () => {
+      // computeSwingThesisHealth never runs for a WATCH candidate (status must be OPEN/HOLD/TRIM),
+      // so there is no pre-entry rendering of entryGeometryScore to regress -- documented here as an
+      // explicit regression guard rather than left implicit.
+      assert.equal(
+        computeSwingThesisHealth({ direction: "SHORT", status: "WATCH", entryStatus: "EXTENDED_CHASE", computedAtEt: "14:00 ET" }),
+        null,
       );
     });
   });
