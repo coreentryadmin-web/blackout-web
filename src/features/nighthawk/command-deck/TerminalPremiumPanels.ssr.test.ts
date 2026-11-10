@@ -3,6 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { TerminalPlay } from "./types";
+import type { TerminalExitLadder } from "@/lib/zerodte/terminal-ladder";
 
 (globalThis as unknown as { React: typeof React }).React = React;
 
@@ -71,6 +72,122 @@ test("TradeExcursionGraphic: Close stat uses the trim-scale as-managed blend for
   const closeStat = html.match(/<span class="k">Close<\/span>\s*<span[^>]*>([^<]*)<\/span>/);
   assert.ok(closeStat, "expected a Close stat in the stats row");
   assert.equal(closeStat![1], "+6.7%", "Close stat must show the blended as-managed outcome, not the raw -50% mechanical stop pin");
+});
+
+// BUG FIX (Ask Largo standing mandate — live-audit confirmed finding, 2026-11-09): a sibling
+// instance of the within-panel-contradiction class the test above pins for the CLOSED case,
+// left open for a still-OPEN SWING TRIM row. Fixture mirrors the live APP repro from #7834 exactly
+// (ZeroDteCommandPanel.test.ts's "verdict band shows the BLENDED P&L..." block): entry $17.34,
+// mark $98.00 → raw runner-only P&L +465.2%, one tranche fired at the +100%/50% rung → blended =
+// 0.5×100 + 0.5×465.2 = +282.6%, which formatExcursionPct (whole-percent above 10%) renders "+283%".
+test("TradeExcursionGraphic: Current stat uses the BLENDED whole-position P&L for an OPEN SWING position with an already-banked trim, not the raw open-runner-only figure", async () => {
+  const { TradeExcursionGraphic } = await load();
+  const trimLadder: TerminalExitLadder = {
+    policy: "trim_scale",
+    hard_stop_pct: -60,
+    target_pct: 100,
+    trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: true }],
+    runner_fraction: 0.5,
+    stop_premium: 6.94,
+    target_premium: 34.68,
+    time_stop_et: "16:00",
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(TradeExcursionGraphic, {
+      play: play({
+        id: "SWING:APP:2397",
+        ticker: "APP",
+        horizon: "SWING",
+        status: "TRIM",
+        exitModel: "SCALE_OUT",
+        entry: 17.34,
+        mark: 98.0,
+        pnlPct: 465.2,
+        peak: 465.2,
+        trough: 0,
+        exitPnlPct: null,
+        closedReason: undefined,
+        exitPolicy: trimLadder,
+      }),
+    }),
+  );
+  const currentStat = html.match(/<span class="k">Current<\/span>\s*<span[^>]*>([^<]*)<\/span>/);
+  assert.ok(currentStat, "expected a Current stat in the stats row");
+  assert.equal(
+    currentStat![1],
+    "+283%",
+    "Current stat must show the blended whole-position P&L (50% banked @ +100% + 50% of the open runner's +465.2%), matching the verdict band fixed by #7834 — not the raw +465% open-runner-only figure",
+  );
+});
+
+test("TradeExcursionGraphic: a fully-OPEN SWING position with NO banked trim (all trim_levels unfired) is unaffected — still shows the raw figure", async () => {
+  const { TradeExcursionGraphic } = await load();
+  const trimLadder: TerminalExitLadder = {
+    policy: "trim_scale",
+    hard_stop_pct: -60,
+    target_pct: 100,
+    trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: false }],
+    runner_fraction: 0.5,
+    stop_premium: 6.94,
+    target_premium: 34.68,
+    time_stop_et: "16:00",
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(TradeExcursionGraphic, {
+      play: play({
+        horizon: "SWING",
+        status: "OPEN",
+        entry: 17.34,
+        mark: 24.74,
+        pnlPct: 42.6,
+        peak: 42.6,
+        trough: 0,
+        exitPnlPct: null,
+        closedReason: undefined,
+        exitPolicy: trimLadder,
+      }),
+    }),
+  );
+  const currentStat = html.match(/<span class="k">Current<\/span>\s*<span[^>]*>([^<]*)<\/span>/);
+  assert.ok(currentStat, "expected a Current stat in the stats row");
+  assert.equal(currentStat![1], "+43%", "no tranche has fired — blendedTrimPnlPct must no-op and the raw figure must still render");
+});
+
+test("TradeExcursionGraphic: a ZERO_DTE TRIM row is unaffected (fix is scoped to SWING only) — still shows the raw figure even with a fired trim tranche", async () => {
+  const { TradeExcursionGraphic } = await load();
+  const trimLadder: TerminalExitLadder = {
+    policy: "trim_scale",
+    hard_stop_pct: -60,
+    target_pct: 100,
+    trim_levels: [{ trigger_pct: 100, fraction: 0.5, premium: 34.68, fired: true }],
+    runner_fraction: 0.5,
+    stop_premium: 6.94,
+    target_premium: 34.68,
+    time_stop_et: "16:00",
+  };
+  const html = renderToStaticMarkup(
+    React.createElement(TradeExcursionGraphic, {
+      play: play({
+        horizon: "ZERO_DTE",
+        status: "TRIM",
+        entry: 17.34,
+        mark: 98.0,
+        pnlPct: 465.2,
+        peak: 465.2,
+        trough: 0,
+        exitPnlPct: null,
+        closedReason: undefined,
+        exitPolicy: trimLadder,
+      }),
+    }),
+  );
+  const currentStat = html.match(/<span class="k">Current<\/span>\s*<span[^>]*>([^<]*)<\/span>/);
+  assert.ok(currentStat, "expected a Current stat in the stats row");
+  assert.equal(
+    currentStat![1],
+    "+465%",
+    "this fix is deliberately scoped to SWING only — a 0DTE TRIM row's pnlPct comes from a different server-side path not touched here",
+  );
 });
 
 test("ThesisChecklistPanel: merges pillar checks under one taxonomy, no duplicate Flow/Breadth/Gamma rows", async () => {

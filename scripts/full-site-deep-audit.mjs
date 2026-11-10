@@ -5,9 +5,11 @@
  *
  * Usage: node scripts/full-site-deep-audit.mjs [--base=https://blackouttrades.com]
  */
-import { isTradingDayEt, todayEtYmd, inRthOpenWindow } from "./gha-et-window.mjs";
+import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs";
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
+import { evaluateCronWatchdogAudit } from "./audit/lib/watchdog-audit-eval.mjs";
+import { evaluateSpxDeskSmoke, isApproxUsCashRth } from "./lib/gha-desk-smoke-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
 const NIGHTHAWK_PREMIUM_CAP_PER_SHARE = 35;
@@ -20,8 +22,6 @@ const POLY_BASE = (process.env.POLYGON_API_BASE ?? "https://api.polygon.io").rep
 
 const issues = [];
 const passes = [];
-const AUDIT_NOW = new Date();
-const RTH_OPEN_WINDOW = inRthOpenWindow(AUDIT_NOW);
 
 function fail(section, id, detail, severity = "P1") {
   issues.push({ section, id, detail, severity });
@@ -112,21 +112,21 @@ async function auditCrons() {
   ]);
 
   if (wd.status === 200) {
-    const keys = wd.json.problem_keys ?? [];
-    const rthKeys = wd.json.rth_stale_keys ?? [];
-    if (keys.length) {
-      if (RTH_OPEN_WINDOW) {
-        for (const k of keys) fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`);
-      } else if (rthKeys.length) {
-        for (const k of rthKeys) fail("crons", `STALE-${k}`, `Cron watchdog flagged RTH-stale: ${k}`);
-      } else {
-        ok(
-          "crons",
-          "watchdog",
-          `off-hours — ${keys.length} non-RTH problem(s) not elevated: ${keys.join(", ")}`
-        );
+    const wdVerdict = evaluateCronWatchdogAudit(wd.json ?? {}, { inRth: inRthOpenWindow() });
+    for (const k of wdVerdict.failKeys) {
+      fail("crons", `STALE-RTH-${k}`, `Cron watchdog RTH stale: ${k}`, "P0");
+    }
+    for (const k of wdVerdict.warnKeys) {
+      ok("crons", `watchdog-off-hours-${k}`, `non-RTH stale ignored off-hours: ${k}`);
+    }
+    if (wdVerdict.nonRthProblems.length && inRthOpenWindow()) {
+      for (const k of wdVerdict.nonRthProblems) {
+        fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`, "P1");
       }
-    } else ok("crons", "watchdog", `${wd.json.checked ?? "?"} jobs OK`);
+    }
+    if (!wdVerdict.failKeys.length && !(inRthOpenWindow() && wdVerdict.nonRthProblems.length)) {
+      ok("crons", "watchdog", wdVerdict.summary);
+    }
   }
 
   if (dc.status === 200) {
@@ -204,18 +204,17 @@ async function auditSpxDesk() {
   const bad = scanFinite(d).slice(0, 5);
   if (bad.length) fail("spx-desk", "FINITE", bad.join("; "), "P0");
 
+  const deskSpotVerdict = evaluateSpxDeskSmoke({ status: 200, body: d });
   const spot = d.price ?? d.spx_price;
-  if (!(spot > 0)) {
-    if (!RTH_OPEN_WINDOW) {
-      ok(
-        "spx-desk",
-        "spot",
-        `off-hours — no live spot (${d.available === false ? "available:false" : `price=${spot ?? "—"}`})`
-      );
-      return;
-    }
-    fail("spx-desk", "SPOT", `spot missing or invalid: ${spot}`, "P0");
-  } else ok("spx-desk", "spot", String(spot));
+  if (deskSpotVerdict.outcome === "fail") {
+    fail("spx-desk", "SPOT", deskSpotVerdict.message, "P0");
+  } else {
+    ok(
+      "spx-desk",
+      "spot",
+      deskSpotVerdict.outcome === "warn" ? deskSpotVerdict.message : String(spot)
+    );
+  }
 
   const low = d.lod ?? d.day_low;
   const high = d.hod ?? d.day_high;
@@ -252,7 +251,6 @@ async function auditPlatformSnapshot() {
   const flows = snap.flows;
   const nh = snap.nighthawk;
   if (spx?.price > 0) ok("snapshot", "spx", `SPX ${spx.price} VIX ${spx.vix ?? "—"}`);
-  else if (!RTH_OPEN_WINDOW) ok("snapshot", "spx", "off-hours — snapshot has no live SPX (expected)");
   else fail("snapshot", "SPX", "missing SPX price in snapshot");
 
   // Desk vs snapshot
@@ -327,8 +325,8 @@ async function auditHeatmapMatrix() {
         ok("heatmap", ticker, "empty on market holiday (expected)");
         continue;
       }
-      if (!RTH_OPEN_WINDOW) {
-        ok("heatmap", ticker, "off-hours empty (expected)");
+      if (!isApproxUsCashRth()) {
+        ok("heatmap", ticker, "off-hours (spot unsettled — not a live-GEX failure)");
         continue;
       }
       fail("heatmap", ticker, "unavailable or empty");

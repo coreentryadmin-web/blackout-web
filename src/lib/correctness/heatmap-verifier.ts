@@ -75,6 +75,14 @@ const TOL = {
   /** Freshness: served asof must be within this many minutes during RTH (heatmap-warm runs ~30s). */
   freshnessMin: 15,
   /** Plausible-magnitude ceiling for net GEX as a fraction of (spot²·notional) — guards an absurd blow-up. */
+  /**
+   * Max distance from spot (fractional) a per-strike sign crossing may sit before `deriveFlip`
+   * treats it as a thin-far-strike artifact rather than the real VEX/DEX/CHARM zero-level —
+   * mirrors `FLIP_MAX_DIST_PCT` in gex-cross-validation-core.ts's production `zeroGammaFlip`
+   * (#5523, "reject implausible far-strike VEX/DEX/CHARM flip crossings"). See `deriveFlip`'s
+   * own comment for why this verifier needs the identical band + cumulative fallback.
+   */
+  flipBandFractionOfSpot: 0.12,
 } as const;
 
 /**
@@ -153,9 +161,25 @@ function sumTotals(strikeTotals: Record<string, number>): number {
 }
 
 /**
- * Independent PER-STRIKE zero-level detection (either direction) nearest spot.
- * Used for VEX/DEX/CHARM `zero_level` checks — those Greeks keep the per-strike definition.
- * Written from scratch (does NOT import zeroGammaFlip) so a bug there is detectable.
+ * Independent PER-STRIKE zero-level detection (either direction) nearest spot, with a
+ * cumulative-sum fallback. Used for VEX/DEX/CHARM `zero_level` checks — those Greeks keep the
+ * per-strike definition. Written from scratch (does NOT import zeroGammaFlip) so a bug there
+ * is detectable.
+ *
+ * BUG FIX (round 523): production's `zeroGammaFlip` (gex-cross-validation-core.ts) was hardened
+ * in #5523 ("reject implausible far-strike VEX/DEX/CHARM flip crossings") to (a) reject a
+ * per-strike crossing beyond `TOL.flipBandFractionOfSpot` of spot as a thin-far-strike artifact
+ * of the banded chain snapshot, and (b) fall back to a CUMULATIVE sign-change crossing (also
+ * band-filtered) when no per-strike crossing is plausible — #139's DEX/CHARM layer (which this
+ * function backs) predates that hardening and was never updated to match. Without it, a real
+ * zero_level reported off the cumulative fallback (genuinely a real sign change, just not an
+ * adjacent-strike one) got compared against this function's naive "nearest crossing regardless
+ * of distance" pick — which, on exactly the sparse/banded-chain shape #5523 was written for, can
+ * return the ONLY per-strike crossing even when it sits far from spot — producing a spurious
+ * `zero-level-real-crossing` FLAG (`heatmap-verifier.test.ts`'s new
+ * "cumulative-fallback zero_level" case reproduces this). Mirroring the same band + fallback
+ * here (independently reimplemented, not imported) closes that gap while keeping a real
+ * production bug in either path independently catchable.
  */
 function deriveFlip(strikeTotals: Record<string, number>, spot: number): number | null {
   const rows = Object.entries(strikeTotals)
@@ -163,6 +187,7 @@ function deriveFlip(strikeTotals: Record<string, number>, spot: number): number 
     .filter((r) => Number.isFinite(r.strike) && Number.isFinite(r.gamma))
     .sort((a, b) => a.strike - b.strike);
   if (rows.length < 2) return null;
+
   const crossings: number[] = [];
   for (let i = 1; i < rows.length; i++) {
     const a = rows[i - 1];
@@ -172,10 +197,40 @@ function deriveFlip(strikeTotals: Record<string, number>, spot: number): number 
       crossings.push(Number((a.strike + (b.strike - a.strike) * frac).toFixed(2)));
     }
   }
-  if (!crossings.length) return null;
-  return spot > 0
-    ? crossings.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best))
-    : crossings[crossings.length - 1];
+  if (crossings.length) {
+    if (spot > 0) {
+      const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * TOL.flipBandFractionOfSpot);
+      if (plausible.length) {
+        return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
+      }
+      // No plausible per-strike crossing — fall through to the cumulative fallback below
+      // rather than returning a far-strike artifact.
+    } else {
+      return crossings[crossings.length - 1];
+    }
+  }
+
+  // Fallback: cumulative-sum sign-change crossing (either direction), band-filtered the same way,
+  // for profiles with no clean/plausible per-strike sign flip.
+  let cum = 0;
+  let prevCum = 0;
+  let prevStrike = rows[0]!.strike;
+  let first = true;
+  for (const r of rows) {
+    cum += r.gamma;
+    if (!first && prevCum !== 0 && cum !== 0 && Math.sign(cum) !== Math.sign(prevCum)) {
+      const span = r.strike - prevStrike;
+      const frac = prevCum / (prevCum - cum);
+      const level = Number((prevStrike + span * frac).toFixed(2));
+      if (!(spot > 0) || Math.abs(level - spot) <= spot * TOL.flipBandFractionOfSpot) {
+        return level;
+      }
+    }
+    prevStrike = r.strike;
+    prevCum = cum;
+    first = false;
+  }
+  return null;
 }
 
 /**

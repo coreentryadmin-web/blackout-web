@@ -25,6 +25,7 @@ import {
   resolveAuditDbUrl,
 } from "./pg-audit.mjs";
 import { isCronRunHealthyStatus, probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
+import { evaluateCronWatchdogAudit } from "./audit/lib/watchdog-audit-eval.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const force = process.argv.includes("--force");
@@ -208,17 +209,15 @@ async function cronHttpChecks() {
       } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
         failures.push(`${label}: discrepancies`);
         console.log(`  ✗ ${label} → discrepancies`);
-      } else if (label === "cron-watchdog" && (json.problems ?? 0) > 0) {
-        const problemKeys = json.problem_keys ?? [];
-        const rthKeys = json.rth_stale_keys ?? [];
-        if (!rthOpen && rthKeys.length === 0) {
-          console.log(
-            `  ⚠ ${label} → off-hours: ${problemKeys.join(", ")} (non-RTH stale — not elevated)`
-          );
+      } else if (label === "cron-watchdog") {
+        const wdVerdict = evaluateCronWatchdogAudit(json, { inRth: rthOpen });
+        if (wdVerdict.shouldFail) {
+          failures.push(`${label}: ${wdVerdict.summary}`);
+          console.log(`  ✗ ${label} → ${wdVerdict.summary}`);
+        } else if ((json.problems ?? 0) > 0) {
+          console.log(`  ⚠ ${label} → ${wdVerdict.summary}`);
         } else {
-          const elevate = rthOpen ? problemKeys : rthKeys;
-          failures.push(`${label}: ${elevate.join(", ")}`);
-          console.log(`  ✗ ${label} → stale: ${elevate.join(", ")}`);
+          console.log(`  ✓ ${label} → ok`);
         }
       } else {
         console.log(`  ✓ ${label} → ok`);
@@ -273,7 +272,12 @@ run("Public HTTP smoke", "node", ["scripts/gha-http-smoke.mjs"]);
 run("Sentry smoke", "node", ["scripts/gha-sentry-smoke.mjs"]);
 
 if (!smokeOnly) {
-  run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  if (rthOpen) {
+    run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
+  } else {
+    console.log("\n── Full-site deep audit ──");
+    console.log("  ⚠ Off-hours (after 16:15 ET grace) — skipping live numeric deep audit");
+  }
   await cronHttpChecks();
   await postgresRthChecks();
 }

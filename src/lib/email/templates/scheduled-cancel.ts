@@ -18,9 +18,18 @@ export type ScheduledCancelContext = {
   billingKind?: Extract<BillingKind, "premium" | "community">;
 };
 
+/**
+ * `d` is an absolute instant (the webhook route builds it straight from Whop's
+ * `renewal_period_end`) -- not a bare calendar date -- so it must be anchored to this
+ * product's one clock, America/New_York (et-clock.ts's header), the same way the sibling
+ * trial-ending-soon.ts's `formatTrialEndLabel` already pins the SAME `renewal_period_end`
+ * field. Leaving `timeZone` unset defaults to the server process's local zone (UTC in
+ * production), which can show a calendar date a full day ahead of the real ET one for any
+ * period boundary that lands in the ET evening -- see scheduled-cancel-et-date.test.ts.
+ */
 function formatDate(d: Date | null): string {
   if (!d || Number.isNaN(d.getTime())) return "the end of your current billing period";
-  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/New_York" });
 }
 
 /** Fires when a member toggles "cancel at period end" ON — scheduled, not
