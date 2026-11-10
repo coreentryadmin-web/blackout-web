@@ -88,6 +88,7 @@ import {
   shouldRefuseForceClearRunningClaim,
   type SwingDiscoveryPhaseClaim,
 } from "@/lib/swing/discovery-claim";
+import { createMemoizedGroupedDailyLoader } from "@/lib/swing/discovery-grouped-daily-load";
 import {
   MULTI_DAY_FLOW_HOURS,
   MULTI_DAY_MIN_PREMIUM,
@@ -136,18 +137,15 @@ function buildDiscoveryDeps(
     return cached;
   };
   const accum: SwingAccumAccessors = { upsertSwingAccum, fetchAccumulating, markAccumPromoted, fadeStaleAccum };
+  const loadGroupedDaily = createMemoizedGroupedDailyLoader(fetchDailyMarketSummary, to);
   return {
     fetchFlowWindow: async (): Promise<MinimalFlowRow[]> =>
       fetchRecentFlows({ since_hours: MULTI_DAY_FLOW_HOURS, min_premium: MULTI_DAY_MIN_PREMIUM, limit: MULTI_DAY_FLOW_LIMIT }),
-    fetchGroupedDaily: async () => {
-      const summary = await fetchDailyMarketSummary(to);
-      return summary.results ?? [];
-    },
+    fetchGroupedDaily: () => loadGroupedDaily(),
     ...(BREAKOUT_INTRADAY_REFRESH
       ? {
           fetchIntradayStructureBars: async () => {
-            const summary = await fetchDailyMarketSummary(to);
-            const results = summary.results ?? [];
+            const results = await loadGroupedDaily();
             const pre = screenBreakoutMovers(results, 40);
             const tickers = pre.map((m) => m.ticker).slice(0, BREAKOUT_INTRADAY_REFRESH_LIMIT);
             const refreshed = new Map<string, import("@/lib/providers/polygon").DailyMarketBar>();
@@ -207,8 +205,7 @@ function buildDiscoveryDeps(
     // V2 CATALYST origin — Benzinga earnings window (fail-soft).
     fetchCatalystTickers: async () => catalystTickersFromBenzingaBundle(sessionDay),
     fetchBangerTickers: async () => {
-      const summary = await fetchDailyMarketSummary(to);
-      const rows = summary.results ?? [];
+      const rows = await loadGroupedDaily();
       return bangerTickersFromGroupedDaily(
         rows.map((r) => ({
           T: r.T,
