@@ -2,7 +2,12 @@ import "server-only";
 
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
-import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import {
+  getGexPositioning,
+  gexPositioningFromHeatmap,
+  type GexPositioning,
+} from "@/lib/providers/gex-positioning";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -49,6 +54,23 @@ export type DataIntegrityResult = {
   issues: SpxAdminIssue[];
 };
 
+const GEX_INTEGRITY_RETRY_MS = 2_500;
+
+/** One brief retry + heatmap fallback — avoids false C6 when a replica read races cache warm. */
+export async function resolveGexPositioningForIntegrity(
+  ticker: "SPX" | "SPY"
+): Promise<GexPositioning | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, GEX_INTEGRITY_RETRY_MS));
+    }
+    const pos = await getGexPositioning(ticker).catch(() => null);
+    if (pos) return pos;
+  }
+  const hm = await fetchGexHeatmap(ticker).catch(() => null);
+  return gexPositioningFromHeatmap(ticker, hm);
+}
+
 /**
  * Run the cross-tool numeric-consistency sweep. Returns the set of discrepancy
  * issues (empty when everything agrees, or when the market is closed). Never throws
@@ -70,8 +92,8 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
   const [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
+    resolveGexPositioningForIntegrity("SPX"),
+    resolveGexPositioningForIntegrity("SPY"),
   ]);
 
   if (!marketOpen) {

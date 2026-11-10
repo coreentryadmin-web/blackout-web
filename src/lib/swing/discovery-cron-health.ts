@@ -57,6 +57,20 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
 
   const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
   const mins = etMinutesOfDay(now.getTime());
+
+  // Before evening POST_CLOSE: handshake staleness while an intraday phase window is active is
+  // expected (EventBridge fires often; only one phase claim runs per window).
+  if (mins < postCloseWindow.startMin) {
+    const active = resolveScanPhase(now.getTime());
+    if (active && phaseClaims[active.phase] !== "done") {
+      return {
+        suppress: true,
+        phase: active.phase,
+        label: `Awaiting ${active.phase} scan (${active.label})`,
+      };
+    }
+  }
+
   const postCloseSatisfied =
     phaseClaims.POST_CLOSE === "done" ||
     (mins >= postCloseWindow.startMin && mins < postCloseWindow.endMin);
