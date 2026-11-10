@@ -57,13 +57,17 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
 
   const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
   const mins = etMinutesOfDay(now.getTime());
-  const postCloseSatisfied =
-    phaseClaims.POST_CLOSE === "done" ||
-    (mins >= postCloseWindow.startMin && mins < postCloseWindow.endMin);
-  if (!postCloseSatisfied) return { suppress: false };
-
   const active = resolveScanPhase(now.getTime());
   if (!active) return { suppress: false };
+
+  const isPostCloseFamily = active.phase === "POST_CLOSE" || active.phase === "OVERNIGHT";
+  if (isPostCloseFamily) {
+    const postCloseSatisfied =
+      phaseClaims.POST_CLOSE === "done" ||
+      (mins >= postCloseWindow.startMin && mins < postCloseWindow.endMin);
+    if (!postCloseSatisfied) return { suppress: false };
+  }
+
   if (phaseClaims[active.phase] === "done") return { suppress: false };
 
   return {

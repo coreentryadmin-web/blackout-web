@@ -65,13 +65,25 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   const { merged } = await loadMergedSpxDesk();
   const marketOpen = merged.market_open === true;
 
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  /** One RTH retry — matrix can be briefly cold mid-rebuild (Polygon circuit / warmer overlap). */
+  async function gexWithWarmRetry(root: string) {
+    let pos = await getGexPositioning(root).catch(() => null);
+    if (!pos) {
+      await sleep(4_000);
+      pos = await getGexPositioning(root).catch(() => null);
+    }
+    return pos;
+  }
+
   // Pull the same numbers each tool consumes — desk (SPX Slayer), the canonical GEX
   // matrix for SPX + SPY (Heat Maps / Largo / Night's Watch all read this), and the
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
   const [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
+    gexWithWarmRetry("SPX"),
+    gexWithWarmRetry("SPY"),
   ]);
 
   if (!marketOpen) {
