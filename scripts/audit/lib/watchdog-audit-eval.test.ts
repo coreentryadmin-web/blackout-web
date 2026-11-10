@@ -22,6 +22,16 @@ test("evaluateCronWatchdogAudit: RTH stale keys fail", () => {
   assert.deepEqual(v.failKeys, ["zerodte-warm"]);
 });
 
+test("evaluateCronWatchdogAudit: RTH non-market-hours stale problems warn only", () => {
+  const v = evaluateCronWatchdogAudit(
+    { problem_keys: ["swing-discovery"], rth_stale_keys: [], problems: 1 },
+    { inRth: true }
+  );
+  assert.equal(v.shouldFail, false);
+  assert.deepEqual(v.failKeys, []);
+  assert.deepEqual(v.warnKeys, ["swing-discovery"]);
+});
+
 test("evaluateCronWatchdogAudit: critical error spike fails off-hours", () => {
   const v = evaluateCronWatchdogAudit(
     { problem_keys: [], rth_stale_keys: [], error_spike: "critical" },

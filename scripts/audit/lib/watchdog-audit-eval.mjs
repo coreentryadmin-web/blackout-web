@@ -1,7 +1,7 @@
 /**
  * Cron staleness watchdog verdict for CI audits (gha-rth-audit, full-site-deep-audit).
- * Mirrors ops-collect: P0 only on market_hours_stale during RTH; post-close schedule
- * gaps must not fail the deep audit when rth_stale_keys is empty.
+ * Mirrors ops-collect: P0 only on `rth_stale_keys` (and critical error spikes); phase-
+ * anchored / handshake-only problems during RTH warn but do not fail CI.
  */
 
 /**
@@ -17,14 +17,13 @@ export function evaluateCronWatchdogAudit(body, { inRth }) {
   const warnKeys = inRth ? nonRthProblems : nonRthProblems;
   const criticalErrorSpike = body.error_spike === "critical";
 
-  const shouldFail =
-    failKeys.length > 0 || criticalErrorSpike || (inRth && nonRthProblems.length > 0);
+  const shouldFail = failKeys.length > 0 || criticalErrorSpike;
 
   return {
     rthStale,
     nonRthProblems,
     failKeys,
-    warnKeys: inRth ? [] : nonRthProblems,
+    warnKeys: nonRthProblems,
     criticalErrorSpike,
     shouldFail,
     summary:
@@ -34,7 +33,7 @@ export function evaluateCronWatchdogAudit(body, { inRth }) {
           ? `error_spike=${body.error_spike}`
           : nonRthProblems.length > 0
             ? inRth
-              ? `problems: ${nonRthProblems.join(", ")}`
+              ? `off-window problems (warn): ${nonRthProblems.join(", ")}`
               : `off-hours problems (ignored): ${nonRthProblems.join(", ")}`
             : "ok",
   };

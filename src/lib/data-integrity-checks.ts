@@ -2,7 +2,12 @@ import "server-only";
 
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
-import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import {
+  getGexPositioning,
+  gexPositioningFromHeatmap,
+  type GexPositioning,
+} from "@/lib/providers/gex-positioning";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +55,19 @@ export type DataIntegrityResult = {
 };
 
 /**
+ * Cache-reader path used by C1–C6. When `getGexPositioning` is cold on a replica that
+ * hit the normal block cap (heatmap HTTP on another task may still be warm), one bounded
+ * force rebuild runs before C6 flags "matrix cold during RTH".
+ */
+export async function gexPositioningForIntegrityCheck(ticker: string): Promise<GexPositioning | null> {
+  const first = await getGexPositioning(ticker).catch(() => null);
+  if (first) return first;
+  const hm = await fetchGexHeatmap(ticker, { forceRefresh: true }).catch(() => null);
+  if (!hm) return null;
+  return gexPositioningFromHeatmap(ticker, hm);
+}
+
+/**
  * Run the cross-tool numeric-consistency sweep. Returns the set of discrepancy
  * issues (empty when everything agrees, or when the market is closed). Never throws
  * on a single missing source — a cold source just skips its comparisons.
@@ -70,8 +88,8 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
   const [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
+    gexPositioningForIntegrityCheck("SPX"),
+    gexPositioningForIntegrityCheck("SPY"),
   ]);
 
   if (!marketOpen) {
