@@ -78,6 +78,18 @@ test("swing-discovery bounds the intraday-structure minute-bar refresh fan-out v
   );
 });
 
+test("swing-discovery memoizes grouped-daily per scan (one fetchDailyMarketSummary per phase)", () => {
+  assert.match(
+    routeSrc,
+    /createMemoizedGroupedDailyLoader\(\s*fetchDailyMarketSummary,\s*to\s*\)/
+  );
+  assert.doesNotMatch(
+    routeSrc,
+    /fetchBangerTickers:[\s\S]{0,400}fetchDailyMarketSummary/,
+    "banger origin must reuse the memoized grouped-daily loader, not call fetchDailyMarketSummary again"
+  );
+});
+
 test("swing-discovery bounds the watch-ticker last-trade refresh fan-out via runPolygonPool, not a bare Promise.all", () => {
   const anchorAt = routeSrc.indexOf("const watchTickers =");
   const blockEnd = routeSrc.indexOf("const flagAnchorsByThesisKey", anchorAt);
