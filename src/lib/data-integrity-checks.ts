@@ -3,6 +3,7 @@ import "server-only";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { loadGexPositioningPairForIntegrity } from "@/lib/data-integrity-gex-load";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -65,20 +66,22 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   const { merged } = await loadMergedSpxDesk();
   const marketOpen = merged.market_open === true;
 
-  // Pull the same numbers each tool consumes — desk (SPX Slayer), the canonical GEX
-  // matrix for SPX + SPY (Heat Maps / Largo / Night's Watch all read this), and the
-  // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
-  const [spySnap, gexSpx, gexSpy] = await Promise.all([
-    fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
-  ]);
-
   if (!marketOpen) {
     // Market closed → numbers legitimately stale; nothing to validate. Empty issue
     // set also auto-resolves any lingering data-integrity incidents from the session.
     return { marketOpen: false, checked: 0, issues };
   }
+
+  // Pull the same numbers each tool consumes — desk (SPX Slayer), the canonical GEX
+  // matrix for SPX + SPY (Heat Maps / Largo / Night's Watch all read this), and the
+  // SPY quote tape. GEX reads retry briefly: a single Polygon circuit-open tick must
+  // not open a data-integrity incident while the warmer is still serving matrices.
+  const [spySnap, gexPair] = await Promise.all([
+    fetchStockSnapshot("SPY").catch(() => null),
+    loadGexPositioningPairForIntegrity((ticker) => getGexPositioning(ticker)),
+  ]);
+  const gexSpx = gexPair.spx;
+  const gexSpy = gexPair.spy;
 
   // C1 — desk internal consistency: spx_change_pct must reconstruct from price ÷ prior_close.
   if (merged.available && merged.price > 0 && merged.prior_close != null && merged.prior_close > 0) {
