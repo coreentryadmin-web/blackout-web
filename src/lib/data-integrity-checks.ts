@@ -2,7 +2,14 @@ import "server-only";
 
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
-import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import {
+  getGexPositioning,
+  gexPositioningFromHeatmap,
+  type GexPositioning,
+} from "@/lib/providers/gex-positioning";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { isPolygonCircuitOpen } from "@/lib/providers/polygon-rate-limiter";
+import { shouldSkipGexColdDuringRth } from "@/lib/data-integrity-checks-eval";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +49,14 @@ function num(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+/** Cache-first positioning read for C6 — avoids a thrown `getGexPositioning` masking a warm matrix. */
+async function loadGexPositioningForIntegrity(ticker: string): Promise<GexPositioning | null> {
+  const fromReader = await getGexPositioning(ticker).catch(() => null);
+  if (fromReader) return fromReader;
+  const hm = await fetchGexHeatmap(ticker).catch(() => null);
+  return gexPositioningFromHeatmap(ticker, hm);
+}
+
 export type DataIntegrityResult = {
   marketOpen: boolean;
   /** Number of cross-checks actually evaluated (both sides present). */
@@ -70,8 +85,8 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
   const [spySnap, gexSpx, gexSpy] = await Promise.all([
     fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
+    loadGexPositioningForIntegrity("SPX"),
+    loadGexPositioningForIntegrity("SPY"),
   ]);
 
   if (!marketOpen) {
@@ -153,8 +168,10 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   // C6 — heatmap freshness during RTH. Heat Maps Warm runs every ~30s, so a >15-min-old
   // (or cold) SPX/SPY matrix during the session is a real stall, not a warm-up gap.
   const now = Date.now();
+  const polygonCircuitOpen = isPolygonCircuitOpen();
   for (const [label, pos] of [["SPX", gexSpx], ["SPY", gexSpy]] as const) {
     if (!pos) {
+      if (shouldSkipGexColdDuringRth(true, polygonCircuitOpen)) continue;
       add(`GEX ${label} cold during RTH`, `getGexPositioning("${label}") returned no matrix while market is open`);
       continue;
     }
