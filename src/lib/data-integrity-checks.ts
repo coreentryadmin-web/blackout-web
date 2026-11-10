@@ -3,6 +3,7 @@ import "server-only";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 import { fetchStockSnapshot } from "@/lib/providers/polygon";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
+import { isPolygonCircuitOpen } from "@/lib/providers/polygon-rate-limiter";
 import type { SpxAdminIssue } from "@/lib/admin-spx-issues";
 
 // ---------------------------------------------------------------------------
@@ -152,15 +153,20 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
 
   // C6 — heatmap freshness during RTH. Heat Maps Warm runs every ~30s, so a >15-min-old
   // (or cold) SPX/SPY matrix during the session is a real stall, not a warm-up gap.
+  // When the Polygon circuit breaker is open, matrix readers may transiently return null —
+  // that is upstream backpressure, not a prod GEX stall (measured 2026-11-10 RTH audit).
   const now = Date.now();
+  const polygonCircuitOpen = isPolygonCircuitOpen();
   for (const [label, pos] of [["SPX", gexSpx], ["SPY", gexSpy]] as const) {
     if (!pos) {
+      if (polygonCircuitOpen) continue;
       add(`GEX ${label} cold during RTH`, `getGexPositioning("${label}") returned no matrix while market is open`);
       continue;
     }
     checked++;
     const ageMin = (now - new Date(pos.asof).getTime()) / 60000;
     if (Number.isFinite(ageMin) && ageMin > 15) {
+      if (polygonCircuitOpen && ageMin <= 20) continue;
       add(`GEX ${label} stale during RTH`, `${label} matrix last computed ${ageMin.toFixed(0)}m ago (asof ${pos.asof})`);
     }
   }

@@ -57,12 +57,30 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
 
   const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
   const mins = etMinutesOfDay(now.getTime());
+  const active = resolveScanPhase(now.getTime());
+
+  // Intraday (before POST_CLOSE): between phase ticks the cron handshake ages while EventBridge
+  // waits for the next window — suppress only when an earlier phase completed today.
+  if (active && mins < postCloseWindow.startMin) {
+    if (phaseClaims[active.phase] === "done") return { suppress: false };
+    const progressed = SWING_SCAN_PHASES.some(
+      (w) => w.endMin <= active.startMin && phaseClaims[w.phase] === "done"
+    );
+    if (progressed) {
+      return {
+        suppress: true,
+        phase: active.phase,
+        label: `Awaiting ${active.phase} scan (${active.label})`,
+      };
+    }
+    return { suppress: false };
+  }
+
   const postCloseSatisfied =
     phaseClaims.POST_CLOSE === "done" ||
     (mins >= postCloseWindow.startMin && mins < postCloseWindow.endMin);
   if (!postCloseSatisfied) return { suppress: false };
 
-  const active = resolveScanPhase(now.getTime());
   if (!active) return { suppress: false };
   if (phaseClaims[active.phase] === "done") return { suppress: false };
 

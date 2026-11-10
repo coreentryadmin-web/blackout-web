@@ -357,8 +357,8 @@ test("buildCronHealthSnapshot can override swing-discovery failed handshakes whe
   assert.match(src, /"swing-discovery"/);
   assert.match(
     src,
-    /health\.key === "swing-discovery" && health\.status === "failed"/,
-    "failed swing-discovery handshakes must be eligible for writer-target override"
+    /health\.key === "swing-discovery"\s*\?\s*health\.status !== "healthy"/,
+    "swing-discovery serving probe must run for any non-healthy status"
   );
   assert.match(src, /isSwingDiscoveryScanInFlight/);
 });

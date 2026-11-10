@@ -782,9 +782,11 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
   await Promise.all(
     jobs.map(async (health, index) => {
       const handshakeProblem =
-        health.market_hours_stale ||
-        health.status === "stale" ||
-        (health.key === "swing-discovery" && health.status === "failed");
+        health.key === "swing-discovery"
+          ? health.status !== "healthy"
+          : health.market_hours_stale ||
+            health.status === "stale" ||
+            health.status === "failed";
       if (!handshakeProblem) return;
       if (!TARGET_FRESH_OVERRIDE_KEYS.has(health.key)) return;
       const { probeWriterTargetFresh } = await import("@/lib/cron-writer-target-fresh");
