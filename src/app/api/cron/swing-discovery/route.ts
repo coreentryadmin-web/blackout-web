@@ -139,9 +139,30 @@ function buildDiscoveryDeps(
   return {
     fetchFlowWindow: async (): Promise<MinimalFlowRow[]> =>
       fetchRecentFlows({ since_hours: MULTI_DAY_FLOW_HOURS, min_premium: MULTI_DAY_MIN_PREMIUM, limit: MULTI_DAY_FLOW_LIMIT }),
+    // FAIL-SOFT (2026-11-09, live cron-health audit — swing-discovery runs_24h:{ok:0,failed:48}
+    // over a full trading day, last_message "Polygon /v2/aggs/grouped/... → 403"): `polygonGet`
+    // throws on ANY non-2xx response, and this call was the one direct, unguarded await of
+    // `fetchDailyMarketSummary(to)` in the whole file — a thrown same-day-grouped-daily restriction
+    // (confirmed live: this Polygon/Massive plan 403s "today's data before end of day" on the
+    // CURRENT calendar day specifically; a PAST date on the identical key returns 200, ruling out
+    // an entitlement/key problem — the identical root cause the sibling 0DTE fix for
+    // breakout-discovery.ts already diagnosed and fixed the same day, see its staged finding)
+    // propagated uncaught out of this dep and crashed the ENTIRE scan tick — losing FLOW,
+    // POSITIONING, and CATALYST origins too, even though none of them depend on grouped-daily.
+    // This is also the fallback `discovery.ts` itself calls when `fetchIntradayStructureBars()`
+    // throws (`.catch(() => deps.fetchGroupedDaily())`), so without this fix that fallback chain
+    // failed completely rather than degrading. Mirrors this file's own established fail-soft
+    // convention (`fetchPositioningTickers`/`fetchCatalystTickers`/`fetchChainRows` above) — a
+    // thrown fetch degrades the STRUCTURE/BANGER origins to "no movers this tick" (identical to a
+    // genuinely quiet grouped-daily response), never crashes the FLOW-only scan that could still run.
     fetchGroupedDaily: async () => {
-      const summary = await fetchDailyMarketSummary(to);
-      return summary.results ?? [];
+      try {
+        const summary = await fetchDailyMarketSummary(to);
+        return summary.results ?? [];
+      } catch (err) {
+        console.error(`[cron/swing-discovery] grouped-daily fetch failed for ${to} — STRUCTURE/BANGER origins degrade to empty this tick`, err);
+        return [];
+      }
     },
     ...(BREAKOUT_INTRADAY_REFRESH
       ? {

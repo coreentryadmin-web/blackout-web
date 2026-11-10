@@ -94,3 +94,30 @@ test("swing-discovery bounds the watch-ticker last-trade refresh fan-out via run
     "no unbounded Promise.all should remain in this fan-out"
   );
 });
+
+// BUG FIX (2026-11-09, live cron-health audit — GET /api/admin/cron-health showed swing-discovery
+// at runs_24h:{ok:0,failed:48,skipped:22}, last_message the raw thrown Polygon error
+// "Polygon /v2/aggs/grouped/locale/us/market/stocks/<date> → 403". Independently reproduced
+// against the real production Polygon/Massive key: a same-day grouped-daily request 403s
+// ("Attempted to request today's data before end of day..."), while the identical call for a
+// past settled date returns 200 — ruling out an entitlement/key problem, the same root-cause
+// category the sibling 0DTE breakout-discovery.ts fix diagnosed the same day. `fetchGroupedDaily`
+// was the one direct, unguarded `await fetchDailyMarketSummary(to)` in this file — a thrown
+// same-day restriction propagated out of it and crashed the whole scan tick, including the FLOW/
+// POSITIONING/CATALYST origins that don't even depend on grouped-daily. This test pins that the
+// fix landed (a try/catch degrading to `[]`) and does not silently regress — a source-text check
+// (mirroring this file's existing convention above) rather than an executed-fetch test, for the
+// same reason given in the runPolygonPool tests' own header comment.
+
+test("swing-discovery's fetchGroupedDaily fails soft (returns []) instead of crashing the whole scan on a thrown Polygon grouped-daily fetch", () => {
+  const fnAt = routeSrc.indexOf("fetchGroupedDaily: async () => {");
+  const bodyEnd = routeSrc.indexOf("},", fnAt);
+  assert.ok(fnAt >= 0 && bodyEnd > fnAt, "fetchGroupedDaily dep must exist");
+  const body = routeSrc.slice(fnAt, bodyEnd);
+  assert.match(body, /try\s*\{/, "the grouped-daily fetch must be wrapped in a try block");
+  assert.match(
+    body,
+    /catch\s*\(err\)\s*\{[\s\S]*return \[\];/,
+    "a thrown fetch must degrade to an empty array, not propagate"
+  );
+});
