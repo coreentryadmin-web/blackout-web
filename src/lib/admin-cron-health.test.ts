@@ -290,6 +290,26 @@ test("effectiveStaleMinutes: swing-discovery uses weekly handshake ceiling, not 
   assert.equal(effective, swingDiscoveryHandshakeStaleMin());
 });
 
+test("swing-discovery: stale/failed suppressed in first 45m of active phase window (cron-audit query)", () => {
+  const now = new Date("2026-11-10T01:25:00.000Z"); // 20:25 ET — OVERNIGHT, 25m after start
+  const health = evaluateJob(
+    jobDef({ key: "swing-discovery", stale_after_min: 36 * 60, weekdays_only: true }),
+    {
+      id: 1,
+      job_key: "swing-discovery",
+      status: "failed",
+      started_at: "2026-11-09T23:50:00.000Z",
+      duration_ms: 10,
+      message: "POST_CLOSE error",
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "healthy");
+  assert.match(health.status_label, /OVERNIGHT window/i);
+});
+
 test("effectiveStaleMinutes: NYSE holiday uses relaxed multiplier for market_hours_only jobs", () => {
   const job = jobDef({ market_hours_only: true, stale_after_min: 15 });
   const { multiplier, effective } = effectiveStaleMinutes(job, LABOR_DAY_MIDDAY);

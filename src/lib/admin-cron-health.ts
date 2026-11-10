@@ -31,9 +31,12 @@ import {
   SWING_FORCE_CLEAR_RUNNING_BUFFER_MS,
   type SwingDiscoveryPhaseClaim,
 } from "@/lib/swing/discovery-claim";
-import { phaseRunKey } from "@/lib/swing/scan-cadence";
+import { etMinutesOfDay, phaseRunKey, resolveScanPhase } from "@/lib/swing/scan-cadence";
 import type { SwingDiscoveryPhase } from "@/lib/swing/discovery";
 import { todayEt } from "@/lib/et-date";
+
+/** Minutes after a phase window opens before a prior-phase stale/failed handshake pages (EventBridge spacing). */
+const SWING_DISCOVERY_PHASE_START_GRACE_MIN = 45;
 
 const SWING_DISCOVERY_PHASES: readonly SwingDiscoveryPhase[] = [
   "POST_CLOSE",
@@ -413,6 +416,21 @@ export function evaluateJob(
     status = "healthy";
     statusLabel = "Idle (non-trading day — outside weekday schedule)";
     marketHoursStale = false;
+  }
+
+  if (
+    job.key === "swing-discovery" &&
+    (status === "stale" || status === "failed")
+  ) {
+    const active = resolveScanPhase(now.getTime());
+    if (active) {
+      const intoPhaseMin = etMinutesOfDay(now.getTime()) - active.startMin;
+      if (intoPhaseMin >= 0 && intoPhaseMin < SWING_DISCOVERY_PHASE_START_GRACE_MIN) {
+        status = "healthy";
+        statusLabel = `Idle (within ${SWING_DISCOVERY_PHASE_START_GRACE_MIN}m of ${active.phase} window — prior handshake not authoritative)`;
+        marketHoursStale = false;
+      }
+    }
   }
 
   return {
