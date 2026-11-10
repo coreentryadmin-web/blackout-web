@@ -21,7 +21,10 @@ import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
-import { swingDiscoveryHandshakeStaleMin } from "@/lib/swing/discovery-cron-health";
+import {
+  swingDiscoveryAwaitingPhaseSuppress,
+  swingDiscoveryHandshakeStaleMin,
+} from "@/lib/swing/discovery-cron-health";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -54,6 +57,18 @@ async function isSwingDiscoveryScanInFlight(now = new Date()): Promise<boolean> 
     if (ageMs < SWING_DISCOVERY_SCAN_MAX_MS + SWING_FORCE_CLEAR_RUNNING_BUFFER_MS) return true;
   }
   return false;
+}
+
+async function loadSwingDiscoveryPhaseClaims(
+  sessionDay: string
+): Promise<Partial<Record<SwingDiscoveryPhase, string>>> {
+  const out: Partial<Record<SwingDiscoveryPhase, string>> = {};
+  for (const phase of SWING_DISCOVERY_PHASES) {
+    const key = phaseRunKey(sessionDay, phase);
+    const entry = await sharedCacheGetWithTtl<SwingDiscoveryPhaseClaim>(key).catch(() => null);
+    if (entry?.value?.status) out[phase] = entry.value.status;
+  }
+  return out;
 }
 
 /** Crons gated by `isSpxEngineCronWindow` (7:00–16:15 ET weekdays) vs `isEtCashRth` (9:30–close). */
@@ -498,6 +513,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     await sharedCacheGet("zerodte-warm:running").catch(() => null)
   );
   const swingDiscoveryInFlight = await isSwingDiscoveryScanInFlight();
+  const swingDiscoveryPhaseClaims = await loadSwingDiscoveryPhaseClaims(todayEt());
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
@@ -627,6 +643,31 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
           "Phase scan in flight (running claim held) — prior cron handshake not authoritative",
         meta: { ...(health.meta ?? {}), swing_discovery_in_flight: true },
       };
+    }
+
+    if (
+      job.key === "swing-discovery" &&
+      (health.status === "stale" || health.status === "failed")
+    ) {
+      const suppress = swingDiscoveryAwaitingPhaseSuppress({
+        healthStatus: health.status,
+        healthAgeMin: health.age_min,
+        now: new Date(),
+        phaseClaims: swingDiscoveryPhaseClaims,
+        scanInFlight: swingDiscoveryInFlight,
+      });
+      if (suppress.suppress && suppress.label) {
+        return {
+          ...health,
+          status: "healthy" as const,
+          market_hours_stale: false,
+          status_label: suppress.label,
+          meta: {
+            ...(health.meta ?? {}),
+            swing_discovery_awaiting_phase: suppress.phase,
+          },
+        };
+      }
     }
 
     if (
