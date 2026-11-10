@@ -43,8 +43,10 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
   now: Date;
   phaseClaims: Partial<Record<SwingDiscoveryPhase, string>>;
   scanInFlight?: boolean;
+  /** When set, pre-POST_CLOSE phase windows may suppress only if the serving snapshot is fresh. */
+  servingSnapshotFresh?: boolean;
 }): { suppress: boolean; label?: string; phase?: SwingDiscoveryPhase } {
-  const { healthStatus, healthAgeMin, now, phaseClaims, scanInFlight } = args;
+  const { healthStatus, healthAgeMin, now, phaseClaims, scanInFlight, servingSnapshotFresh } = args;
   if (healthStatus !== "stale" && healthStatus !== "failed") return { suppress: false };
   if (scanInFlight) return { suppress: false };
   if (
@@ -60,11 +62,15 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
   const postCloseSatisfied =
     phaseClaims.POST_CLOSE === "done" ||
     (mins >= postCloseWindow.startMin && mins < postCloseWindow.endMin);
-  if (!postCloseSatisfied) return { suppress: false };
 
   const active = resolveScanPhase(now.getTime());
   if (!active) return { suppress: false };
   if (phaseClaims[active.phase] === "done") return { suppress: false };
+
+  if (!postCloseSatisfied) {
+    if (mins >= postCloseWindow.startMin) return { suppress: false };
+    if (servingSnapshotFresh !== true) return { suppress: false };
+  }
 
   return {
     suppress: true,

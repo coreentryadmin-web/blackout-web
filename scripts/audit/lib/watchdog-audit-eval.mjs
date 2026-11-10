@@ -17,8 +17,9 @@ export function evaluateCronWatchdogAudit(body, { inRth }) {
   const warnKeys = inRth ? nonRthProblems : nonRthProblems;
   const criticalErrorSpike = body.error_spike === "critical";
 
-  const shouldFail =
-    failKeys.length > 0 || criticalErrorSpike || (inRth && nonRthProblems.length > 0);
+  // Ops-collect pages P0 only on rth_stale_keys (+ critical error spike). Non-RTH-stale
+  // problem_keys (e.g. phase-anchored swing-discovery) are P1 follow-ups — not CI-hard-fail.
+  const shouldFail = failKeys.length > 0 || criticalErrorSpike;
 
   return {
     rthStale,
@@ -34,7 +35,7 @@ export function evaluateCronWatchdogAudit(body, { inRth }) {
           ? `error_spike=${body.error_spike}`
           : nonRthProblems.length > 0
             ? inRth
-              ? `problems: ${nonRthProblems.join(", ")}`
+              ? `non-RTH problems (warn only): ${nonRthProblems.join(", ")}`
               : `off-hours problems (ignored): ${nonRthProblems.join(", ")}`
             : "ok",
   };

@@ -47,6 +47,19 @@ test("swingDiscoveryAwaitingPhaseSuppress: POST_CLOSE ended without done claim d
   assert.equal(v.suppress, false);
 });
 
+test("swingDiscoveryAwaitingPhaseSuppress: POWER_HOUR before POST_CLOSE suppresses when serving fresh", () => {
+  const now = new Date("2026-11-10T20:38:00.000Z"); // 15:38 ET Mon — POWER_HOUR
+  const v = swingDiscoveryAwaitingPhaseSuppress({
+    healthStatus: "stale",
+    healthAgeMin: 90,
+    now,
+    phaseClaims: { PRE_OPEN: "done", MIDDAY: "done" },
+    servingSnapshotFresh: true,
+  });
+  assert.equal(v.suppress, true);
+  assert.equal(v.phase, "POWER_HOUR");
+});
+
 test("swingDiscoveryAwaitingPhaseSuppress: recent failed keeps alarm during active phase", () => {
   const now = new Date("2026-11-10T01:30:00.000Z");
   const v = swingDiscoveryAwaitingPhaseSuppress({

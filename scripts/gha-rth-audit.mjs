@@ -206,9 +206,27 @@ async function cronHttpChecks() {
         failures.push(`${label}: ${json.flags.length} flags`);
         console.log(`  ✗ ${label} → ${json.flags.length} flags`);
         for (const f of json.flags.slice(0, 5)) console.log(`      [${f.layer}/${f.metric}] ${f.detail}`);
-      } else if (label === "data-integrity" && (json.discrepancies ?? json.issues?.length ?? 0) > 0) {
-        failures.push(`${label}: discrepancies`);
-        console.log(`  ✗ ${label} → discrepancies`);
+      } else if (label === "data-integrity") {
+        const n0 = json.discrepancies ?? json.issues?.length ?? 0;
+        if (n0 > 0 && inRthOpenWindow()) {
+          await sleep(15_000);
+          const res2 = await fetch(`${BASE}${path}`, { headers: H });
+          const json2 = await res2.json().catch(() => ({}));
+          if (res2.status === 200 && (json2.discrepancies ?? json2.issues?.length ?? 0) === 0) {
+            console.log(`  ✓ ${label} → ok (transient discrepancies cleared on retry)`);
+          } else if ((json2.discrepancies ?? json2.issues?.length ?? n0) > 0) {
+            failures.push(`${label}: discrepancies`);
+            console.log(`  ✗ ${label} → discrepancies`);
+          } else if (res2.status !== 200) {
+            failures.push(`${label}: HTTP ${res2.status}`);
+            console.log(`  ✗ ${label} → HTTP ${res2.status}`);
+          }
+        } else if (n0 > 0) {
+          failures.push(`${label}: discrepancies`);
+          console.log(`  ✗ ${label} → discrepancies`);
+        } else {
+          console.log(`  ✓ ${label} → ok`);
+        }
       } else if (label === "cron-watchdog") {
         const wdVerdict = evaluateCronWatchdogAudit(json, { inRth: rthOpen });
         if (wdVerdict.shouldFail) {

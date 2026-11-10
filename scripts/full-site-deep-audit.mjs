@@ -9,6 +9,7 @@ import { inRthOpenWindow, isTradingDayEt, todayEtYmd } from "./gha-et-window.mjs
 import { wallsFromStrikeTotals } from "./audit/lib/gex-wall-invariants.mjs";
 import { spxOracleVerdict, spxPolygonGroundTruth } from "./audit/lib/spx-oracle-eval.mjs";
 import { evaluateCronWatchdogAudit } from "./audit/lib/watchdog-audit-eval.mjs";
+import { filterReconciledGexColdIssues } from "./audit/lib/data-integrity-audit-reconcile.mjs";
 import { evaluateSpxDeskSmoke, isApproxUsCashRth } from "./lib/gha-desk-smoke-eval.mjs";
 
 /** Must match `MAX_OPTION_PREMIUM_PER_SHARE` in `src/features/nighthawk/lib/constants.ts`. */
@@ -121,7 +122,7 @@ async function auditCrons() {
     }
     if (wdVerdict.nonRthProblems.length && inRthOpenWindow()) {
       for (const k of wdVerdict.nonRthProblems) {
-        fail("crons", `STALE-${k}`, `Cron watchdog flagged stale/missing: ${k}`, "P1");
+        ok("crons", `watchdog-non-rth-${k}`, `non-RTH cron problem (warn): ${k}`);
       }
     }
     if (!wdVerdict.failKeys.length && !(inRthOpenWindow() && wdVerdict.nonRthProblems.length)) {
@@ -136,9 +137,28 @@ async function auditCrons() {
   }
 
   if (di.status === 200) {
-    const n = di.json.discrepancies ?? di.json.issues?.length ?? 0;
-    if (n > 0) for (const i of (di.json.issues ?? []).slice(0, 10)) fail("integrity", "cross-tool", i.detail ?? i.title, "P0");
-    else ok("integrity", "cross-tool", di.json.market_open ? `${di.json.checked ?? 0} checks, 0 discrepancies` : "market closed — checks skipped (by design)");
+    const rawIssues = di.json.issues ?? [];
+    const { kept, reconciled } = await filterReconciledGexColdIssues(rawIssues, async (ticker) =>
+      getJson(`/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`)
+    );
+    for (const r of reconciled) {
+      ok(
+        "integrity",
+        `gex-reconcile-${r.ticker}`,
+        `data-integrity cold ${r.ticker} but gex-heatmap live — transient reader miss`
+      );
+    }
+  if (kept.length > 0) {
+      for (const i of kept.slice(0, 10)) fail("integrity", "cross-tool", i.detail ?? i.title, "P0");
+    } else {
+      ok(
+        "integrity",
+        "cross-tool",
+        di.json.market_open
+          ? `${di.json.checked ?? 0} checks, ${reconciled.length ? `${reconciled.length} reconciled, ` : ""}0 discrepancies`
+          : "market closed — checks skipped (by design)"
+      );
+    }
   }
 }
 

@@ -649,12 +649,19 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
       job.key === "swing-discovery" &&
       (health.status === "stale" || health.status === "failed")
     ) {
+      const { readSwingServingSnapshot } = await import("@/lib/swing/serving-lane");
+      const { probeSwingDiscoveryServingSnapshot } = await import(
+        "@/lib/swing/discovery-cron-health"
+      );
+      const swingServingSnap = await readSwingServingSnapshot();
+      const swingServingProbe = probeSwingDiscoveryServingSnapshot(swingServingSnap);
       const suppress = swingDiscoveryAwaitingPhaseSuppress({
         healthStatus: health.status,
         healthAgeMin: health.age_min,
         now: new Date(),
         phaseClaims: swingDiscoveryPhaseClaims,
         scanInFlight: swingDiscoveryInFlight,
+        servingSnapshotFresh: swingServingProbe.fresh,
       });
       if (suppress.suppress && suppress.label) {
         return {
