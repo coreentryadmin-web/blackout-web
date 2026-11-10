@@ -11096,3 +11096,34 @@ and `/play` are actually serving a real price again
   (positionId 74) and GOOG (positionId 73) were in this exact state at audit time — if either is
   still open at the next RTH open, they are the fastest live confirmation; otherwise, the next
   committed swing position whose manage engine fires a trim while its setup is merely FORMING is.
+
+## WATCH LIST — 2026-11-09 (SwingCockpitStrip "Session P&L" cockpit stat vs the per-card verdict badges — follow-up to #7834/#7840, same live repro SWING:APP/positionId 2397)
+
+- **What was broken**: #7834 fixed `ZeroDteCommandPanel.tsx`'s verdict-band headline P&L badge
+  and #7840 fixed `TerminalPremiumPanels.tsx`'s `TradeExcursionGraphic` "Current" stat so an
+  OPEN/HOLD/TRIM SWING position with an already-banked trim tranche shows the blended
+  whole-position P&L instead of the raw open-runner-only figure. `SwingCockpitStrip.tsx`'s
+  "Session P&L" cockpit stat — the headline average rendered above every play card on the Swing
+  desk — averaged raw `play.pnlPct` across every OPEN/HOLD/TRIM play, pulling in the same
+  unblended figure for any TRIM position: a within-panel contradiction one level up from the two
+  already-fixed sites.
+- **Fix**: per-play blend before averaging, using the same `blendedTrimPnlPct` helper
+  (`terminal-ladder.ts`) and `horizon === "SWING"` scoping #7834/#7840 already used. No-ops
+  (falls back to the raw figure) whenever nothing has fired yet, so a book with no banked trims
+  anywhere is provably unaffected. RED→GREEN via `git stash` isolation (kept the new test file);
+  `SwingCockpitStrip.ssr.test.ts` 3/3; sibling suite (`ZeroDteCommandPanel.test.ts`,
+  `terminal-ladder.test.ts`, `swing-cockpit-utils.test.ts`, `TerminalPremiumPanels.ssr.test.ts`,
+  `play-card-lifecycle.test.ts`) 102/102; `npx tsc --noEmit` clean, Node 20.
+- **Specific thing to check once RTH resumes**: with at least one live SWING position in `TRIM`
+  status (fired tranche), confirm the cockpit's "Session P&L" number is consistent with — i.e.
+  computed from the same blended basis as — the individual verdict badges on each TRIM play's own
+  card, not a larger number pulled toward the raw unblended figure.
+- **Also found during this sweep, NOT fixed here (flagged for next round)**: `openMetricsValues()`
+  (`play-card-lifecycle.ts`) — which feeds `playListReturnPct()` and, through it,
+  `PlayLifecycleCardBody`'s list-row "Current"/"PNL" column, the primary per-play row shown on
+  every Command Deck list — also returns `play.pnlPct ?? null` with no trim blend for non-LEGACY
+  horizons, the same gap as the three now-fixed sites, for every SWING TRIM row in the list. A
+  real, reachable fourth instance (not dead code, unlike a second candidate checked and ruled out
+  in `CommandDeck.tsx`'s own pre-`useLifecyclePlayCard` fallback JSX, which never renders because
+  `useLifecyclePlayCard()` is hardcoded to always return `true`). Left for its own focused
+  single-issue PR rather than widening this one.
