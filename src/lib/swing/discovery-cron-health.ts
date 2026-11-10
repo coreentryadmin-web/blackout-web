@@ -55,16 +55,15 @@ export function swingDiscoveryAwaitingPhaseSuppress(args: {
     return { suppress: false };
   }
 
-  const postCloseWindow = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
-  const mins = etMinutesOfDay(now.getTime());
-  const postCloseSatisfied =
-    phaseClaims.POST_CLOSE === "done" ||
-    (mins >= postCloseWindow.startMin && mins < postCloseWindow.endMin);
-  if (!postCloseSatisfied) return { suppress: false };
-
   const active = resolveScanPhase(now.getTime());
   if (!active) return { suppress: false };
   if (phaseClaims[active.phase] === "done") return { suppress: false };
+
+  // Intraday phases (PRE_OPEN/MIDDAY/POWER_HOUR/POST_CLOSE) gate on their own window only.
+  // OVERNIGHT follows POST_CLOSE — do not suppress when today's post-close scan never claimed.
+  if (active.phase === "OVERNIGHT" && phaseClaims.POST_CLOSE !== "done") {
+    return { suppress: false };
+  }
 
   return {
     suppress: true,
