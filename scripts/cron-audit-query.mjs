@@ -16,6 +16,11 @@ import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { shouldRetryWatchdogFetch } from "./audit/lib/ops-collect-scope.mjs";
+import { inRthOpenWindow } from "./gha-et-window.mjs";
+import {
+  cronWatchdogQueryExitProblems,
+  cronWatchdogQueryShouldFail,
+} from "./lib/cron-watchdog-query-eval.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -60,14 +65,23 @@ async function auditViaWatchdog() {
     console.error(`[cron-audit] watchdog HTTP ${res?.status ?? 0}`);
     process.exit(1);
   }
-  const problems = [
-    ...new Set([...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])]),
-  ].filter((key) => !isXMarketingCronSuppressed(key));
+  const inCashRthSession = inRthOpenWindow();
+  const rawProblems = (body.problem_keys ?? []).filter((key) => !isXMarketingCronSuppressed(key));
+  const problems = cronWatchdogQueryExitProblems(body, { inCashRthSession }).filter(
+    (key) => !isXMarketingCronSuppressed(key)
+  );
   console.log("\n=== CRON AUDIT (HTTP watchdog fallback) ===\n");
   console.log(`checked: ${body.checked ?? "?"}`);
-  console.log(`problems: ${problems.length ? problems.join(", ") : "(none)"}`);
+  console.log(`cash_rth_session: ${inCashRthSession}`);
+  console.log(
+    `problems (exit gate): ${problems.length ? problems.join(", ") : "(none)"}${
+      !inCashRthSession && rawProblems.length
+        ? ` · off-hours informational: ${rawProblems.join(", ")}`
+        : ""
+    }`
+  );
   console.log(`error_spike: ${body.error_spike ?? "none"} (${body.error_count ?? 0} in ${body.error_window_min ?? "?"}m)`);
-  if (body.error_spike === "critical" || problems.length > 0) {
+  if (cronWatchdogQueryShouldFail(body, problems)) {
     process.exit(1);
   }
   console.log("\nGREEN — cron watchdog reports healthy.\n");
