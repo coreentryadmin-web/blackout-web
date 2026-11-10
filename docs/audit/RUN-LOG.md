@@ -4,6 +4,15 @@ Moved out of FINDINGS.md on 2026-08-08. These entries record that a scheduled va
 came back green. They are useful as history and were never findings; mixed into FINDINGS.md they
 made it impossible to tell an open P1 from a finished chore.
 
+## 2026-11-10 (00:17 UTC / Mon 19:17 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
+
+Resynced to `origin/main` (`9b7dcb31a`, other-lane swing journal entries). **Step 1:** purged
+Cloudflare edge HTML, re-measured live homepage CLS — **0, GOOD** (69/69 routed, 0 fail, empty
+shifts). Fetched `/api/og` with a Googlebot UA: `200`, `content-type: image/png`, valid 1200x630
+PNG — crawlable, confirmed on production. **Step 2 — PR sweep:** 3 open agent PRs fleet-wide, all
+CI-RUNNING, all other-lane (correctness/swing). Nothing for this lane to chase. **Step 3:** no new
+SEO-lane work. No PR opened.
+
 ## 2026-11-09 (18:16 UTC / Mon 13:16 ET) — [SEO] Lane heartbeat: shipped fixes validated, no SEO-lane PR action
 
 Resynced to `origin/main` (`b0c528513`, other-lane providers fix). **Step 1:** purged Cloudflare
