@@ -1,5 +1,5 @@
 /**
- * Cron staleness watchdog verdict for CI audits (gha-rth-audit, full-site-deep-audit).
+ * Cron staleness watchdog verdict for CI audits (cron-audit-query, gha-rth-audit, full-site-deep-audit).
  * Mirrors ops-collect: P0 only on market_hours_stale during RTH; post-close schedule
  * gaps must not fail the deep audit when rth_stale_keys is empty.
  */
