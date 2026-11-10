@@ -242,16 +242,81 @@ function setupPersistenceScore(state: SwingSetupState | null | undefined): { com
   }
 }
 
+/**
+ * BUG FIX (2026-11-09, Ask Largo x Night Hawk Swings standing mandate, live repros
+ * `SWING:MRVL` positionId 70 and `SWING:PLTR` positionId 74 — task #100):
+ * `SwingEntryState` (`entry-model.ts`'s `deriveEntryState`) is a PRE-ENTRY, WATCH-stage taxonomy —
+ * it answers "has this ticker reached a good entry yet, or has price run away (chase risk) before
+ * I could get in?" Its four reachable buckets are *geometric and direction-mirrored*: EXTENDED_CHASE
+ * means price has moved substantially PAST the trigger IN THE TRADE'S OWN DIRECTION (whatever `dir`
+ * was passed in); PRE_TRIGGER means price has NOT reached the trigger in that direction (i.e. it is
+ * on the wrong side of it). Pre-entry, "far past the trigger" is bad (you'd be chasing an already-
+ * extended move) and "hasn't reached the trigger" is neutral (still waiting, no bias either way).
+ *
+ * This function's OWN (and, confirmed by a repo-wide grep, ONLY) caller is `computeSwingThesisHealth`
+ * below, which itself early-returns `null` unless `status` is `OPEN`/`HOLD`/`TRIM` — i.e. this
+ * function is NEVER invoked for a pre-entry/WATCH candidate, only for an already-committed position
+ * (see `adapters.ts`'s `liveEntryStatus`, wired by #5336 to stop this pillar defaulting to "n/a").
+ * That means the VALENCE of each geometric bucket flips once a position is already open, because the
+ * question being answered flips with it: "has price moved favorably or adversely since I entered (at
+ * or near the trigger)?" Re-using the pre-entry score ordering unchanged after #5336 wired live
+ * derivation produced exactly the live contradiction this fix closes:
+ *   - MRVL (SHORT, entryTrigger 179.99, liveSpot 137.70 — price fell 23.5%, livePnlPct +221.3%, the
+ *     best-performing leg in the book) geometrically lands in EXTENDED_CHASE (price moved far past
+ *     the trigger IN THE SHORT'S OWN FAVORABLE DIRECTION) — the OLD mapping scored that the WORST
+ *     (0.35) and labeled it "chase risk", dragging the aggregate % down for the position that has
+ *     worked out best.
+ *   - PLTR (SHORT, entryTrigger 155.49, liveSpot 159.76 — price rose toward invalidation 163.02,
+ *     already TAKE_PARTIAL) geometrically lands in PRE_TRIGGER (price sits on the WRONG side of the
+ *     trigger for a short — i.e. it has reversed back through the entry level, adverse) — the OLD
+ *     mapping scored that a mediocre-but-not-worst 0.6 and labeled it "pre-trigger", which both
+ *     outscored MRVL's "chase risk" AND read as "hasn't entered yet" for a position already trimmed
+ *     and nearing its own invalidation level.
+ *
+ * FIX: re-map the SAME four geometric buckets (no change to `SwingEntryState`, `deriveEntryState`,
+ * or `entry-model.ts` — the pre-entry WATCH-stage taxonomy and its own tests, labels, and gate wiring
+ * are completely untouched) to the correct post-entry valence: EXTENDED_CHASE (favorable
+ * continuation past entry) scores BEST, PRE_TRIGGER (reversed back through entry, adverse) scores
+ * WORST, AT_TRIGGER (price ~= entry, neutral) sits in between, PULLBACK_TO_ENTRY (a mild, partial
+ * giveback — only reachable once `entryZoneFar`/`atr` are threaded through the live call, which
+ * `adapters.ts` does not do today, but kept consistent for when it is) between AT_TRIGGER and
+ * PRE_TRIGGER. `commit === current` is kept (as every other non-theta pillar in this file already
+ * does) — this fix corrects what the score MEANS, not whether it has a separate commit baseline,
+ * which is an existing, file-wide design trait this PR deliberately leaves alone.
+ *
+ * Why this is safe where a naive quick-patch of the broader architecture would not be (see
+ * FINDINGS.md's "Ask Largo 'Thesis health' pillar breakdown is withheld..." SCOPED finding): that
+ * finding warned against FABRICATING a pre-entry `setupState`/`entryStatus` for a committed row that
+ * never had one (Option A), or against reusing `attachThesisExplanation`'s same-day-dossier
+ * re-attachment trick for this field (Option B2, already shown unsafe for a different reason). This
+ * fix does neither — `#5336` already made live-derivation (grounded price vs. the position's own
+ * real trigger) the shipped mechanism for feeding this pillar; nothing here changes WHAT data
+ * produces the bucket. It only corrects the SCORE/LABEL mapping applied to a bucket this function's
+ * one caller already only ever sees post-entry — exactly the "(b) redefine pillar semantics for an
+ * ALREADY-COMMITTED position" option that finding's own Recommendation section named as the smaller,
+ * reviewable path forward (distinct from B1's schema change and B2's unsafe re-attachment), scoped
+ * here to `entry_geometry` only — `persistence`/`setupPersistenceScore` is left untouched.
+ */
 function entryGeometryScore(status: SwingEntryState | null | undefined): { commit: number; current: number; label: string } {
   switch (status) {
-    case "AT_TRIGGER":
-      return { commit: 1, current: 1, label: "at trigger" };
-    case "PULLBACK_TO_ENTRY":
-      return { commit: 0.85, current: 0.85, label: "pullback" };
-    case "PRE_TRIGGER":
-      return { commit: 0.6, current: 0.6, label: "pre-trigger" };
     case "EXTENDED_CHASE":
-      return { commit: 0.35, current: 0.35, label: "chase risk" };
+      // Price has moved substantially past the trigger IN THE POSITION'S OWN DIRECTION — a
+      // committed position moving further into favorable territory past its own entry. Best score.
+      return { commit: 0.95, current: 0.95, label: "running favorably" };
+    case "AT_TRIGGER":
+      // Price is still ~= the original entry level — thesis intact, but the underlying hasn't yet
+      // moved meaningfully either way since entry. Neutral. Label kept as "at trigger" (pre-existing
+      // regression coverage, `adapters.test.ts`) — it does not itself imply favorable or adverse.
+      return { commit: 0.75, current: 0.75, label: "at trigger" };
+    case "PULLBACK_TO_ENTRY":
+      // A mild pullback BACK TOWARD the trigger, short of fully reversing through it — a partial,
+      // not-yet-severe giveback. Only reachable once entryZoneFar/atr are supplied; kept ordered
+      // consistently (worse than AT_TRIGGER, better than a full PRE_TRIGGER reversal) for when they are.
+      return { commit: 0.55, current: 0.55, label: "mild giveback" };
+    case "PRE_TRIGGER":
+      // Price sits on the WRONG side of the trigger for this position's direction — i.e. it has
+      // reversed back through (or never recovered past) its own entry level, adverse. Worst score.
+      return { commit: 0.3, current: 0.3, label: "back through entry" };
     default:
       return { commit: 0.5, current: 0.45, label: "n/a" };
   }
