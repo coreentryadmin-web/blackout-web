@@ -17,8 +17,9 @@ export function evaluateCronWatchdogAudit(body, { inRth }) {
   const warnKeys = inRth ? nonRthProblems : nonRthProblems;
   const criticalErrorSpike = body.error_spike === "critical";
 
-  const shouldFail =
-    failKeys.length > 0 || criticalErrorSpike || (inRth && nonRthProblems.length > 0);
+  // Post-close / phase-scheduled jobs (swing-discovery) can sit in problem_keys without
+  // market_hours_stale — that must not fail the deep audit during cash RTH (measured 2026-11-10).
+  const shouldFail = failKeys.length > 0 || criticalErrorSpike;
 
   return {
     rthStale,

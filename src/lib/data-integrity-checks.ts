@@ -65,14 +65,27 @@ export async function runDataIntegrityChecks(): Promise<DataIntegrityResult> {
   const { merged } = await loadMergedSpxDesk();
   const marketOpen = merged.market_open === true;
 
+  const spySnap = await fetchStockSnapshot("SPY").catch(() => null);
+
   // Pull the same numbers each tool consumes — desk (SPX Slayer), the canonical GEX
   // matrix for SPX + SPY (Heat Maps / Largo / Night's Watch all read this), and the
   // SPY quote tape. Cache-readers / snapshots — no extra upstream pressure.
-  const [spySnap, gexSpx, gexSpy] = await Promise.all([
-    fetchStockSnapshot("SPY").catch(() => null),
-    getGexPositioning("SPX").catch(() => null),
-    getGexPositioning("SPY").catch(() => null),
-  ]);
+  // Brief retry: during ECS roll / ?force=1 rebuild both matrices can read null once before
+  // snapshots land — C6 must not P0 the RTH deep audit on a single empty read (2026-11-10).
+  const GEX_INTEGRITY_RETRY_MS = 2500;
+  const GEX_INTEGRITY_MAX_ATTEMPTS = 3;
+  let gexSpx: Awaited<ReturnType<typeof getGexPositioning>> = null;
+  let gexSpy: Awaited<ReturnType<typeof getGexPositioning>> = null;
+  for (let attempt = 0; attempt < GEX_INTEGRITY_MAX_ATTEMPTS; attempt++) {
+    [gexSpx, gexSpy] = await Promise.all([
+      getGexPositioning("SPX").catch(() => null),
+      getGexPositioning("SPY").catch(() => null),
+    ]);
+    if (gexSpx && gexSpy) break;
+    if (attempt + 1 < GEX_INTEGRITY_MAX_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, GEX_INTEGRITY_RETRY_MS));
+    }
+  }
 
   if (!marketOpen) {
     // Market closed → numbers legitimately stale; nothing to validate. Empty issue
