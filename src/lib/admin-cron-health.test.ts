@@ -456,3 +456,29 @@ test("weekday scheduled post-close crons: stale/failed suppressed Saturday (cron
     assert.equal(health.market_hours_stale, false);
   }
 });
+
+test("swing-discovery: prior-phase failed downgrades to warning during OVERNIGHT retry window", () => {
+  const now = new Date("2026-11-10T01:25:00.000Z"); // Mon 8:25 PM ET (matches query CI watchdog timing)
+  const health = evaluateJob(
+    jobDef({
+      key: "swing-discovery",
+      name: "Night Hawk Swing Discovery",
+      stale_after_min: 36 * 60,
+      weekdays_only: true,
+    }),
+    {
+      id: 1,
+      job_key: "swing-discovery",
+      status: "failed",
+      started_at: "2026-11-09T22:00:00.000Z", // 5:00 PM ET POST_CLOSE failure
+      duration_ms: 100,
+      message: "grouped daily 403",
+      meta_json: null,
+    },
+    [],
+    now
+  );
+  assert.equal(health.status, "warning");
+  assert.match(health.status_label, /prior phase/i);
+  assert.equal(health.market_hours_stale, false);
+});

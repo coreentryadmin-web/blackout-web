@@ -32,6 +32,7 @@ import {
   type SwingDiscoveryPhaseClaim,
 } from "@/lib/swing/discovery-claim";
 import { phaseRunKey } from "@/lib/swing/scan-cadence";
+import { swingDiscoveryPriorPhaseFailureInGrace } from "@/lib/swing/discovery-cron-health";
 import type { SwingDiscoveryPhase } from "@/lib/swing/discovery";
 import { todayEt } from "@/lib/et-date";
 
@@ -366,6 +367,13 @@ export function evaluateJob(
       statusLabel = awaitingDualBand
         ? "Idle (awaiting in-window UTC band; last run failed)"
         : "Idle (outside cron schedule window; last run failed)";
+    } else if (
+      job.key === "swing-discovery" &&
+      swingDiscoveryPriorPhaseFailureInGrace(last.started_at, now)
+    ) {
+      status = "warning";
+      statusLabel =
+        "Last run failed in a prior phase — active phase window open for retry";
     } else {
       status = "failed";
       statusLabel = "Last run failed";

@@ -5,7 +5,7 @@
 
 import { todayEt } from "@/lib/et-date";
 import { formatEtDate, isTradingDayEt, previousTradingDayEt } from "@/features/nighthawk/lib/session";
-import { SWING_SCAN_PHASES, etMinutesOfDay } from "@/lib/swing/scan-cadence";
+import { SWING_SCAN_PHASES, etMinutesOfDay, resolveScanPhase } from "@/lib/swing/scan-cadence";
 import type { SwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
 
@@ -72,6 +72,25 @@ export function swingDiscoveryPhasesEndedBefore(now: Date, sessionDay: string): 
 }
 
 export type SwingDiscoveryServingProbe = { fresh: boolean; detail: string };
+
+/**
+ * True when the latest cron handshake failed in an earlier phase but the ET clock is now inside a
+ * later phase window that has not started yet (measured by last run timestamp). EventBridge keeps
+ * firing during the active window — downgrade to warning until that phase gets its attempt.
+ */
+export function swingDiscoveryPriorPhaseFailureInGrace(
+  lastStartedAt: string | null | undefined,
+  now = new Date()
+): boolean {
+  if (!lastStartedAt?.trim()) return false;
+  const active = resolveScanPhase(now.getTime());
+  if (!active) return false;
+  const lastMs = new Date(lastStartedAt).getTime();
+  if (!Number.isFinite(lastMs)) return false;
+  const sessionDay = todayEt(now);
+  const phaseStartMs = etYmdToUtcMs(sessionDay, active.startMin);
+  return lastMs < phaseStartMs;
+}
 
 /**
  * True when the persisted serving snapshot proves discovery ran for the session the clock expects.
