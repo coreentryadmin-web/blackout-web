@@ -56,6 +56,13 @@ test("swing-discovery gates on isTradingDayEt before Polygon/UW whole-market sca
 // the real handler needs a full auth/DB/provider mock harness this route doesn't have (see the other
 // tests in this file for the same convention).
 
+test("swing-discovery memoizes grouped-daily within a scan (single fetchDailyMarketSummary per buildDiscoveryDeps)", () => {
+  assert.match(routeSrc, /loadGroupedDaily/);
+  assert.match(routeSrc, /fetchGroupedDaily: \(\) => loadGroupedDaily\(\)/);
+  const intradayBlock = routeSrc.match(/fetchIntradayStructureBars:[\s\S]{0,900}/)?.[0] ?? "";
+  assert.doesNotMatch(intradayBlock, /fetchDailyMarketSummary\(to\)/);
+});
+
 test("swing-discovery bounds the intraday-structure minute-bar refresh fan-out via runPolygonPool, not a bare Promise.all", () => {
   assert.match(
     routeSrc,

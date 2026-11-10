@@ -5,9 +5,11 @@
 
 import { todayEt } from "@/lib/et-date";
 import { formatEtDate, isTradingDayEt, previousTradingDayEt } from "@/features/nighthawk/lib/session";
-import { SWING_SCAN_PHASES, etMinutesOfDay } from "@/lib/swing/scan-cadence";
+import { SWING_SCAN_PHASES, etMinutesOfDay, phaseRunKey } from "@/lib/swing/scan-cadence";
 import type { SwingServingSnapshot } from "@/lib/swing/serving-lane";
+import type { SwingDiscoveryPhaseClaim } from "@/lib/swing/discovery-claim";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
+import { sharedCacheGetWithTtl } from "@/lib/shared-cache";
 
 /** Worst ordinary calendar gap with no scan (Fri POST_CLOSE end → Mon PRE_OPEN start). Minutes. */
 export function worstOrdinarySwingDiscoveryGapMin(): number {
@@ -153,4 +155,33 @@ export function probeSwingDiscoveryServingSnapshot(
     fresh: false,
     detail: `serving snapshot too old intraday (${ageMin != null ? `${ageMin.toFixed(0)}m` : "?"})`,
   };
+}
+
+/**
+ * After POST_CLOSE has ended, a `done` phase claim plus a same-session snapshot stamped inside the
+ * POST_CLOSE window proves the primary scan ran — a later OVERNIGHT/EventBridge failure must not
+ * page the watchdog on handshake alone (measured: query CI 2026-11-10T01:25Z).
+ */
+export function swingDiscoveryPostCloseArtifactSatisfied(
+  snapshot: SwingServingSnapshot | null,
+  postCloseClaimDone: boolean,
+  now = new Date()
+): boolean {
+  if (!postCloseClaimDone || !snapshot?.sessionDay || !snapshot.asOf) return false;
+  const sessionDay = todayEt(now);
+  if (snapshot.sessionDay !== sessionDay) return false;
+  const postClose = SWING_SCAN_PHASES.find((w) => w.phase === "POST_CLOSE")!;
+  if (etMinutesOfDay(now.getTime()) < postClose.endMin) return false;
+  const asOfMs = new Date(snapshot.asOf).getTime();
+  if (!Number.isFinite(asOfMs)) return false;
+  const floorMs = etYmdToUtcMs(sessionDay, postClose.startMin);
+  return asOfMs + 60_000 >= floorMs;
+}
+
+export async function swingDiscoveryPostCloseClaimDone(
+  sessionDay: string
+): Promise<boolean> {
+  const key = phaseRunKey(sessionDay, "POST_CLOSE");
+  const entry = await sharedCacheGetWithTtl<SwingDiscoveryPhaseClaim>(key).catch(() => null);
+  return entry?.value?.status === "done";
 }

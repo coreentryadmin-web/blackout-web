@@ -136,18 +136,37 @@ function buildDiscoveryDeps(
     return cached;
   };
   const accum: SwingAccumAccessors = { upsertSwingAccum, fetchAccumulating, markAccumPromoted, fadeStaleAccum };
+
+  let groupedDailyOnce: Promise<import("@/lib/providers/polygon").DailyMarketBar[]> | null = null;
+  const loadGroupedDaily = (): Promise<import("@/lib/providers/polygon").DailyMarketBar[]> => {
+    if (groupedDailyOnce) return groupedDailyOnce;
+    groupedDailyOnce = (async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const summary = await fetchDailyMarketSummary(to);
+          return summary.results ?? [];
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          if (attempt < 2 && /429|rate limited|circuit open/i.test(msg)) {
+            await new Promise((r) => setTimeout(r, 12_000 * (attempt + 1)));
+            continue;
+          }
+          throw error;
+        }
+      }
+      return [];
+    })();
+    return groupedDailyOnce;
+  };
+
   return {
     fetchFlowWindow: async (): Promise<MinimalFlowRow[]> =>
       fetchRecentFlows({ since_hours: MULTI_DAY_FLOW_HOURS, min_premium: MULTI_DAY_MIN_PREMIUM, limit: MULTI_DAY_FLOW_LIMIT }),
-    fetchGroupedDaily: async () => {
-      const summary = await fetchDailyMarketSummary(to);
-      return summary.results ?? [];
-    },
+    fetchGroupedDaily: () => loadGroupedDaily(),
     ...(BREAKOUT_INTRADAY_REFRESH
       ? {
           fetchIntradayStructureBars: async () => {
-            const summary = await fetchDailyMarketSummary(to);
-            const results = summary.results ?? [];
+            const results = await loadGroupedDaily();
             const pre = screenBreakoutMovers(results, 40);
             const tickers = pre.map((m) => m.ticker).slice(0, BREAKOUT_INTRADAY_REFRESH_LIMIT);
             const refreshed = new Map<string, import("@/lib/providers/polygon").DailyMarketBar>();

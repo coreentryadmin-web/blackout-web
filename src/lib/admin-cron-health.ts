@@ -21,7 +21,13 @@ import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
-import { swingDiscoveryHandshakeStaleMin } from "@/lib/swing/discovery-cron-health";
+import {
+  probeSwingDiscoveryServingSnapshot,
+  swingDiscoveryHandshakeStaleMin,
+  swingDiscoveryPostCloseArtifactSatisfied,
+  swingDiscoveryPostCloseClaimDone,
+} from "@/lib/swing/discovery-cron-health";
+import { readSwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -475,8 +481,46 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     await sharedCacheGet("zerodte-warm:running").catch(() => null)
   );
   const swingDiscoveryInFlight = await isSwingDiscoveryScanInFlight();
+  const swingServingSnap = await readSwingServingSnapshot().catch(() => null);
+  const swingServingProbe = probeSwingDiscoveryServingSnapshot(swingServingSnap);
+  const swingPostCloseClaimDone = await swingDiscoveryPostCloseClaimDone(todayEt());
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
+
+    if (
+      job.key === "swing-discovery" &&
+      (health.status === "failed" || health.status === "stale")
+    ) {
+      if (swingServingProbe.fresh) {
+        return {
+          ...health,
+          status: "healthy" as const,
+          market_hours_stale: false,
+          status_label: `Serving snapshot authoritative (${swingServingProbe.detail})`,
+          meta: {
+            ...(health.meta ?? {}),
+            swing_discovery_serving_probe: swingServingProbe,
+          },
+        };
+      }
+      if (
+        swingDiscoveryPostCloseArtifactSatisfied(
+          swingServingSnap,
+          swingPostCloseClaimDone
+        )
+      ) {
+        return {
+          ...health,
+          status: "healthy" as const,
+          market_hours_stale: false,
+          status_label: "POST_CLOSE satisfied (claim + snapshot) — secondary phase handshake not authoritative",
+          meta: {
+            ...(health.meta ?? {}),
+            swing_discovery_post_close_claim: true,
+          },
+        };
+      }
+    }
 
     // zerodte-warm's cron_job_runs handshake (logCronRun) fires on the route's FAST
     // synchronous path — auth + cooldown/lock gate + the cheap earnings-cache warm — before

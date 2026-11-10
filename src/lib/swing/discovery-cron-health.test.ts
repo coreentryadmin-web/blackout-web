@@ -6,6 +6,7 @@ import {
   probeSwingDiscoveryServingSnapshot,
   swingDiscoveryHandshakeStaleMin,
   swingDiscoveryPhasesEndedBefore,
+  swingDiscoveryPostCloseArtifactSatisfied,
   worstOrdinarySwingDiscoveryGapMin,
 } from "@/lib/swing/discovery-cron-health";
 import type { SwingServingSnapshot } from "@/lib/swing/serving-lane";
@@ -63,6 +64,19 @@ test("swingDiscoveryPhasesEndedBefore returns phases in the order they ENDED, no
 
 // Same bug, at the probeSwingDiscoveryServingSnapshot level: a snapshot timestamped BEFORE POST_CLOSE
 // even started cannot possibly reflect POST_CLOSE (the primary phase) having run, and must not read fresh.
+test("swingDiscoveryPostCloseArtifactSatisfied: POST_CLOSE claim + snapshot after window satisfies primary phase", () => {
+  const now = new Date("2026-11-10T01:25:00.000Z"); // 8:25 PM ET
+  const snap: SwingServingSnapshot = {
+    asOf: "2026-11-09T21:45:00.000Z",
+    sessionDay: "2026-11-09",
+    dossiers: [],
+    plays: [],
+    watch: [],
+  };
+  assert.equal(swingDiscoveryPostCloseArtifactSatisfied(snap, true, now), true);
+  assert.equal(swingDiscoveryPostCloseArtifactSatisfied(snap, false, now), false);
+});
+
 test("probeSwingDiscoveryServingSnapshot: not fresh when snapshot predates POST_CLOSE, checked after POST_CLOSE ended", () => {
   const now = new Date("2026-10-24T01:00:00.000Z"); // 21:00 ET Fri
   const snap: SwingServingSnapshot = {
