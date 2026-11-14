@@ -676,8 +676,25 @@ export function advanceWallBreakTracker(
 // TIER 3: sweep / flow anomaly — headline only LARGE aggressive sweeps.
 // ---------------------------------------------------------------------------
 
+/**
+ * BUG FIX (round 528, same unit-boundary class already fixed repeatedly in this file and
+ * elsewhere — e.g. this file's own `fmtNotional` above at round 473, `fmt-money.ts`'s
+ * `fmtPremium`, `zerodte-board-format.ts`'s `fmtMoney`): this is a SEPARATE, drifted copy of
+ * the money formatter used only for the Tier-3 sweep headline/why-string below — it still
+ * picked the display unit off the RAW, unrounded magnitude and rounded the quotient
+ * afterward, with no promotion check, and carried no billions tier at all. SPX single-sweep
+ * premium is unbounded above `SPX_SWEEP_MIN_PREMIUM` ($1M) — real SPX option sweeps routinely
+ * clear nine figures and reach into the billions — so `$1,500,000,000` rendered the literal
+ * `"$1500.0M"` instead of `"$1.5B"`, and `$999,950,000` rendered `"$1000.0M"` instead of
+ * promoting to `"$1.0B"`. Fixed with the same round-first-then-promote guard as `fmtNotional`.
+ */
 function fmtPremium(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) {
+    const m = Math.round((n / 1_000_000) * 10) / 10;
+    if (m >= 1000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+    return `$${m.toFixed(1)}M`;
+  }
   return `$${(n / 1_000).toFixed(0)}K`;
 }
 
