@@ -50,9 +50,38 @@ const DESK_ORDER: readonly DeskProduct[] = [
   "MERIDIAN",
 ];
 
+// BUG FIX (round 530 DISCOVERY sweep): this was a drifted, un-exported local copy of the
+// shared money-formatter shape (see `fmt-money.ts`'s own `fmtPremium` and its many siblings:
+// `thermal-discord-card.ts`'s `fmtCompactHeatMoney`, `zerodte-board-format.ts`'s `fmtMoney`,
+// `vector-crosshair-format.ts`'s `fmtGex`, etc) with TWO real defects.
+//
+// (1) No billions tier at all. `formatHelixLine` feeds this `extras.helix_gross_premium` —
+//     `aggregateHelixTapeByTicker`'s per-ticker SUM of every flow_alerts premium in the scan
+//     window (helix-tape-extras.ts), uncapped above its own $200K display floor — so a busy
+//     ticker's aggregate tape routinely clears $1B. That rendered a literal four-digit
+//     overflow like "$1500.0M" instead of "$1.5B" in the real "HELIX" desk-evidence line a
+//     member reads on the 0DTE thesis stack.
+// (2) No round-first-then-promote guard at the K->M boundary either: `Math.round(n / 1_000)`
+//     picked the K unit off the RAW value, then rounded the quotient — so a value that rounds
+//     UP to 1000 of the smaller unit (e.g. 999_600 -> round(999.6) = 1000) rendered "$1000K"
+//     instead of promoting to "$1.0M". Same root defect shape, one tier down.
+//
+// Fix: compute each candidate unit's ROUNDED magnitude BEFORE deciding whether it crossed into
+// the next tier, promoting when it did — the same pattern already shipped across the repo's
+// other money formatters (e.g. `zerodte-board-format.ts`'s `fmtMoney`, directly adjacent to
+// this module in the Night Hawk feature tree).
 function fmtPrem(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) {
+    const m = Math.round((n / 1_000_000) * 10) / 10;
+    if (m >= 1000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+    return `$${m.toFixed(1)}M`;
+  }
+  if (n >= 1_000) {
+    const k = Math.round(n / 1_000);
+    if (k >= 1000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    return `$${k}K`;
+  }
   return `$${Math.round(n)}`;
 }
 
