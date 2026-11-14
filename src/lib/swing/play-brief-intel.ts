@@ -2547,10 +2547,22 @@ export function holdPlanSection(
   // recNote, desk stance, trim ladder, rails, and manageAction live in Management (play-brief.ts)
   // — do not repeat them here (same duplication class as whyThisSetupSection, FINDINGS 2026-09-06).
 
-  const dteMatch = play.contract.match(/(\d+)DTE/);
+  // BUG FIX (Ask Largo standing mandate, 2026-11-14): sibling of the identical regex bug fixed
+  // in play-brief-narrative-coaching.ts's manage-plan DTE line the same day (live repro
+  // PLTR/74) — `/(\d+)DTE/` cannot match the leading `-` on an expired contract's
+  // `${dte}DTE` stamp (adapters.ts), so a genuinely-negative dte silently rendered as its own
+  // positive absolute value here too. This section is unconditionally collapsed whenever the
+  // narrative line renders (NARRATIVE_COVERED_TITLES's "Hold plan" entry, play-brief-intel-
+  // collapse.ts), so it is reachable only when `hasNarrative` is false — a narrower surface
+  // than the sibling call site, but the same false "N DTE" claim when it does fire.
+  const dteMatch = play.contract.match(/(-?\d+)DTE/);
   if (dteMatch) {
     const dte = Number(dteMatch[1]);
-    lines.push(`Contract runway: **${dte} DTE** — theta accelerates inside ~7 DTE`);
+    lines.push(
+      dte < 0
+        ? `Contract runway: **expired** (${dte} DTE) — confirm settlement/close`
+        : `Contract runway: **${dte} DTE** — theta accelerates inside ~7 DTE`,
+    );
   }
 
   // Near-term-earnings warning is NOT repeated here — catalystCoaching (play-brief-narrative-

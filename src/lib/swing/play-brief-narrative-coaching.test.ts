@@ -831,6 +831,24 @@ test("manageLifecycleCoaching: DTE <= 7 keeps the urgency framing, not the plain
   assert.doesNotMatch(line!, /5 DTE\*\* remaining/i);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-14, live repro PLTR/74 COMMIT brief): an expired
+// contract's `${dte}DTE` stamp is already negative (e.g. "160P · -1DTE" from adapters.ts), and
+// the old `/(\d+)DTE/` regex matched the "1DTE" substring inside "-1DTE" without the sign,
+// rendering the false "**1 DTE** — theta accelerating; don't over-hold" — the opposite of the
+// truth for a contract that expired YESTERDAY.
+test("manageLifecycleCoaching: a negative (expired) DTE renders as expired, never flips to a false positive DTE", () => {
+  const line = manageLifecycleCoaching(play({ contract: "160P · -1DTE" }), "open");
+  assert.match(line!, /\*\*expired\*\* \(-1 DTE\)/);
+  assert.doesNotMatch(line!, /\*\*1 DTE\*\*/, "the sign must never be dropped");
+  assert.doesNotMatch(line!, /theta accelerating; don't over-hold/, "an expired contract is not 'still live, accelerating'");
+});
+
+test("manageLifecycleCoaching: DTE == 0 (expires today, not yet past expiry) keeps the urgency framing, not 'expired'", () => {
+  const line = manageLifecycleCoaching(play({ contract: "160P · 0DTE" }), "open");
+  assert.match(line!, /\*\*0 DTE\*\* — theta accelerating/);
+  assert.doesNotMatch(line!, /expired/);
+});
+
 test("watchGateCoaching: includes reasons", () => {
   const line = watchGateCoaching(
     play({

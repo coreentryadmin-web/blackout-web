@@ -1,3 +1,31 @@
+## WATCH LIST — 2026-11-14 Ask Largo swing play-brief: negative (expired) DTE no longer silently flips to a false positive DTE in "Trade manager read" / "Hold plan" (`fix/swing-largo-negative-dte-sign-drop`)
+
+- **What was broken**: all three currently-committed SWING positions (PLTR/74, GOOG/73, MRVL/70)
+  share a 2026-11-13 expiry that has already passed (`contract.dte: -1` on the live
+  `horizons?view=swings` board, consistent with the Polygon/Massive `/v3/snapshot` entitlement
+  outage freezing exit-management since 2026-11-06 — see the existing 2026-11-07/08 entries in
+  this file). `adapters.ts` stamps `TerminalPlay.contract` as `` `${strike}${right} · ${dte}DTE` ``
+  with no clamping, so an expired position produced the literal string `"160P · -1DTE"`. Two
+  narrative call sites (`manageLifecycleCoaching` in `play-brief-narrative-coaching.ts`, and
+  `holdPlanSection`'s "Contract runway" line in `play-brief-intel.ts`) parsed that back out with
+  `/(\d+)DTE/`, which cannot match the leading `-` — it matched the `"1DTE"` substring inside
+  `"-1DTE"` instead, silently dropping the sign. Live-confirmed: PLTR/74's real production brief
+  rendered `"1 DTE — theta accelerating; don't over-hold"`, telling the member they still had a
+  day left to manage a contract that actually expired *yesterday* — the opposite of the truth.
+- **Fix**: both call sites now capture the optional sign (`/(-?\d+)DTE/`) and branch on the true
+  signed `dte`; `dte < 0` renders `"**expired** (N DTE) — confirm settlement/close, don't manage
+  as if still live"` instead of the misleading "theta accelerating" framing. `dte === 0` (expires
+  today, not yet past expiry) is unchanged — it genuinely hasn't expired yet.
+- **Specific thing to check once this is resolved** (either the Polygon entitlement recovers and
+  these three positions get fresh marks/exit-managed normally, or Monday's open otherwise moves
+  past these specific expired legs): re-fetch
+  `GET /api/market/swing/play-brief?playId=SWING%3APLTR%3A74&ticker=PLTR&positionId=74&status=COMMIT&strike=160&right=P`
+  (or whichever of PLTR/74, GOOG/73, MRVL/70 is still open) and confirm the "Trade manager read"
+  section says **expired**, not a false "N DTE ... don't over-hold" — and separately confirm
+  these positions actually get closed/rolled by the exit-management cron once the entitlement
+  outage clears, since "expired" text alone doesn't resolve the underlying stuck-open-past-expiry
+  state, only the honesty of what's said about it.
+
 ## WATCH LIST — 2026-11-14 Polygon/Massive.com real-time `/v3/snapshot` entitlement — RECONFIRMED STILL DOWN, 8 days into the outage first found 2026-11-07 (no code change — operator action needed)
 
 - **What this is**: CLAUDE.md's "Environment realities" section already documents this outage in
