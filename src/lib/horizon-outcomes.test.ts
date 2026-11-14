@@ -217,6 +217,18 @@ test("mapSwingOutcome: negative realized_pnl_pct maps to loss", () => {
   assert.equal(out.pnl_pct, -18);
 });
 
+// BUG FIX (Ask Largo standing mandate, round529 rounding-tie sweep): `pnl_pct` here was rounded
+// with a naive `Math.round(pnl * 100) / 100`, which ties toward +Infinity — `Math.round(-12.5) ===
+// -12` but `Math.round(12.5) === 13` — understating the magnitude of a losing position's reported
+// P&L whenever realized_pnl_pct sits exactly on a 2dp tie. Unlike mapZeroDteOutcome (which reads
+// an already sign-safe-rounded upstream value via asManagedPnlPct), mapSwingOutcome reads the raw
+// realized_pnl_pct column directly, so THIS is the first and only rounding of that value.
+test("mapSwingOutcome: a negative realized_pnl_pct exactly on a 2dp rounding tie is not understated", () => {
+  const out = mapSwingOutcome(swingRow({ realized_pnl_pct: -0.125 })); // *100 = -12.5, bit-exact tie
+  assert.equal(out.label, "loss");
+  assert.equal(out.pnl_pct, -0.13); // sign-safe: |-0.125|*100=12.5 rounds to 13 -> -0.13, not -0.12
+});
+
 test("mapSwingOutcome: exact-zero realized_pnl_pct maps to breakeven", () => {
   const out = mapSwingOutcome(swingRow({ realized_pnl_pct: 0 }));
   assert.equal(out.label, "breakeven");
