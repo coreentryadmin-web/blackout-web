@@ -119,11 +119,12 @@ mock.module("./spx-play-telemetry", {
 });
 
 let evaluateSpxPlay: typeof import("./spx-play-engine").evaluateSpxPlay;
+let resumeDayPrefixForClosedThesis: typeof import("./spx-play-engine").resumeDayPrefixForClosedThesis;
 let openPlay: typeof import("./spx-play-store").openPlay;
 let loadOpenPlay: typeof import("./spx-play-store").loadOpenPlay;
 
 before(async () => {
-  ({ evaluateSpxPlay } = await import("./spx-play-engine"));
+  ({ evaluateSpxPlay, resumeDayPrefixForClosedThesis } = await import("./spx-play-engine"));
   ({ openPlay, loadOpenPlay } = await import("./spx-play-store"));
 });
 
@@ -296,6 +297,27 @@ test("evaluateOpenPlay closed-market SCANNING, bootstrap-shell desk (source:none
     "a source:none bootstrap shell has no real confluence to close out on — must not report assessed:true off an empty factors:[] object"
   );
   assert.deepEqual(payload.factors, []);
+});
+
+// BUG FIX (2026-11-14, fourth occurrence of this file's "resumes 6:30 AM PT" bug class):
+// the closed-market thesis hardcoded "resumes 6:30 AM PT" with no day, true only on an
+// ordinary weeknight — on a weekend it's actively misleading (confirmed live Saturday
+// 2026-11-14: the real desk resumes Monday, ~48h away, not "this morning"). Fixed by naming
+// the actual next trading day via the same isTradingDayEt/nextTradingDayEt helpers already
+// used across sibling SPX modules.
+test("resumeDayPrefixForClosedThesis: an ordinary weeknight close returns no day prefix (unchanged 'resumes 6:30 AM PT')", () => {
+  const ordinaryTuesdayEvening = new Date("2026-09-08T23:00:00.000Z"); // Tue 7pm ET
+  assert.equal(resumeDayPrefixForClosedThesis(ordinaryTuesdayEvening), "");
+});
+
+test("resumeDayPrefixForClosedThesis: a Saturday names the actual next trading day (Monday), not a bare '6:30 AM PT'", () => {
+  const saturdayMorning = new Date("2026-11-14T12:00:00.000Z"); // Sat 7am ET
+  assert.equal(resumeDayPrefixForClosedThesis(saturdayMorning), "Monday ");
+});
+
+test("resumeDayPrefixForClosedThesis: a Sunday also names Monday", () => {
+  const sundayEvening = new Date("2026-11-15T23:00:00.000Z"); // Sun 7pm ET
+  assert.equal(resumeDayPrefixForClosedThesis(sundayEvening), "Monday ");
 });
 
 // BUG FIX (2026-10-26): the closed-market branch hand-built `gates: {blocks:["Session
