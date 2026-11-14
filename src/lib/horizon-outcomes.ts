@@ -62,6 +62,14 @@ import type { Horizon } from "@/lib/horizons";
 
 export type UnifiedHorizonOutcomeLabel = "win" | "loss" | "breakeven" | null;
 
+// BUG FIX (Ask Largo standing mandate, round529 rounding-tie sweep): plain `Math.round(n*100)/100`
+// ties toward +Infinity (`Math.round(-12.5) === -12` but `Math.round(12.5) === 13`), understating
+// a losing position's reported pnl_pct whenever it sits exactly on a 2dp tie. mapZeroDteOutcome's
+// `pnl` is already sign-safe-rounded upstream (asManagedPnlPct -> record.ts's own round2), so this
+// is a no-op there; mapSwingOutcome's `pnl` is the raw realized_pnl_pct column, so this is the
+// FIRST rounding of that value and the only place this bug could actually bite.
+const round2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
+
 export interface UnifiedHorizonOutcome {
   lane: Horizon;
   /** Row identity within its own lane's table — 0DTE has no numeric PK, so its natural key is
@@ -113,7 +121,7 @@ export function mapZeroDteOutcome(row: ZeroDteSetupLogRow): UnifiedHorizonOutcom
     ticker: row.ticker,
     truth_kind: "official",
     label,
-    pnl_pct: pnl != null ? Math.round(pnl * 100) / 100 : null,
+    pnl_pct: pnl != null ? round2(pnl) : null,
     graded_at: row.graded_at,
   };
 }
@@ -130,7 +138,7 @@ export function mapSwingOutcome(row: SwingPositionRow): UnifiedHorizonOutcome {
     ticker: row.ticker,
     truth_kind: "financial",
     label,
-    pnl_pct: pnl != null ? Math.round(pnl * 100) / 100 : null,
+    pnl_pct: pnl != null ? round2(pnl) : null,
     graded_at: row.graded_at,
   };
 }
