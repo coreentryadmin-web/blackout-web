@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "autopilot": "BLACKOUT",
-  "updated_at": "2026-11-09T17:06:31.151Z",
+  "updated_at": "2026-11-14T11:34:13.547Z",
   "tasks": {
     "BO-P1-0100": {
       "task_id": "BO-P1-0100",
@@ -30,19 +30,19 @@
       "task_id": "BO-TEST-0007",
       "owner": "claude",
       "phase": "RELEASED",
-      "released_at": "2026-11-09T17:06:07.972Z"
+      "released_at": "2026-11-14T11:33:46.390Z"
     },
     "BO-TEST-0009": {
       "task_id": "BO-TEST-0009",
       "owner": "claude",
       "phase": "RELEASED",
-      "claimed_at": "2026-11-09T17:06:13.951Z",
-      "lease_until": "2026-11-09T17:07:13.951Z",
+      "claimed_at": "2026-11-14T11:33:52.876Z",
+      "lease_until": "2026-11-14T11:34:52.876Z",
       "branch": null,
       "pr": null,
       "reviewer": null,
       "run_id": null,
-      "released_at": "2026-11-09T17:06:13.958Z"
+      "released_at": "2026-11-14T11:33:52.891Z"
     }
   },
   "reviews": {
@@ -83,85 +83,13 @@
     }
   },
   "deploy": {
-    "last_main_sha": "8f4fc455192ee4b48db3ec3883ddd5c287f63027",
+    "last_main_sha": "6648938ff21166379cbbe120d46169b7c2382c9a",
     "last_deploy_status": "",
-    "last_deploy_at": "2026-11-09T17:04:39Z",
-    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/42661052091",
-    "last_deploy_sha": "8f4fc455192ee4b48db3ec3883ddd5c287f63027"
+    "last_deploy_at": "2026-11-14T11:26:47Z",
+    "last_deploy_url": "https://github.com/coreentryadmin-web/blackout-web/actions/runs/43590050991",
+    "last_deploy_sha": "0a1fe4fe160ba2bed8345159ed7d092df0716431"
   },
   "events": [
-    {
-      "at": "2026-11-01T04:07:32.214Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T04:07:35.992Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T04:37:43.263Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T04:37:47.762Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T04:37:52.181Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T05:37:25.133Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T05:37:29.455Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T05:37:33.690Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 6
-    },
-    {
-      "at": "2026-11-01T06:37:40.397Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T06:37:44.463Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T06:37:48.031Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 5
-    },
-    {
-      "at": "2026-11-01T09:04:40.725Z",
-      "type": "context_sync",
-      "expired_locks": [],
-      "open_pr_count": 7
-    },
     {
       "at": "2026-11-01T09:04:46.412Z",
       "type": "context_sync",
@@ -1289,18 +1217,110 @@
       "type": "context_sync",
       "expired_locks": [],
       "open_pr_count": 5
+    },
+    {
+      "at": "2026-11-14T11:28:40.231Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-14T11:28:45.860Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-14T11:28:45.861Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-14T11:28:52.449Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-14T11:28:57.517Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-14T11:29:02.525Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 6
+    },
+    {
+      "at": "2026-11-14T11:33:46.390Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0007",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-14T11:33:52.890Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-14T11:33:52.891Z",
+      "type": "task_released",
+      "task_id": "BO-TEST-0009",
+      "owner": "claude"
+    },
+    {
+      "at": "2026-11-14T11:34:00.073Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-14T11:34:06.884Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
+    },
+    {
+      "at": "2026-11-14T11:34:13.547Z",
+      "type": "context_sync",
+      "expired_locks": [],
+      "open_pr_count": 7
     }
   ],
   "open_prs": [
     {
-      "number": 7797,
-      "title": "fix(providers): stop caching a one-sided Polygon macro-fetch failure as confirmed-empty",
-      "branch": "fix/polygon-macro-partial-fetch-failure-cached",
+      "number": 7917,
+      "title": "fix(nighthawk): candidate forward-return % / R-multiple round-tie had sign bias",
+      "branch": "fix/roundtie-sweep-round527",
       "author": "coreentryadmin-web",
       "agent": "agent",
       "draft": false,
       "verify": "IN_PROGRESS/pending",
-      "updated_at": "2026-11-09T16:59:05Z"
+      "updated_at": "2026-11-14T11:30:10Z"
+    },
+    {
+      "number": 7916,
+      "title": "fix(nighthawk): rank-bucket mean/median rounding had sign-bias at 2dp ties",
+      "branch": "fix/roundtie-sweep-round526",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-14T11:22:04Z"
+    },
+    {
+      "number": 7915,
+      "title": "docs(audit): reconfirm Polygon/Massive.com snapshot entitlement still down, 8 days in",
+      "branch": "docs/polygon-entitlement-8d-reconfirm",
+      "author": "coreentryadmin-web",
+      "agent": "agent",
+      "draft": false,
+      "verify": "IN_PROGRESS/pending",
+      "updated_at": "2026-11-14T11:21:36Z"
     },
     {
       "number": 5547,
