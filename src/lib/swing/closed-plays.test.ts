@@ -335,6 +335,35 @@ describe("closedDeckSourceFromRow", () => {
 });
 
 describe("closedDeckSourcesFromChains", () => {
+  // BUG FIX (Ask Largo standing mandate, round529 rounding-tie sweep): this file's own `round2`
+  // was a naive `Math.round(n*100)/100`, which ties toward +Infinity — `Math.round(-12.5) === -12`
+  // but `Math.round(12.5) === 13` — so a negative `realized_pnl_pct` sitting exactly on a 2dp tie
+  // rounds to a SMALLER magnitude than `record.ts`'s own `compositePnl` (worstLegPnlPct), which is
+  // already sign-safe (`roundSignSafe`, record.ts). On a single-leg chain this mismatch makes
+  // `worstLegIsTerminal` false even though the terminal leg IS the only/worst leg, and the
+  // `ordered.find(...)` fallback immediately below it fails the SAME mismatched comparison — so
+  // `worstLegRow` stays null and every "borrow from worst leg, else fall back to terminal" field
+  // (entryPremium/peakPremium/troughPremium/exitAt/committedAt/firstSeenAt/cortex/...) is served as
+  // a fabricated `null` instead of the real, known value sitting right there on the only row.
+  it("does not null out known fields on a single-leg chain whose P&L sits on a 2dp rounding tie", () => {
+    const only = row({
+      id: 99,
+      roll_seq: 0,
+      realized_pnl_pct: -0.125, // *100 = -12.5 exactly (bit-exact tie, not a float-residue false RED)
+      entry_premium: 5.0,
+      peak_premium: 5.0,
+      trough_premium: 4.9,
+      graded_at: "2026-09-01T12:00:00Z",
+    });
+    const out = closedDeckSourcesFromChains([[only]]);
+    assert.equal(out.length, 1);
+    // The terminal leg IS the only leg, so every field must be served from it, never nulled out.
+    assert.equal(out[0]!.entryPremium, 5.0);
+    assert.equal(out[0]!.peakPremium, 5.0);
+    assert.equal(out[0]!.troughPremium, 4.9);
+    assert.equal(out[0]!.positionId, 99);
+  });
+
   it("emits one row per resolved chain using chain-composite P&L (Q26)", () => {
     const parent = row({ id: 10, roll_seq: 0, realized_pnl_pct: -20, graded_at: "2026-08-05T12:00:00Z" });
     const child = row({
