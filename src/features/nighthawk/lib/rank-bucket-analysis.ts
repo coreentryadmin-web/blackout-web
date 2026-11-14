@@ -116,9 +116,21 @@ export function signAlignedReading(row: NighthawkCandidateSnapshotRow): {
   return { h1, eod, mfe, mae };
 }
 
+// Rounds by MAGNITUDE then reapplies sign — plain `Math.round(n*100)/100` ties toward
+// +Infinity (`Math.round(-12.5) === -12` but `Math.round(12.5) === 13`), a direction-biased
+// asymmetry: a NEGATIVE value sitting exactly on this 2dp tie boundary rounds to a SMALLER
+// magnitude than the identical positive magnitude would. `mean()`/`median()` are the sole
+// base for every `mean_*_pct`/`median_*_pct` field this module exports (mean_eod_pct,
+// mean_mfe_pct, mean_mae_pct, median_h1_pct, median_eod_pct, ...), and every one of those is
+// a SIGN-ALIGNED read (`signAlignedReading` above) that is genuinely negative on an adverse
+// bucket — e.g. mean_mae_pct or a losing bucket's mean_eod_pct. Same sign-bias rounding-tie
+// bug class already fixed across ~24 sibling call sites repo-wide (fmt-money.ts's fmtPct,
+// round-floats.ts, debrief.ts, swing/record.ts, ...) — fix mirrors every prior sibling fix.
+const roundSignSafe2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
+
 function mean(values: number[]): number | null {
   if (!values.length) return null;
-  return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100;
+  return roundSignSafe2(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
 function median(values: number[]): number | null {
@@ -126,7 +138,7 @@ function median(values: number[]): number | null {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   const m = sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
-  return Math.round(m * 100) / 100;
+  return roundSignSafe2(m);
 }
 
 export type RankBucketStats = {

@@ -48,9 +48,19 @@ import {
   type Direction,
 } from "./rank-bucket-analysis";
 
+// Rounds by MAGNITUDE then reapplies sign — same sign-bias rounding-tie fix as the base
+// module's own `mean()`/`median()` (rank-bucket-analysis.ts), independently re-derived here
+// because this file keeps its own copy of these helpers on purpose (see file header). Plain
+// `Math.round(n*100)/100` ties toward +Infinity, so a NEGATIVE sign-aligned value sitting
+// exactly on a 2dp tie boundary (mean_eod_pct on a losing bucket, median_mae_pct, a
+// confidence-interval bound straddling zero, ...) rounds to a SMALLER magnitude than the
+// identical positive value would. Same bug class already fixed across ~24 sibling call sites
+// repo-wide (fmt-money.ts's fmtPct, round-floats.ts, debrief.ts, swing/record.ts, ...).
+const roundSignSafe2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
+
 function mean(values: number[]): number | null {
   if (!values.length) return null;
-  return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100;
+  return roundSignSafe2(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
 function median(values: number[]): number | null {
@@ -58,7 +68,7 @@ function median(values: number[]): number | null {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   const m = sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
-  return Math.round(m * 100) / 100;
+  return roundSignSafe2(m);
 }
 
 function stddev(values: number[]): number | null {
@@ -72,9 +82,13 @@ function round1(v: number): number {
   return Math.round(v * 10) / 10;
 }
 
-function round2(v: number): number {
-  return Math.round(v * 100) / 100;
-}
+// mean_eod_ci95's `low`/`high` bounds (confidenceIntervalForMean below) are `m - margin` /
+// `m + margin` — genuinely signed (the mean can be negative, and even a positive mean's lower
+// bound often straddles zero), so this needs the same sign-safe rounding as mean()/median()
+// above. mfe_mae_ratio's use of round2() stays correct either way (it rounds an
+// |x|/|y| ratio, already non-negative), so this fix is a pure superset — no caller needs to
+// change.
+const round2 = roundSignSafe2;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Median MFE/MAE, MFE:MAE ratio, tail rate, confidence intervals
