@@ -1,3 +1,22 @@
+## WATCH LIST — 2026-11-14 SPX closed-market thesis names the actual next trading day on a weekend/holiday instead of always claiming "resumes 6:30 AM PT" (`fix/spx-closed-thesis-weekend-resume-text`)
+
+- **What was broken**: `GET /api/market/spx/play`, live-checked Saturday 2026-11-14, returned
+  `thesis: "Desk offline · CLOSED · resumes 6:30 AM PT"` — a member reading this on a weekend
+  would think the desk resumes later today or tomorrow, when the real resume time is **Monday**,
+  roughly 48h away. Fourth occurrence of this file's own documented "resumes 6:30 AM PT" bug
+  class (three prior fixes: NYSE holiday, pre-open, a live data outage during ordinary mid-RTH —
+  see `spx-play-context.ts`'s header comments); `desk.market_label` carries no weekend-specific
+  value, so nothing in the string could ever have told a Saturday apart from an ordinary weeknight.
+- **Fix**: new `resumeDayPrefixForClosedThesis()` helper names the real next trading day (via
+  `isTradingDayEt`/`nextTradingDayEt`, already used across sibling SPX modules) and prefixes it
+  onto the existing string only when today isn't a trading day — unchanged `"resumes 6:30 AM PT"`
+  on an ordinary weeknight, `"resumes Monday 6:30 AM PT"` (or the correct day, skipping a holiday
+  Monday too) otherwise.
+- **Specific thing to check once this is resolved**: re-fetch `GET /api/market/spx/play` on any
+  future Saturday/Sunday or market holiday and confirm `thesis`/the closed-market play idea names
+  the actual next trading day, not a bare "resumes 6:30 AM PT"; on an ordinary weeknight after
+  close, confirm the text is unchanged (no day prefix).
+
 ## WATCH LIST — 2026-11-14 Ask Largo swing play-brief: negative (expired) DTE no longer silently flips to a false positive DTE in "Trade manager read" / "Hold plan" (`fix/swing-largo-negative-dte-sign-drop`)
 
 - **What was broken**: all three currently-committed SWING positions (PLTR/74, GOOG/73, MRVL/70)

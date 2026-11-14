@@ -1,5 +1,6 @@
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { todayEt } from "@/lib/et-date";
+import { isTradingDayEt, nextTradingDayEt } from "@/features/nighthawk/lib/session";
 import { notifyPlayDiscord } from "@/features/spx/lib/spx-play-notify";
 import { dbConfigured, fetchLatestNighthawkEdition } from "@/lib/db";
 import { isZeroDteMarkStale } from "@/lib/zerodte/marks-math";
@@ -1638,6 +1639,36 @@ const GEX_DERIVED_FACTOR_LABELS = new Set(["GEX support", "GEX resistance", "Kin
  * inventing a new phrasing. Non-GEX factors (VWAP, γ regime, max pain, …) are left untouched —
  * their own data freshness is a separate concern this fix does not touch.
  */
+/**
+ * BUG FIX (2026-11-14, fourth occurrence of this file's own "resumes 6:30 AM PT" bug class —
+ * see the three prior fixes in spx-play-context.ts/.test.ts, each a different trigger for the
+ * same underlying mistake: a closed-market string that assumed "closed" always means "resumes
+ * tomorrow morning"). The closed-market thesis was hardcoded to always say "resumes 6:30 AM PT"
+ * with no day named — true on an ordinary weeknight, where "tomorrow morning" is the correct and
+ * already-implied reading, but actively misleading on a weekend (or a market holiday): confirmed
+ * live Saturday 2026-11-14 via GET /api/market/spx/play, where the real desk resumes Monday,
+ * roughly 48h away, not "this morning."
+ *
+ * `spx-commentary-offline-copy.ts`'s `commentaryOfflineTone()` already solved the identical
+ * problem for its own "weekend" copy pool by checking the ET weekday independently of
+ * `desk.market_label` (which carries no weekend-specific value). This reuses the same
+ * `isTradingDayEt`/`nextTradingDayEt` helpers already imported across sibling SPX modules (see
+ * spx-play-context.ts) to name the actual next trading day — correctly skipping a holiday Monday
+ * too, not just a literal weekend — instead of assuming "today" was ever a trading day at all.
+ *
+ * Returns "" on an ordinary trading day (unchanged behavior: "resumes 6:30 AM PT") or
+ * "<Weekday> " to prefix the existing string (e.g. "resumes Monday 6:30 AM PT").
+ */
+export function resumeDayPrefixForClosedThesis(now: Date = new Date()): string {
+  const ymd = todayEt(now);
+  if (isTradingDayEt(ymd)) return "";
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+  }).format(new Date(`${nextTradingDayEt(ymd)}T12:00:00`));
+  return `${weekday} `;
+}
+
 function discloseStaleGexFactors(factors: SpxSignalFactor[]): SpxSignalFactor[] {
   return factors.map((f) =>
     GEX_DERIVED_FACTOR_LABELS.has(f.label) ? { ...f, detail: `${f.detail} — GEX stale, not live` } : f
@@ -1791,9 +1822,12 @@ async function evaluateSpxPlayCore(
     ].filter((c): c is string => c != null);
     const closedPlayIdea =
       staleClauses.length && playIdea ? `${playIdea} · ${staleClauses.join(" · ")}` : playIdea;
+    // See resumeDayPrefixForClosedThesis()'s own doc comment above for the full bug account
+    // (fourth occurrence of this file's "resumes 6:30 AM PT" bug class).
+    const resumeDayPrefix = resumeDayPrefixForClosedThesis();
     const closedThesis = staleClauses.length
-      ? `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT · ${staleClauses.join(" · ")}`
-      : `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`;
+      ? `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes ${resumeDayPrefix}6:30 AM PT · ${staleClauses.join(" · ")}`
+      : `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes ${resumeDayPrefix}6:30 AM PT`;
 
     return {
       available: false,
