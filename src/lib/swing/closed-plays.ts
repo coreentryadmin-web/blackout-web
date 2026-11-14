@@ -14,7 +14,18 @@ import {
 } from "./live-plays";
 
 const fin = (n: unknown): number | null => (typeof n === "number" && Number.isFinite(n) ? n : null);
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+// BUG FIX (Ask Largo standing mandate, round529 rounding-tie sweep): plain `Math.round(n*100)/100`
+// ties toward +Infinity (`Math.round(-12.5) === -12` but `Math.round(12.5) === 13`), so a negative
+// `realized_pnl_pct` sitting exactly on a 2dp tie rounded to a SMALLER magnitude than record.ts's
+// own `compositePnl` (worstLegPnlPct), which is already rounded with the sign-safe algorithm below
+// (`roundSignSafe`, record.ts — this is the same fix, kept local rather than imported because
+// record.ts doesn't export it). Below (closedDeckSourcesFromChains), `round2(terminalPnl) ===
+// compositePnl` and the `ordered.find((r) => round2(pnl) === compositePnl)` fallback both compare
+// against that already-correct value, so the old mismatch made `worstLegIsTerminal` false (and the
+// find() fail) even on a SINGLE-LEG chain where the terminal leg IS the only/worst leg — nulling out
+// entryPremium/peakPremium/troughPremium/exitAt/committedAt/firstSeenAt/cortex/... on the served
+// CLOSED card instead of serving the real, known values sitting right there on the only row.
+const round2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
 
 function etYmd(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);

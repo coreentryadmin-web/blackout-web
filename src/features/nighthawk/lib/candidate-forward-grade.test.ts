@@ -63,6 +63,18 @@ test("rawForwardReturnPct: unsigned -- a SHORT candidate benefiting from a fall 
   assert.equal(rawForwardReturnPct(50, 45), -10);
 });
 
+test("rawForwardReturnPct: rounding a 2dp tie is symmetric by magnitude, not biased toward +Infinity", () => {
+  // entry=1.28, exit=1.24/1.32 -> raw ∓3.125%, an EXACT (floating-point-bit-exact, verified) tie
+  // at the 2nd decimal. Plain `Math.round(n*100)/100` ties toward +Infinity
+  // (Math.round(-312.5)===-312), which would wrongly round this ADVERSE move to the smaller
+  // magnitude -3.12 while the mirror-image favorable move rounds to the larger 3.13.
+  const adverse = rawForwardReturnPct(1.28, 1.24);
+  const favorable = rawForwardReturnPct(1.28, 1.32);
+  assert.equal(adverse, -3.13);
+  assert.equal(favorable, 3.13);
+  assert.equal(Math.abs(adverse), Math.abs(favorable), "identical-magnitude moves must round to identical magnitudes regardless of sign");
+});
+
 // ── computeCandidateForwardReturns ───────────────────────────────────────────────
 
 test("computeCandidateForwardReturns: empty bars -> every field honestly null, never fabricated", () => {

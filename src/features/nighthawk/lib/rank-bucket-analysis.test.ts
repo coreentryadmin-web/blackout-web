@@ -183,6 +183,19 @@ test("computeRankBucketStats: mean/median EOD are computed correctly across a bu
   assert.equal(bucket.median_eod_pct, 4);
 });
 
+test("computeRankBucketStats: mean_eod_pct magnitude matches for a symmetric +/- rounding tie (sign-bias rounding tie)", () => {
+  // A single LONG row read favorably as exactly -0.125% EOD and the mirror +0.125% both land
+  // on a 2dp rounding tie (-12.5/+12.5 at the hundredths place). mean()'s old plain
+  // `Math.round(n*100)/100` ties toward +Infinity, so mean(-0.125) rounded to -0.12 while
+  // mean(+0.125) rounded to +0.13 -- the losing bucket's magnitude read smaller than the
+  // identical winning magnitude purely from rounding direction.
+  const losing = computeRankBucketStats([longRow(1, -0.125)]).find((b) => b.bucket === "rank_1_5")!;
+  const winning = computeRankBucketStats([longRow(1, 0.125)]).find((b) => b.bucket === "rank_1_5")!;
+  assert.equal(winning.mean_eod_pct, 0.13);
+  assert.equal(losing.mean_eod_pct, -0.13); // magnitude must equal winning's 0.13, not 0.12
+  assert.equal(Math.abs(winning.mean_eod_pct!), Math.abs(losing.mean_eod_pct!));
+});
+
 test("computeRankBucketStats: low_n flag reflects the RANK_BUCKET_LOW_N_THRESHOLD constant on n_graded", () => {
   const belowThreshold = Array.from({ length: RANK_BUCKET_LOW_N_THRESHOLD - 1 }, (_, i) => longRow(1, i));
   const atThreshold = Array.from({ length: RANK_BUCKET_LOW_N_THRESHOLD }, (_, i) => longRow(1, i));

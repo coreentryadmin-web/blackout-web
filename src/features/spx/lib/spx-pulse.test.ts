@@ -333,6 +333,28 @@ test("sweepToPulseSignal drops non-sweeps and sub-floor premium", () => {
   assert.equal(sweepToPulseSignal(brief({ premium: 200_000 }), 5000), null);
 });
 
+// BUG FIX (round 528, same unit-boundary class already fixed repeatedly — e.g. this file's own
+// `fmtNotional` at round 473): sweepToPulseSignal's internal `fmtPremium` is a SEPARATE, drifted
+// copy of the money formatter (not an import of the already-fixed `fmtNotional`), still had the
+// old "pick the unit off the raw value, round the quotient after" defect, and carried no B tier
+// at all. SPX single-sweep premium has no upper bound above SPX_SWEEP_MIN_PREMIUM ($1M) — real
+// SPX option sweeps routinely clear nine figures and can reach $1B+ — so both the missing B tier
+// and the round-first-then-promote boundary are live, reachable values for this caller, not
+// theoretical ones.
+test("sweepToPulseSignal premium formats with a billions tier, not a 4-digit millions overflow", () => {
+  const s = sweepToPulseSignal(brief({ premium: 1_500_000_000 }), 5000);
+  assert.ok(s);
+  assert.match(s!.line, /\$1\.5B/); // old buggy output: "$1500.0M"
+  assert.doesNotMatch(s!.line, /\$1500/);
+});
+
+test("sweepToPulseSignal premium promotes M -> B when the rounded quotient reaches 1000", () => {
+  const s = sweepToPulseSignal(brief({ premium: 999_950_000 }), 5000);
+  assert.ok(s);
+  assert.match(s!.line, /\$1\.0B/); // old buggy output: "$1000.0M"
+  assert.doesNotMatch(s!.line, /\$1000/);
+});
+
 test("sweepToPulseSignal timestamps from alerted_at, not the observation time", () => {
   const s = sweepToPulseSignal(brief({ alerted_at: "2026-07-26T15:00:00Z" }), 999_000_000);
   assert.ok(s);

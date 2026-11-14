@@ -26,6 +26,48 @@
   outage clears, since "expired" text alone doesn't resolve the underlying stuck-open-past-expiry
   state, only the honesty of what's said about it.
 
+## WATCH LIST — 2026-11-14 Polygon/Massive.com real-time `/v3/snapshot` entitlement — RECONFIRMED STILL DOWN, 8 days into the outage first found 2026-11-07 (no code change — operator action needed)
+
+- **What this is**: CLAUDE.md's "Environment realities" section already documents this outage in
+  full (first found 2026-11-07, broadened in scope the same day, still down on re-check
+  2026-11-08). This entry exists only because this coordinator session was offline 2026-11-10
+  through 2026-11-14 and, on resuming, independently re-confirmed the outage is **still live a
+  full week later** — the single most important finding of this sweep, re-recorded here so the
+  next session does not have to re-derive it from a week-old "as of Sunday it is still down"
+  note.
+- **Direct live re-check, 2026-11-14 (today)**: `GET /v3/snapshot?ticker.any_of=SPY` against
+  `api.massive.com` with the production `POLYGON_API_KEY` →
+  `403 {"status":"NOT_AUTHORIZED","message":"You are not entitled to this data. Please upgrade
+  your plan at https://massive.com/pricing"}`. Control call on the SAME key,
+  `GET /v3/reference/tickers?ticker=SPY`, → clean `200` — confirming this is the same
+  real-time-snapshot-specific entitlement loss already on record, not a dead key or a new,
+  broader outage.
+- **Concrete live member-facing symptom, reconfirmed today**: `GET
+  /api/market/nighthawk/horizons?view=swings` (authenticated, live production) — every committed
+  SWING position (PLTR positionId 74, GOOG positionId 73, MRVL positionId 70 at check time) still
+  carries `markAsOf` stamped in the **2026-11-06T16:15–16:16Z** window — the exact freeze window
+  this outage caused when it first hit, now **8 days stale**, unmoved since. `livePnlPct` for
+  these positions (e.g. MRVL +221.3%, PLTR -38.2%, GOOG -20.9%) is computed off that frozen mark,
+  not today's actual option price.
+- **Disclosure check (the one thing worth verifying, since it's the only part code controls)**:
+  confirmed the degradation IS honestly disclosed, not fabricated — the `horizons` response
+  carries `upstream_ok: false`, which `containers.tsx` wires into `CommandDeck.tsx`'s
+  `upstreamOk` prop for both the SWING board and (via `ZeroDteBoard.tsx`) the 0DTE board, and
+  `deriveEngineStatus()` (`deck-engine-status.ts`) forces the Live Engine Status indicator to
+  `Offline` whenever `upstreamOk === false` — "never fabricated," per its own code comment. **No
+  code fix needed here**: the disclosure path that already shipped for this exact issue is intact
+  and still firing correctly 8 days in.
+- **Why this isn't a coordinator-fixable bug**: this is a vendor billing/entitlement issue on the
+  Massive.com account, not a code defect — CLAUDE.md's own environment-realities note already says
+  so and names the remedy (the operator needs to check/renew the real-time market-data
+  entitlement, likely alongside the Benzinga add-on noted in the same outage). No PR is being
+  opened for this entry; it is a status reconfirmation, not a new finding.
+- **Specific thing to check once this is resolved**: re-run the same `/v3/snapshot` probe and
+  confirm `markAsOf` on every committed position across Swing/0DTE/Legacy/Vector starts advancing
+  again within one scan cycle, and that `upstream_ok` flips back to `true` and the Live Engine
+  Status indicator clears from `Offline` on its own — no code change should be required either
+  direction.
+
 ## WATCH LIST — 2026-11-09 0DTE `breakout-discovery.ts`'s intraday minute-bar refresh fan-out now bounded via `runPolygonPool` (`fix/zerodte-breakout-discovery-unbounded-polygon-fanout`) — re-check for a shared Polygon circuit-breaker trip next RTH session with `BREAKOUT_INTRADAY_REFRESH` active
 
 - **What was broken**: `discoverBreakoutSetups`'s Wave-C1 intraday breadth refresh (gated by

@@ -61,7 +61,13 @@ export type CandidateRMultiples = {
   mae_r: number | null;
 };
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+// Rounds by MAGNITUDE then reapplies sign (not plain `Math.round(n*100)/100`, which ties toward
+// +Infinity: `Math.round(-12.5)===-12` but `Math.round(12.5)===13` — an adverse R-multiple sitting
+// on a 2dp tie would round to a SMALLER magnitude than the identical-magnitude favorable one).
+// `horizons_r`/`mfe_r`/`mae_r` are explicitly direction-signed (see this module's own header:
+// "positive = favorable, negative = adverse") — same bug class/fix already applied across ~25
+// sibling call sites this session (fmt-money.ts's `fmtPct`, rank-bucket-analysis.ts, etc.).
+const round2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
 
 /** LONG fills at the entry band's top, SHORT at its bottom — entry-range.ts/debrief.ts's
  *  existing `fillEdgeOf` convention, re-derived here since this module stays free of any
