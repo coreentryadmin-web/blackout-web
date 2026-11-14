@@ -1174,6 +1174,36 @@ test("holdPlanSection: does not repeat recNote or Management-owned rails — uni
   assert.match(section!.body, /15:50/);
 });
 
+// BUG FIX (Ask Largo standing mandate, 2026-11-14): sibling of the manageLifecycleCoaching
+// negative-DTE sign-drop fix (play-brief-narrative-coaching.ts, same day, live repro PLTR/74)
+// — the old `/(\d+)DTE/` regex matched the "1DTE" substring inside an expired contract's
+// "-1DTE" stamp without the sign, so this section (reachable whenever the Trade manager read
+// narrative is absent — see NARRATIVE_COVERED_TITLES's "Hold plan" entry) rendered the false
+// "Contract runway: **1 DTE**" for a contract that already expired.
+test("holdPlanSection: a negative (expired) DTE renders as expired, never flips to a false positive DTE", () => {
+  const ctx: SwingPlayBriefContext = {
+    play: fixturePlay({
+      status: "HOLD",
+      recommendation: "HOLD",
+      recNote: "live hold",
+      contract: "-1DTE 160P",
+      manageAction: "HOLD",
+    }),
+    asOf: "2026-11-14T16:00:00.000Z",
+    sessionDate: "2026-11-14",
+    scanAsOf: null,
+    scanSessionDay: null,
+    laneRows: [],
+    meridian: null,
+    ecosystem: null,
+    vector: null,
+  };
+  const section = holdPlanSection(ctx);
+  assert.ok(section);
+  assert.match(section!.body, /Contract runway: \*\*expired\*\* \(-1 DTE\)/);
+  assert.doesNotMatch(section!.body, /\*\*1 DTE\*\*/, "the sign must never be dropped");
+});
+
 // #4261 fixed holdPlanSection's recNote/rails duplication but left a second, same-class duplicate:
 // the thesis-health `advisory` sentence is the exact text tradeManagerNarrativeSection's
 // pillar-fade narration already carries in "Trade manager read" (both sections render for any

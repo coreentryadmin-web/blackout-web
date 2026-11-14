@@ -313,10 +313,21 @@ export function manageLifecycleCoaching(
     parts.push(`**${Math.round(ep.runner_fraction * 100)}% runner** after trims`);
   }
 
-  const dteMatch = play.contract.match(/(\d+)DTE/);
+  // BUG FIX (Ask Largo standing mandate, 2026-11-14, live repro PLTR/74 COMMIT brief): this
+  // regex used to be `/(\d+)DTE/` — `\d+` cannot match a leading `-`, so on an EXPIRED contract
+  // (adapters.ts stamps `${strike}${right} · ${dte}DTE` with dte already negative, e.g.
+  // "160P · -1DTE") the match still succeeds against the "1DTE" substring inside "-1DTE",
+  // silently dropping the sign: `dte` came out as `+1`, rendering "**1 DTE** — theta
+  // accelerating; don't over-hold" for a contract that actually expired YESTERDAY. That reads
+  // as "you still have a day," the opposite of the truth, right as the member most needs an
+  // accurate read. Capturing the optional sign and branching on `dte <= 0` fixes both the sign
+  // loss and the misleading "accelerating/don't over-hold" framing for a contract already past
+  // expiry.
+  const dteMatch = play.contract.match(/(-?\d+)DTE/);
   if (dteMatch) {
     const dte = Number(dteMatch[1]);
-    if (dte <= 7) parts.push(`**${dte} DTE** — theta accelerating; don't over-hold`);
+    if (dte < 0) parts.push(`**expired** (${dte} DTE) — confirm settlement/close, don't manage as if still live`);
+    else if (dte <= 7) parts.push(`**${dte} DTE** — theta accelerating; don't over-hold`);
     // Runway context for DTE > 7 too — play-brief-intel.ts's holdPlanSection carries the same
     // fact unconditionally as "Contract runway", but collapseRedundantIntelSections drops that
     // whole section whenever this narrative is present, on the claim its content is "folded into
