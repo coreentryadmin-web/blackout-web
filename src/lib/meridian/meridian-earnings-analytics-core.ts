@@ -556,12 +556,32 @@ export function sortEarningsAnalyticsRows<T extends EarningsAnalyticsRow>(
   return list;
 }
 
-/** Format a fractional surprise (0.0447) as a signed percent string. Null → em-dash, never "0%". */
+/**
+ * Format a fractional surprise (0.0447) as a signed percent string. Null → em-dash, never "0%".
+ *
+ * BUG THIS FIXES (round532): a raw-sign check on the UNROUNDED value — `pct > 0 ? "+" : ""`, then
+ * plain `pct.toFixed(digits)` — lets `toFixed` keep its OWN sign on a value whose magnitude rounds
+ * to exactly 0 at the requested precision. `fmtSurprisePct(-0.0001)` (a real, plausible revenue
+ * surprise: a few thousand dollars off a mega-cap estimate) rendered "-0.0%", and the mirror-image
+ * `fmtSurprisePct(0.00001)` rendered "+0.0%" — a signed zero that asserts a beat/miss direction
+ * the rounded number itself contradicts (the DeltaPill in MeridianEarningsAnalytics.tsx and the
+ * Calendar/Beat-Streak/Scatter tooltips in the same file all render through this one formatter, so
+ * every one of those surfaces could show "EPS -0.0%" for a print that is, at the displayed
+ * precision, exactly in line). Same bug class, same fix, already applied to `fmtPct` in
+ * `fmt-money.ts` (2026-10-26) and `fmtShiftPercentForStrike` in shift-math.ts — this sibling
+ * formatter was missed by both passes. Sign is now read off the ROUNDED value: round the MAGNITUDE
+ * first (`Math.round(Math.abs(pct) * factor)`), then reapply `Math.sign(pct)`, so a value that
+ * rounds to 0 yields `+0`/`-0` which `(±0).toFixed(digits)` renders as a bare "0.0" with no stray
+ * minus (verified, not assumed — `(-0).toFixed(1) === "0.0"`), and the `sign` branch below (`> 0`)
+ * is false for both `+0` and `-0` so no "+"/"−" prefix is added either.
+ */
 export function fmtSurprisePct(v: number | null | undefined, digits = 1): string {
   if (v == null || !Number.isFinite(v)) return "—";
   const pct = v * 100;
-  const sign = pct > 0 ? "+" : "";
-  return `${sign}${pct.toFixed(digits)}%`;
+  const factor = 10 ** digits;
+  const rounded = (Math.sign(pct) * Math.round(Math.abs(pct) * factor)) / factor;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toFixed(digits)}%`;
 }
 
 /**
