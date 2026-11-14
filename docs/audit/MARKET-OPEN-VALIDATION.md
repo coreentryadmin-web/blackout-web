@@ -11097,6 +11097,37 @@ and `/play` are actually serving a real price again
   still open at the next RTH open, they are the fastest live confirmation; otherwise, the next
   committed swing position whose manage engine fires a trim while its setup is merely FORMING is.
 
+## WATCH LIST — 2026-11-09 (swing-discovery crashed its whole scan tick on a thrown same-day Polygon grouped-daily fetch, `fix/swing-discovery-grouped-daily-failsoft`)
+
+- **What was broken**: `GET /api/admin/cron-health` showed `swing-discovery` at
+  `runs_24h: {"ok":0,"failed":48,"skipped":22}` over a full trailing 24h, `last_message`:
+  `"Polygon /v2/aggs/grouped/locale/us/market/stocks/2026-11-09 → 403"`. Independently reproduced
+  live against the real production Polygon key: a same-day grouped-daily request 403s ("Attempted
+  to request today's data before end of day... upgrade your plan"), while the identical call for a
+  past settled date (2026-11-06) returns 200 — ruling out an entitlement/key problem; this is a
+  plan-tier restriction on same-day data, the same root cause the sibling 0DTE lane diagnosed the
+  same day for `breakout-discovery.ts`. `fetchGroupedDaily` in `swing-discovery/route.ts` was the
+  one direct, unguarded `await fetchDailyMarketSummary(to)` in the file — a thrown fetch propagated
+  and crashed the ENTIRE scan tick, including FLOW/POSITIONING/CATALYST origins that don't depend
+  on grouped-daily at all. It is also the fallback `discovery.ts` calls when
+  `fetchIntradayStructureBars()` throws, so that fallback chain failed completely too.
+- **Fix**: wrapped `fetchGroupedDaily`'s fetch in its own try/catch, returning `[]` on a throw —
+  mirrors this same file's existing fail-soft convention (`fetchPositioningTickers`/
+  `fetchCatalystTickers`/`fetchChainRows`). `fetchBangerTickers`'s identical call site was already
+  fail-soft via the shared `fetchTier0OriginTickers` helper (confirmed by its own existing test) —
+  untouched. RED→GREEN via `git stash` isolating the source change: the new test failed pre-fix
+  ("the grouped-daily fetch must be wrapped in a try block") and passed post-fix. 7/7 in
+  `route.test.ts`; 36/36 across `discovery.test.ts` + `tier0-origin-fetch.test.ts`. `npx tsc
+  --noEmit` clean, Node 20.
+- **Specific thing to check once RTH resumes**: `GET /api/admin/cron-health` for `swing-discovery`
+  — confirm `runs_24h.ok` starts climbing again during the trading day (FLOW/POSITIONING/CATALYST
+  origins should now survive a grouped-daily throw instead of the whole tick failing), and that the
+  specific `last_message` "Polygon ... grouped ... → 403" no longer correlates with a fully-failed
+  run once the day's grouped-daily data becomes available post-close. The underlying same-day
+  Polygon/Massive plan restriction itself is NOT fixed by this PR (not fixable from code — a
+  plan-tier matter) — STRUCTURE/BANGER origins will still legitimately contribute zero movers until
+  that data is available each day; only the crash-the-whole-scan behavior is fixed.
+
 ## WATCH LIST — 2026-11-09 (`openMetricsValues()`'s list-row "Current"/"PNL" column vs the per-card verdict badges — fourth instance of the #7834/#7840/#7866 bug class, `fix/play-card-lifecycle-trim-blend-round524`) — re-check a live SWING TRIM position's Command Deck list row
 
 - **What was broken**: #7834 fixed `ZeroDteCommandPanel.tsx`'s verdict-band headline P&L badge,
