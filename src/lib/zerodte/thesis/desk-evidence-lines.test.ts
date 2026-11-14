@@ -114,3 +114,34 @@ test("deskEvidenceStatusLabel: neutral reads 'neutral', not 'mixed' — a below-
   assert.equal(deskEvidenceStatusLabel("opposed"), "opp");
   assert.equal(deskEvidenceStatusLabel("unavailable"), "—");
 });
+
+// BUG FIX (round 530 DISCOVERY sweep) — regression coverage for the local `fmtPrem` money
+// formatter's round-first-then-promote defect, exercised through the public
+// `buildDeskEvidenceLines` entry point (fmtPrem itself is not exported). Pre-fix (confirmed by
+// stashing the fmt-money.ts-style fix and re-running): a $1.5B HELIX tape aggregate rendered the
+// literal four-digit overflow "$1500.0M" (no billions tier at all), and a $999,600 aggregate
+// rendered "$1000K" instead of promoting to "$1.0M" (K->M round-promote missing). Both are real,
+// reachable values: `helix_gross_premium` is an UNCAPPED per-ticker SUM of every real flow print
+// in the scan window (`aggregateHelixTapeByTicker`, helix-tape-extras.ts), gated only by a $200K
+// display floor on the low end — a busy ticker's tape routinely clears both boundaries.
+test("buildDeskEvidenceLines: HELIX tape premium promotes billions, not a four-digit 'M' overflow", () => {
+  const helix = buildDeskEvidenceLines({
+    thesis: baseThesis(),
+    rank_tier: "A",
+    extras: { helix_gross_premium: 1_500_000_000, helix_direction_bias: "long" },
+  }).find((l) => l.desk === "HELIX")!;
+  assert.match(helix.text, /\$1\.5B/);
+  assert.doesNotMatch(helix.text, /\$1500\.0M/);
+});
+
+test("buildDeskEvidenceLines: HELIX tape premium rounds-then-promotes at the K->M boundary", () => {
+  const helix = buildDeskEvidenceLines({
+    thesis: baseThesis(),
+    rank_tier: "A",
+    // 999_600 / 1_000 rounds to 1000 — must promote to "$1.0M", never render the overflowed
+    // "$1000K" the pre-fix `Math.round(n / 1_000)` (no re-check after rounding) produced.
+    extras: { helix_gross_premium: 999_600, helix_direction_bias: "long" },
+  }).find((l) => l.desk === "HELIX")!;
+  assert.match(helix.text, /\$1\.0M/);
+  assert.doesNotMatch(helix.text, /\$1000K/);
+});
