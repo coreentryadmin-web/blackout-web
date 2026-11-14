@@ -80,7 +80,13 @@ import {
 import { fetchAggBars } from "@/lib/providers/polygon-largo";
 import { polygonConfigured } from "@/lib/providers/config";
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
+// Rounds by MAGNITUDE then reapplies sign (not plain `Math.round(n*100)/100`, which ties toward
+// +Infinity: `Math.round(-12.5)===-12` but `Math.round(12.5)===13` — a losing %-move sitting on a
+// 2dp tie would round to a SMALLER magnitude than the identical-magnitude winning move). Every
+// value this module feeds (`horizons`, `session_high_pct`/`session_low_pct`) is direction-signed —
+// same bug class/fix already applied across ~25 sibling call sites this session (fmt-money.ts's
+// `fmtPct`, rank-bucket-analysis.ts, etc.) — see that fix's header for the full write-up.
+const round2 = (n: number): number => (Math.sign(n) * Math.round(Math.abs(n) * 100)) / 100;
 
 /**
  * Nearest bar's close within `toleranceMin` of `targetMs`, else honest `null` — never the
@@ -109,7 +115,8 @@ export function nearestBarClose(
   return Number.isFinite(best.c) && best.c > 0 ? best.c : null;
 }
 
-/** Raw (unsigned) % move from `entryPrice` to `exitPrice` — positive means the underlying rose. */
+/** Raw (direction-signed, NOT unsigned) % move from `entryPrice` to `exitPrice` — positive means
+ *  the underlying rose, negative means it fell. */
 export function rawForwardReturnPct(entryPrice: number, exitPrice: number): number {
   return round2((exitPrice / entryPrice - 1) * 100);
 }

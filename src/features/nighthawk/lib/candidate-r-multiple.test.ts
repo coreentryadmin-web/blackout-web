@@ -122,6 +122,21 @@ test("computeCandidateRMultiples: SHORT mfe_r/mae_r swap sides vs LONG (session_
   assert.equal(r?.mae_r, -0.5);
 });
 
+test("computeCandidateRMultiples: rounding a 2dp R-multiple tie is symmetric by magnitude, not biased toward +Infinity", () => {
+  // risk=8; session_high_pct=+1 -> price=101 -> favorable=+1 -> R=1/8=0.125 (a tie at the 2nd
+  // decimal); session_low_pct=-1 -> price=99 -> favorable=-1 -> R=-1/8=-0.125, the mirror-image
+  // adverse move. Plain `Math.round(n*100)/100` ties toward +Infinity (Math.round(-12.5)===-12),
+  // which would wrongly round mae_r to the smaller magnitude -0.12 while mfe_r rounds to 0.13.
+  const r = computeCandidateRMultiples(
+    "LONG",
+    levels({ entry_range_high: 100, stop: 92 }),
+    forwardReturns({ entry_price: 100, session_high_pct: 1, session_low_pct: -1 })
+  );
+  assert.equal(r?.mfe_r, 0.13);
+  assert.equal(r?.mae_r, -0.13);
+  assert.equal(Math.abs(r!.mfe_r!), Math.abs(r!.mae_r!), "identical-magnitude favorable/adverse R must round to identical magnitudes");
+});
+
 test("computeCandidateRMultiples: a horizon that's individually null (bar not yet available) stays null, doesn't zero out the whole result", () => {
   const r = computeCandidateRMultiples(
     "LONG",
