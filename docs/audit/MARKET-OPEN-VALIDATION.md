@@ -11128,6 +11128,42 @@ and `/play` are actually serving a real price again
   plan-tier matter) — STRUCTURE/BANGER origins will still legitimately contribute zero movers until
   that data is available each day; only the crash-the-whole-scan behavior is fixed.
 
+## WATCH LIST — 2026-11-09 (`openMetricsValues()`'s list-row "Current"/"PNL" column vs the per-card verdict badges — fourth instance of the #7834/#7840/#7866 bug class, `fix/play-card-lifecycle-trim-blend-round524`) — re-check a live SWING TRIM position's Command Deck list row
+
+- **What was broken**: #7834 fixed `ZeroDteCommandPanel.tsx`'s verdict-band headline P&L badge,
+  #7840 fixed `TerminalPremiumPanels.tsx`'s `TradeExcursionGraphic` "Current" stat, and #7866 (open
+  at time of writing) fixes `SwingCockpitStrip.tsx`'s "Session P&L" cockpit average — all three for
+  the same gap: an OPEN/HOLD/TRIM SWING position with an already-banked trim tranche must show the
+  blended whole-position P&L, not the raw open-runner-only figure. `play-card-lifecycle.ts`'s
+  `openMetricsValues()` had the identical gap at a fourth, more load-bearing call site: for every
+  non-LEGACY horizon it returned `currentPct: play.pnlPct ?? null` with no trim blend, and that
+  value feeds `playListReturnPct()` → `PlayLifecycleCardBody`'s list-row "Current"/"PNL"
+  column — the primary per-play row shown on every Command Deck list, not a detail-panel surface.
+  Live repro (same fixture all three sibling fixes use, SWING:APP, entry $17.34, mark $98.00, one
+  tranche fired at the +100%/50% rung): list row showed the raw +465.2% instead of the +282.6%
+  every other now-fixed surface agrees on.
+- **Fix**: same shared helper and scoping as the three sibling fixes —
+  `blendedTrimPnlPct(play.pnlPct, play.exitPolicy?.trim_levels)` from `terminal-ladder.ts`, scoped
+  to `horizon === "SWING"` only (0DTE's TRIM `pnlPct` comes from a different, unaudited
+  server-side path this fix does not touch). No-ops to the raw figure whenever nothing has fired
+  yet, so a card with no banked trim is unaffected. RED→GREEN via `git stash` isolation (kept the
+  new test file): the new SWING-trim assertions failed pre-fix (actual `+465.2%`, expected
+  `+282.6%`) while the sibling no-trim-fired and 0DTE-untouched assertions in the same file both
+  passed pre-fix, proving the fix is additive. Restored: `play-card-lifecycle.test.ts` 64/64;
+  sibling suite (`ZeroDteCommandPanel.test.ts`, `TerminalPremiumPanels.ssr.test.ts`,
+  `terminal-ladder.test.ts`) 40/40; `npx tsc --noEmit` clean, Node 20.
+- **Specific thing to check once RTH resumes**: with a live SWING position in `TRIM` status
+  (fired tranche), confirm the Command Deck's list-row "Current"/"PNL" column for that row now
+  shows the SAME blended figure as its own card's verdict badge (and, once #7866 merges, the
+  cockpit average above the list) — never a smaller list-row number pulled toward the raw
+  unblended runner-only figure while the card detail shows the correct blended one.
+- **Swept for a fifth instance before closing this out**: `CommandDeck.tsx`'s own pre-
+  `useLifecyclePlayCard` fallback JSX (`p.pnlPct` in its "MID"/"PnL" badge) reads raw and
+  unblended too, but is dead code — `useLifecyclePlayCard()` is hardcoded to always return `true`,
+  so that branch never renders; already identified and correctly left unfixed by #7866's own
+  finding. `PlayLifecycleCard.tsx` itself reads no raw `pnlPct`/`peak`/`trough` — only this file's
+  helper functions — so this appears to be the last reachable instance in `command-deck/*.tsx`.
+
 ## WATCH LIST — 2026-11-09 (SwingCockpitStrip "Session P&L" cockpit stat vs the per-card verdict badges — follow-up to #7834/#7840, same live repro SWING:APP/positionId 2397)
 
 - **What was broken**: #7834 fixed `ZeroDteCommandPanel.tsx`'s verdict-band headline P&L badge

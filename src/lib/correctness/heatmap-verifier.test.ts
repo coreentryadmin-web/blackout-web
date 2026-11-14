@@ -263,6 +263,34 @@ test("dexCharmInvariantChecks: DEX zero_level real crossing runs pos→neg (not 
   assert.equal(check!.outcome, "consistency-only");
 });
 
+test("dexCharmInvariantChecks: DEX zero_level reported off a CUMULATIVE sign-change (no plausible per-strike crossing) — still consistency-only, not a false FLAG", () => {
+  const ctx = makeCtx();
+  // Mirrors production zeroGammaFlip's band + cumulative-fallback shape (#5523), on the exact
+  // sparse/banded-chain profile it was hardened for: spot=100 (makeHeatmap's default).
+  //   - The ONLY adjacent per-strike sign flip is between 10 (-500) and 20 (+400): a crossing at
+  //     10 + 10*(500/900) ≈ 15.56 — 84% away from spot, an implausible far-strike artifact.
+  //   - 20 (+400) → 90 (+50) → 100 (+80) never flip sign per-strike (all positive), so there is
+  //     NO other per-strike crossing — but the CUMULATIVE running total (-500, -100, -50, +30)
+  //     flips sign between strike 90 (cum -50) and strike 100 (cum +30), interpolating to
+  //     96.25 — only 3.75% from spot, a genuine real sign change.
+  // The real engine (rejecting the far per-strike crossing, falling back to the plausible
+  // cumulative one) reports 96.25. Before this fix, `deriveFlip` had no band filter and no
+  // cumulative fallback, so it picked the lone far per-strike crossing (≈15.56) regardless of
+  // distance and the check FLAGged a real crossing as fake.
+  const strikeTotals = { "10": -500, "20": 400, "90": 50, "100": 80 };
+  const dex = makeDexBlock(strikeTotals, { zero_level: 96.25 });
+  const hm = makeHeatmap({ dex });
+
+  const out = dexCharmInvariantChecks(ctx, hm);
+  const check = findCheck(out, "dex_zero_level", "zero-level-real-crossing");
+  assert.ok(check);
+  assert.equal(
+    check!.outcome,
+    "consistency-only",
+    `expected the real cumulative crossing to be recognized, got: ${JSON.stringify(check)}`
+  );
+});
+
 test("dexCharmInvariantChecks: DEX posture contradicts sign(total) — FLAGs a label/number divergence (#80 class)", () => {
   const ctx = makeCtx();
   const strikeTotals = { "95": -50, "105": 150 }; // total = 100 (positive) → posture should be "long"

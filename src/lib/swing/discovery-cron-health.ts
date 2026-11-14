@@ -5,9 +5,17 @@
 
 import { todayEt } from "@/lib/et-date";
 import { formatEtDate, isTradingDayEt, previousTradingDayEt } from "@/features/nighthawk/lib/session";
-import { SWING_SCAN_PHASES, etMinutesOfDay } from "@/lib/swing/scan-cadence";
+import {
+  SWING_SCAN_PHASES,
+  etMinutesOfDay,
+  resolveScanPhase,
+} from "@/lib/swing/scan-cadence";
+import type { SwingDiscoveryPhase } from "@/lib/swing/discovery";
 import type { SwingServingSnapshot } from "@/lib/swing/serving-lane";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
+
+/** Don't mask a live POST_CLOSE failure logged in the last ~90m. */
+export const SWING_DISCOVERY_RECENT_FAIL_GRACE_MIN = 90;
 
 /** Worst ordinary calendar gap with no scan (Fri POST_CLOSE end → Mon PRE_OPEN start). Minutes. */
 export function worstOrdinarySwingDiscoveryGapMin(): number {
@@ -22,6 +30,57 @@ export function worstOrdinarySwingDiscoveryGapMin(): number {
 /** Stale ceiling for cron_job_runs handshake — must exceed the weekly gap, not just 36h. */
 export function swingDiscoveryHandshakeStaleMin(): number {
   return worstOrdinarySwingDiscoveryGapMin() + 120;
+}
+
+/**
+ * Phase-anchored discovery logs a handshake only when a phase runs; between tick and phase claim,
+ * stale/failed cron_job_runs age is misleading. Suppress only when POST_CLOSE (primary) is
+ * satisfied for the session and the clock is inside another phase window that has not completed.
+ */
+export function swingDiscoveryAwaitingPhaseSuppress(args: {
+  healthStatus: string;
+  healthAgeMin: number | null;
+  now: Date;
+  phaseClaims: Partial<Record<SwingDiscoveryPhase, string>>;
+  scanInFlight?: boolean;
+}): { suppress: boolean; label?: string; phase?: SwingDiscoveryPhase } {
+  const { healthStatus, healthAgeMin, now, phaseClaims, scanInFlight } = args;
+  if (healthStatus !== "stale" && healthStatus !== "failed") return { suppress: false };
+  if (scanInFlight) return { suppress: false };
+  if (
+    healthStatus === "failed" &&
+    healthAgeMin != null &&
+    healthAgeMin < SWING_DISCOVERY_RECENT_FAIL_GRACE_MIN
+  ) {
+    return { suppress: false };
+  }
+
+  const sessionDay = formatEtDate(now);
+  const active = resolveScanPhase(now.getTime());
+
+  if (!active) {
+    if (isTradingDayEt(sessionDay)) {
+      return {
+        suppress: true,
+        label: "Idle (inter-phase gap — discovery not scheduled)",
+      };
+    }
+    return { suppress: false };
+  }
+
+  if (phaseClaims[active.phase] === "done") return { suppress: false };
+
+  // Intraday phases (PRE_OPEN/MIDDAY/POWER_HOUR/POST_CLOSE) gate on their own window only.
+  // OVERNIGHT follows POST_CLOSE — do not suppress when today's post-close scan never claimed.
+  if (active.phase === "OVERNIGHT" && phaseClaims.POST_CLOSE !== "done") {
+    return { suppress: false };
+  }
+
+  return {
+    suppress: true,
+    phase: active.phase,
+    label: `Awaiting ${active.phase} scan (${active.label})`,
+  };
 }
 
 function etYmdToUtcMs(ymd: string, minutesSinceMidnight: number): number {

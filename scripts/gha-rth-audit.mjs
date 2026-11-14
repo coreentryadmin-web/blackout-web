@@ -26,6 +26,7 @@ import {
 } from "./pg-audit.mjs";
 import { isCronRunHealthyStatus, probeOptionsSocketWithRetries } from "./lib/rth-socket-probe.mjs";
 import { evaluateCronWatchdogAudit } from "./audit/lib/watchdog-audit-eval.mjs";
+import { warmRthAuditCaches } from "./lib/rth-audit-cache-warm.mjs";
 
 const smokeOnly = process.argv.includes("--smoke-only");
 const force = process.argv.includes("--force");
@@ -273,6 +274,8 @@ run("Sentry smoke", "node", ["scripts/gha-sentry-smoke.mjs"]);
 
 if (!smokeOnly) {
   if (rthOpen) {
+    console.log("\n── RTH cache prewarm ──");
+    await warmRthAuditCaches({ base: BASE, cron: CRON });
     run("Full-site deep audit", "node", ["scripts/full-site-deep-audit.mjs"]);
   } else {
     console.log("\n── Full-site deep audit ──");

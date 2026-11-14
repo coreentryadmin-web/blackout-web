@@ -2,6 +2,7 @@ import type { DeckStatus, TerminalPlay } from "./types";
 import { isoToEtClock, parseCommittedAtEt } from "@/lib/zerodte/play-timeline";
 import { trimScaleBlendedPnlAtStop } from "@/lib/zerodte/marks-math";
 import { PLAN_RULES } from "@/lib/zerodte/plan";
+import { blendedTrimPnlPct } from "@/lib/zerodte/terminal-ladder";
 import { legacyPrimaryPeakPct, legacyPrimaryPnlPct } from "@/features/nighthawk/lib/legacy-primary-pnl";
 import { WS_TIMESTAMP_FUTURE_TOLERANCE_MS } from "@/lib/ws/timestamp-freshness";
 
@@ -598,8 +599,24 @@ export function openMetricsValues(play: TerminalPlay): {
       peakPct: legacyPrimaryPeakPct(play),
     };
   }
+  // BUG FIX (Ask Largo standing mandate — live-audit follow-up to #7834/#7840/#7866, 2026-11-09):
+  // this returned the raw, unblended open-runner-only `play.pnlPct` for every non-LEGACY row,
+  // including a SWING play with an already-banked trim tranche. `playListReturnPct()` (below)
+  // feeds this straight into the primary list-row "Current"/"PNL" column shown on every Command
+  // Deck row — the same within-panel contradiction #7834 (verdict badge), #7840 (TradeExcursion-
+  // Graphic's Current stat) and #7866 (SwingCockpitStrip's Session P&L average) already fixed at
+  // three other call sites reading the identical `play.pnlPct`/`play.exitPolicy.trim_levels`
+  // pair. `blendedTrimPnlPct` (terminal-ladder.ts) is the SAME shared helper those three fixes
+  // use, scoped to `horizon === "SWING"` only for the identical reason they scope it that way —
+  // a 0DTE TRIM row's `pnlPct` comes from a different, unaudited server-side path
+  // (reconcileLedgerLivePnlPct) this fix does not touch. It no-ops (returns null, falling back to
+  // the raw figure) whenever nothing has fired yet, so a card with no banked trim is unaffected.
+  const currentPct =
+    play.horizon === "SWING"
+      ? blendedTrimPnlPct(play.pnlPct, play.exitPolicy?.trim_levels) ?? play.pnlPct ?? null
+      : play.pnlPct ?? null;
   return {
-    currentPct: play.pnlPct ?? null,
+    currentPct,
     peakPct: play.peak ?? null,
   };
 }

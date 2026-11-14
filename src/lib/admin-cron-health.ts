@@ -21,7 +21,10 @@ import {
   isFlowIngestAlternateWriterSkip,
 } from "@/lib/cron-writer-target-fresh";
 import { isInOffScheduleIdleGap, isAwaitingSecondaryUtcBandFire } from "@/lib/cron-schedule-window";
-import { swingDiscoveryHandshakeStaleMin } from "@/lib/swing/discovery-cron-health";
+import {
+  swingDiscoveryAwaitingPhaseSuppress,
+  swingDiscoveryHandshakeStaleMin,
+} from "@/lib/swing/discovery-cron-health";
 import { xMarketingCronPaused } from "@/lib/x-marketing-env";
 import { isoAgeSec } from "@/components/admin/admin-time-ago";
 import { ageMinFromIso } from "@/lib/ws/timestamp-freshness";
@@ -54,6 +57,18 @@ async function isSwingDiscoveryScanInFlight(now = new Date()): Promise<boolean> 
     if (ageMs < SWING_DISCOVERY_SCAN_MAX_MS + SWING_FORCE_CLEAR_RUNNING_BUFFER_MS) return true;
   }
   return false;
+}
+
+async function loadSwingDiscoveryPhaseClaims(
+  sessionDay: string
+): Promise<Partial<Record<SwingDiscoveryPhase, string>>> {
+  const out: Partial<Record<SwingDiscoveryPhase, string>> = {};
+  for (const phase of SWING_DISCOVERY_PHASES) {
+    const key = phaseRunKey(sessionDay, phase);
+    const entry = await sharedCacheGetWithTtl<SwingDiscoveryPhaseClaim>(key).catch(() => null);
+    if (entry?.value?.status) out[phase] = entry.value.status;
+  }
+  return out;
 }
 
 /** Crons gated by `isSpxEngineCronWindow` (7:00–16:15 ET weekdays) vs `isEtCashRth` (9:30–close). */
@@ -262,6 +277,22 @@ export function effectiveStaleMinutes(
   return { effective: job.stale_after_min, multiplier: 1 };
 }
 
+/** Phase-idempotent swing-discovery can log a trailing failed handshake after an ok POST_CLOSE in the same 24h. */
+function swingDiscoveryRecentOkWithin(
+  runs24h: CronJobRunRow[],
+  staleThreshold: number,
+  now: Date
+): number | null {
+  let bestAge: number | null = null;
+  for (const r of runs24h) {
+    if (r.status !== "ok") continue;
+    const age = ageMinFromIso(r.started_at, now.getTime());
+    if (age == null || age > staleThreshold) continue;
+    if (bestAge == null || age < bestAge) bestAge = age;
+  }
+  return bestAge;
+}
+
 /**
  * Exported for the unit test, and taking an injectable `now` for the same reason: every branch here
  * turns on where the clock is relative to the market session, so a test that used the real clock
@@ -359,9 +390,16 @@ export function evaluateJob(
   let statusLabel = "OK";
 
   if (last.status === "failed") {
-    // Between scheduled fires (e.g. Monday morning before the post-close band), a Friday failed
-    // handshake must not fail cron-audit-query all day — same ops #1983 shape as stale suppression.
-    if (offScheduleGap || awaitingDualBand) {
+    const swingOkAge =
+      job.key === "swing-discovery"
+        ? swingDiscoveryRecentOkWithin(runs24h, staleThreshold, now)
+        : null;
+    if (swingOkAge != null) {
+      status = "warning";
+      statusLabel = `Last handshake failed; latest ok run ${Math.round(swingOkAge)}m ago`;
+    } else if (offScheduleGap || awaitingDualBand) {
+      // Between scheduled fires (e.g. Monday morning before the post-close band), a Friday failed
+      // handshake must not fail cron-audit-query all day — same ops #1983 shape as stale suppression.
       status = "healthy";
       statusLabel = awaitingDualBand
         ? "Idle (awaiting in-window UTC band; last run failed)"
@@ -475,6 +513,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     await sharedCacheGet("zerodte-warm:running").catch(() => null)
   );
   const swingDiscoveryInFlight = await isSwingDiscoveryScanInFlight();
+  const swingDiscoveryPhaseClaims = await loadSwingDiscoveryPhaseClaims(todayEt());
   const jobs = CRON_JOBS.map((job) => {
     const health = evaluateJob(job, lastByKey[job.key], runs24hByKey.get(job.key) ?? []);
 
@@ -604,6 +643,31 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
           "Phase scan in flight (running claim held) — prior cron handshake not authoritative",
         meta: { ...(health.meta ?? {}), swing_discovery_in_flight: true },
       };
+    }
+
+    if (
+      job.key === "swing-discovery" &&
+      (health.status === "stale" || health.status === "failed")
+    ) {
+      const suppress = swingDiscoveryAwaitingPhaseSuppress({
+        healthStatus: health.status,
+        healthAgeMin: health.age_min,
+        now: new Date(),
+        phaseClaims: swingDiscoveryPhaseClaims,
+        scanInFlight: swingDiscoveryInFlight,
+      });
+      if (suppress.suppress && suppress.label) {
+        return {
+          ...health,
+          status: "healthy" as const,
+          market_hours_stale: false,
+          status_label: suppress.label,
+          meta: {
+            ...(health.meta ?? {}),
+            swing_discovery_awaiting_phase: suppress.phase,
+          },
+        };
+      }
     }
 
     if (

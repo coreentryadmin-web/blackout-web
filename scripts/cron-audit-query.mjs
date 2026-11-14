@@ -16,6 +16,8 @@ import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 import { fetchRetry } from "./audit/lib/fetch-retry.mjs";
 import { shouldRetryWatchdogFetch } from "./audit/lib/ops-collect-scope.mjs";
+import { evaluateCronWatchdogAudit } from "./audit/lib/watchdog-audit-eval.mjs";
+import { inRthOpenWindow } from "./gha-et-window.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -60,14 +62,23 @@ async function auditViaWatchdog() {
     console.error(`[cron-audit] watchdog HTTP ${res?.status ?? 0}`);
     process.exit(1);
   }
-  const problems = [
-    ...new Set([...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])]),
-  ].filter((key) => !isXMarketingCronSuppressed(key));
+  const inRth = inRthOpenWindow();
+  const verdict = evaluateCronWatchdogAudit(body, { inRth });
+  const rthStale = verdict.rthStale.filter((key) => !isXMarketingCronSuppressed(key));
+  const nonRth = verdict.nonRthProblems.filter((key) => !isXMarketingCronSuppressed(key));
+  const shouldFail =
+    verdict.criticalErrorSpike || rthStale.length > 0 || (inRth && nonRth.length > 0);
+  const allReported = [...new Set([...rthStale, ...nonRth])];
   console.log("\n=== CRON AUDIT (HTTP watchdog fallback) ===\n");
   console.log(`checked: ${body.checked ?? "?"}`);
-  console.log(`problems: ${problems.length ? problems.join(", ") : "(none)"}`);
+  console.log(`cash_rth: ${inRth ? "open" : "closed/off-hours"}`);
+  console.log(`problems: ${allReported.length ? allReported.join(", ") : "(none)"}`);
+  console.log(`rth_stale: ${rthStale.length ? rthStale.join(", ") : "(none)"}`);
+  if (!inRth && nonRth.length) {
+    console.log(`off_hours_ignored: ${nonRth.join(", ")}`);
+  }
   console.log(`error_spike: ${body.error_spike ?? "none"} (${body.error_count ?? 0} in ${body.error_window_min ?? "?"}m)`);
-  if (body.error_spike === "critical" || problems.length > 0) {
+  if (shouldFail) {
     process.exit(1);
   }
   console.log("\nGREEN — cron watchdog reports healthy.\n");

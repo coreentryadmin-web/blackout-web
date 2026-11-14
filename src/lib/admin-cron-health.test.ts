@@ -401,6 +401,46 @@ test("buildCronHealthSnapshot suppresses nighthawk-backfill-repair stale/failed 
   );
 });
 
+test("swing-discovery: trailing failed handshake downgrades to warning when a recent ok exists in 24h", () => {
+  const now = new Date("2026-11-10T01:25:00.000Z");
+  const job = jobDef({ key: "swing-discovery", weekdays_only: true, stale_after_min: 36 * 60 });
+  const health = evaluateJob(
+    job,
+    {
+      id: 2,
+      job_key: "swing-discovery",
+      status: "failed",
+      started_at: "2026-11-10T00:50:00.000Z",
+      duration_ms: 10,
+      message: "timeout",
+      meta_json: null,
+    },
+    [
+      {
+        id: 1,
+        job_key: "swing-discovery",
+        status: "ok",
+        started_at: "2026-11-10T00:10:00.000Z",
+        duration_ms: 100,
+        message: "POST_CLOSE",
+        meta_json: null,
+      },
+      {
+        id: 2,
+        job_key: "swing-discovery",
+        status: "failed",
+        started_at: "2026-11-10T00:50:00.000Z",
+        duration_ms: 10,
+        message: "timeout",
+        meta_json: null,
+      },
+    ],
+    now
+  );
+  assert.equal(health.status, "warning");
+  assert.match(health.status_label, /latest ok run/i);
+});
+
 test("weekday scheduled post-close crons: failed suppressed Mon morning before evening fire (cron-audit query)", () => {
   const now = new Date("2026-11-09T15:55:00.000Z"); // Mon 10:55 AM ET
   const cases: Array<{ key: string; schedule_cron_utc: string }> = [
