@@ -65,6 +65,44 @@ test("summarizeGroupGreekFlow still honors an explicit net_gamma field when one 
   assert.match(summary!.headline, /dealer gamma/);
 });
 
+// BUG FIX (round 531): `bias` can be decided by GAMMA alone (gamma>0/`<`0 forces supportive/
+// opposing even when delta's own value sits on the OTHER side of zero), but the headline used to
+// quote the raw delta figure unconditionally — producing a literally self-contradictory sentence
+// whenever gamma (not delta) decided the bias. These are the RED-before-GREEN proof: with the
+// pre-fix code (`git stash`), both assertions below fail because the headline instead reads
+// "... supportive — net -45K delta" / "... opposing — net 45K delta" (the dissenting delta figure
+// printed as if it agreed with the stated bias).
+test("summarizeGroupGreekFlow headline discloses it when GAMMA decides 'supportive' but delta disagrees (negative)", () => {
+  const summary = summarizeGroupGreekFlow("semis", [{ net_delta: -45_000, net_gamma: 80_000 }]);
+  assert.equal(summary?.bias, "supportive");
+  assert.match(
+    summary!.headline,
+    /delta flow disagrees \(net -45K\)/,
+    `expected the headline to disclose the delta/gamma disagreement, got: ${summary!.headline}`
+  );
+  // Must never again assert "supportive" directly next to the negative figure as if it agreed.
+  assert.doesNotMatch(summary!.headline, /supportive — net -45K delta/);
+});
+
+test("summarizeGroupGreekFlow headline discloses it when GAMMA decides 'opposing' but delta disagrees (positive)", () => {
+  const summary = summarizeGroupGreekFlow("semis", [{ net_delta: 45_000, net_gamma: -80_000 }]);
+  assert.equal(summary?.bias, "opposing");
+  assert.match(
+    summary!.headline,
+    /delta flow disagrees \(net 45K\)/,
+    `expected the headline to disclose the delta/gamma disagreement, got: ${summary!.headline}`
+  );
+  assert.doesNotMatch(summary!.headline, /opposing — net 45K delta/);
+});
+
+// When delta and gamma genuinely AGREE (same sign), nothing changes — no disagreement to disclose.
+test("summarizeGroupGreekFlow headline stays a plain 'net X delta' clause when gamma and delta agree", () => {
+  const summary = summarizeGroupGreekFlow("semis", [{ net_delta: 45_000, net_gamma: 80_000 }]);
+  assert.equal(summary?.bias, "supportive");
+  assert.match(summary!.headline, /supportive — net 45K delta/);
+  assert.doesNotMatch(summary!.headline, /disagrees/);
+});
+
 test("summarizeGroupGreekFlow returns null on a genuinely empty row set", () => {
   assert.equal(summarizeGroupGreekFlow("mag7", []), null);
 });

@@ -99,11 +99,31 @@ export function summarizeGroupGreekFlow(
   // this endpoint never carries it, so the headline says "dealer delta flow" instead rather than
   // claiming a gamma read that was never made.
   const gammaWord = netGammaResult != null ? "gamma" : "delta flow";
+  // BUG FIX (round 531): `bias` above is driven by delta OR gamma (either signal alone can decide
+  // it — e.g. gamma>0 forces "supportive" even when delta itself is negative), but the headline
+  // UNCONDITIONALLY quoted the raw delta figure next to that label regardless of which signal
+  // actually decided it. Whenever gamma was the deciding signal and delta's own sign disagreed,
+  // this produced a literally self-contradictory sentence — live-reproducible with any gamma-
+  // bearing group (e.g. a sector group, unlike mag7 which this endpoint never carries gamma for):
+  // net_delta=-45_000 (bearish on its own) + net_gamma=+80_000 (bullish, and >50K's only tie-
+  // breaker) rendered "semis dealer gamma supportive — net -45K delta" — "supportive" stated
+  // flatly next to an explicit negative delta figure, with nothing telling the reader the two
+  // signals disagree. The Largo product contract's own rule is "disagreement is represented,
+  // never reconciled by the lanes themselves" (docs/audit/LARGO-PRODUCT-CONTRACT.md) — silently
+  // printing the dissenting number as if it were confirming evidence is the opposite of that:
+  // it HIDES the disagreement inside a sentence that reads as agreement.
+  // Fix: detect when the quoted delta figure's own sign contradicts the stated bias (only
+  // possible when gamma — not delta — decided it) and say so explicitly instead of presenting
+  // the two numbers as agreeing.
+  const deltaDisagrees =
+    netGammaResult != null &&
+    ((bias === "supportive" && netDelta < 0) || (bias === "opposing" && netDelta > 0));
+  const deltaClause = deltaDisagrees ? `delta flow disagrees (net ${deltaM})` : `net ${deltaM} delta`;
   const headline =
     bias === "supportive"
-      ? `${groupLabel} dealer ${gammaWord} supportive — net ${deltaM} delta`
+      ? `${groupLabel} dealer ${gammaWord} supportive — ${deltaClause}`
       : bias === "opposing"
-        ? `${groupLabel} dealer ${gammaWord} opposing — net ${deltaM} delta`
+        ? `${groupLabel} dealer ${gammaWord} opposing — ${deltaClause}`
         : `${groupLabel} dealer greek flow neutral`;
 
   return {
