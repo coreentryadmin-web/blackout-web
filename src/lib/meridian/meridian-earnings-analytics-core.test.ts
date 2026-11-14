@@ -313,6 +313,15 @@ test("formatters: null renders as an em-dash, never as a fabricated zero", () =>
   assert.equal(fmtSurprisePct(0.0447), "+4.5%");
   assert.equal(fmtSurprisePct(-0.12), "-12.0%");
 
+  // round532: a raw-sign check on the UNROUNDED value let a tiny nonzero surprise that rounds to
+  // 0 at the display precision keep a misleading "-"/"+" prefix (native toFixed preserves the
+  // sign of a value that rounds to zero magnitude: `(-0.001).toFixed(1) === "-0.0"`). A surprise
+  // this small is realistic — a few thousand dollars of revenue drift against a mega-cap estimate
+  // — and must read as flat, not as a signed (and self-contradictory) zero.
+  assert.equal(fmtSurprisePct(-0.0001), "0.0%", "a tiny negative surprise that rounds to 0 must not show '-0.0%'");
+  assert.equal(fmtSurprisePct(0.00001), "0.0%", "a tiny positive surprise that rounds to 0 must not show '+0.0%'");
+  assert.equal(fmtSurprisePct(-0.0004), "0.0%");
+
   assert.equal(fmtCompactMoney(null), "—");
   assert.equal(fmtCompactMoney(82609000), "$82.6M");
   // 81.615 is stored as 81.61499... in binary float, so toFixed(2) truncates to .61 — not a bug,
